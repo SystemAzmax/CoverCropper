@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- アプリアイコン (CoverCropper/Assets/AppIcon.ico) の生成ツール。
+       実行方法はリポジトリ直下で: dotnet run (project: tools/IconGenerator, 引数: CoverCropper/Assets) -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+</Project>

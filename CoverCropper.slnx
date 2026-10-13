@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="CoverCropper/CoverCropper.csproj" />
+  <Project Path="CoverCropper.Tests/CoverCropper.Tests.csproj" />
+</Solution>
