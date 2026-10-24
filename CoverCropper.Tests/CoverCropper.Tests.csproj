@@ -27,4 +27,9 @@
     <ProjectReference Include="..\CoverCropper\CoverCropper.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 画像処理を置き換える前の基準ファイル（BaselineRegressionTests が使う） -->
+    <None Include="Baseline\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
