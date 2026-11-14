@@ -104,7 +104,7 @@
 | 2-2 | 向き | `Geometry/ImageOrientation`（回転・反転の組み合わせと 4 つの操作、EXIF の番号との対応）・`Geometry/Orientation`（`Apply`・`ApplyExif`） | E01〜E03 | 中 | 済 |
 | 2-3 | 切り出し | `Operations/Crop` | E04 | 小 | 済 |
 | 2-4 | リサイズ | `Operations/Resize`（Lanczos3。不透明な画像は CoverCropper と同じ計算、透過のある画像は乗算済みアルファ） | E05〜E07 | 中 | 済 |
-| 2-5 | 背景色で塗る | `Operations/Flatten` | E08 | 小 | 未 |
+| 2-5 | 背景色で塗る | `Operations/Flatten` | E08 | 小 | 済 |
 | 2-6 | 表紙用のサイズ計算 | `Operations/CoverFit` | E09 | 小 | 未 |
 | 2-7 | パラメーターの記述と値 | `Parameters/`（`ParameterKind`・`ParameterDescriptor`・`ChoiceItem`・`ParameterValues`） | E12 | 中 | 未 |
 | 2-8 | フィルターの仕組みと基本補正 | `Filters/`（`IImageFilter`・`FilterContext`・`FilterRegistry`・`BasicAdjustFilter`） | E10・E11。追加: `FilterRegistry`（登録順に並ぶ / 同じ Id は例外） | 中 | 未 |
