@@ -1,4 +1,6 @@
 <Solution>
   <Project Path="CoverCropper/CoverCropper.csproj" />
   <Project Path="CoverCropper.Tests/CoverCropper.Tests.csproj" />
+  <Project Path="WebDeza.Imaging/WebDeza.Imaging.csproj" />
+  <Project Path="WebDeza.Imaging.Tests/WebDeza.Imaging.Tests.csproj" />
 </Solution>
