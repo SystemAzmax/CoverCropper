@@ -103,7 +103,7 @@
 | 2-1 | プロジェクトと画像データ | `WebDeza.Imaging`（net10.0）と `WebDeza.Imaging.Tests`（net10.0-windows・UseWPF。段階 3 の WIC プラグインのテストも入れるため）を作り、`CoverCropper.slnx` に足す。`ImageBuffer`・`PixelRect`・`AspectRatio`・`RgbColor`・`ImageTooLargeException` | 追加: 配列の長さが幅 × 高さ × 4 と合わないと例外 / `IsOpaque` の判定 / 大きすぎるサイズは `ImageTooLargeException` / `AspectRatio` は約分して持つ | 小 | 済 |
 | 2-2 | 向き | `Geometry/ImageOrientation`（回転・反転の組み合わせと 4 つの操作、EXIF の番号との対応）・`Geometry/Orientation`（`Apply`・`ApplyExif`） | E01〜E03 | 中 | 済 |
 | 2-3 | 切り出し | `Operations/Crop` | E04 | 小 | 済 |
-| 2-4 | リサイズ | `Operations/Resize`（Lanczos3。不透明な画像は CoverCropper と同じ計算、透過のある画像は乗算済みアルファ） | E05〜E07 | 中 | 未 |
+| 2-4 | リサイズ | `Operations/Resize`（Lanczos3。不透明な画像は CoverCropper と同じ計算、透過のある画像は乗算済みアルファ） | E05〜E07 | 中 | 済 |
 | 2-5 | 背景色で塗る | `Operations/Flatten` | E08 | 小 | 未 |
 | 2-6 | 表紙用のサイズ計算 | `Operations/CoverFit` | E09 | 小 | 未 |
 | 2-7 | パラメーターの記述と値 | `Parameters/`（`ParameterKind`・`ParameterDescriptor`・`ChoiceItem`・`ParameterValues`） | E12 | 中 | 未 |

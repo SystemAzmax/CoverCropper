@@ -29,4 +29,12 @@
     <ProjectReference Include="..\WebDeza.Imaging\WebDeza.Imaging.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 置き換える前の CoverCropper の処理結果（基準ファイル）。複製せず、CoverCropper.Tests のものをリンクで参照する。
+         Resize が CoverCropper の ImageResizer と同じ結果になることを確かめるのに使う（テスト E07） -->
+    <None Include="..\CoverCropper.Tests\Baseline\expected\*.png"
+          Link="Baseline\expected\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
