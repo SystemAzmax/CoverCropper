@@ -60,6 +60,9 @@ public interface ICanvasHost
     /// <summary>今の表示倍率と位置（描いているとおり）</summary>
     ViewTransform View { get; }
 
+    /// <summary>1 DIP あたりの物理ピクセル（ハンドルなどを、選択範囲の縁と同じく物理ピクセルにそろえて描くため）</summary>
+    double DpiScale { get; }
+
     /// <summary>パンできるか（ズーム中。全体表示のときは画像が領域に収まっているので、パンしても何もしない）</summary>
     bool CanPan { get; }
 

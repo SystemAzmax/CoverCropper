@@ -198,7 +198,8 @@ public sealed class EditorCanvas : FrameworkElement, ICanvasHost
 
     // ---------------------------------------------------------------- ズーム（設計書 F-03）
 
-    private double DpiScale => VisualTreeHelper.GetDpi(this).DpiScaleX;
+    /// <summary>1 DIP あたりの物理ピクセル（ICanvasHost）</summary>
+    public double DpiScale => VisualTreeHelper.GetDpi(this).DpiScaleX;
 
     private Point ViewCenter => new(RenderSize.Width / 2, RenderSize.Height / 2);
 
@@ -475,15 +476,14 @@ public sealed class EditorCanvas : FrameworkElement, ICanvasHost
         }
         dc.DrawDrawing(drawing);
 
-        // 選択範囲の縁（画像の切り替えの途中で、窓口と画像の大きさが一時的に合わないときは描かない）
-        if (Session is { Selection: { } selection } session
-            && session.ImageWidth == image.ImageWidth && session.ImageHeight == image.ImageHeight)
+        // 選択範囲の縁と、道具の重ね描き（ハンドルなど）。
+        // 画像の切り替えの途中で、窓口と画像の大きさが一時的に合わないときは描かない
+        if (Session is { } session && session.ImageWidth == image.ImageWidth && session.ImageHeight == image.ImageHeight)
         {
-            RenderSelection(dc, ImageRectToView(selection, view, dpiScale), dpiScale);
+            if (session.Selection is { } selection)
+                RenderSelection(dc, ImageRectToView(selection, view, dpiScale), dpiScale);
+            _tool?.Render(dc, view);
         }
-
-        // 道具の重ね描き（ハンドルなど）
-        _tool?.Render(dc, view);
     }
 
     private void UpdateZoomPercent(double percent)

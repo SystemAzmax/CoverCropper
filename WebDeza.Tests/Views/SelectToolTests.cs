@@ -1,11 +1,13 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using WebDeza.Imaging;
+using WebDeza.Imaging.Editing;
 using WebDeza.Views.Canvas;
 
 namespace WebDeza.Tests.Views;
 
-/// <summary>「選択」の道具: 作る・解除（設計書 F-04。V30 のうち「作る」「解除」。実装計画書 8-5）</summary>
+/// <summary>「選択」の道具: 作る・解除・移動・ハンドル（設計書 F-04・4.5。V30。実装計画書 8-5・8-6）</summary>
 public class SelectToolTests
 {
     private readonly FakeSession _session = new() { ImageWidth = 400, ImageHeight = 300 };
@@ -190,6 +192,261 @@ public class SelectToolTests
         _tool.OnPointerMove(At(100, 100, null));
 
         Assert.Null(_session.Selection);
+    }
+
+    // ---------------------------------------------------------------- 移動（選択範囲 (100, 100) 50×50 の内側をドラッグ）
+
+    [Fact]
+    public void DragInside_MovesKeepingSize()
+    {
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+
+        Drag(120, 120, 150, 110);
+
+        Assert.Equal(new PixelRect(130, 90, 50, 50), _session.Selection);
+    }
+
+    [Fact]
+    public void DragInside_StopsAtImageEdge_AndFollowsWhenBack()
+    {
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+
+        _tool.OnPointerDown(At(120, 120));
+        _tool.OnPointerMove(At(900, 900));
+        Assert.Equal(new PixelRect(350, 250, 50, 50), _session.Selection); // 画像 400×300 の右下で止まる
+
+        // 押した所からの移動量で動かすので、戻せばマウスとずれない
+        _tool.OnPointerMove(At(130, 130));
+        Assert.Equal(new PixelRect(110, 110, 50, 50), _session.Selection);
+    }
+
+    [Fact]
+    public void DragInside_RoundsToWholePixels()
+    {
+        // 拡大中（1 px = 2 DIP）: 画像の座標で 0.5 px 未満の移動は 0 px、0.5 px 以上は 1 px
+        _host.View = new ViewTransform(2, 0, 0);
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+
+        _tool.OnPointerDown(Zoomed(240, 240));
+        _tool.OnPointerMove(Zoomed(250.8, 248.8)); // 画像で (+5.4, +4.4)
+        Assert.Equal(new PixelRect(105, 104, 50, 50), _session.Selection);
+    }
+
+    // ---------------------------------------------------------------- ハンドル（選択範囲 (100, 100) 50×50）
+
+    [Fact]
+    public void DragBottomRightHandle_KeepsTopLeft()
+    {
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+
+        Drag(150, 150, 200, 180);
+
+        Assert.Equal(new PixelRect(100, 100, 100, 80), _session.Selection);
+    }
+
+    [Fact]
+    public void DragTopLeftHandle_KeepsBottomRight()
+    {
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+
+        Drag(100, 100, 80, 90);
+
+        Assert.Equal(new PixelRect(80, 90, 70, 60), _session.Selection);
+    }
+
+    [Fact]
+    public void DragHandle_GrabbedOffCenter_DoesNotJump()
+    {
+        // ハンドルの角から (2, -3) ずれた所をつかんでも、つかんだ瞬間に枠が飛ばない
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+
+        Drag(152, 147, 202, 177);
+
+        Assert.Equal(new PixelRect(100, 100, 100, 80), _session.Selection);
+    }
+
+    [Fact]
+    public void DragHandle_PastOppositeSide_StopsAtMinimum()
+    {
+        // 反対側を越えても裏返らず、最小（1 px）で止まる
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+
+        Drag(150, 150, 20, 20);
+
+        Assert.Equal(new PixelRect(100, 100, 1, 1), _session.Selection);
+    }
+
+    [Fact]
+    public void DragHandle_OutsideImage_StopsAtEdge()
+    {
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+
+        Drag(150, 150, 1000, 1000);
+
+        Assert.Equal(new PixelRect(100, 100, 300, 200), _session.Selection);
+    }
+
+    [Fact]
+    public void DragEdgeHandles_ChangeOnlyThatSide()
+    {
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+        Drag(150, 125, 180, 200); // 右の辺: 横だけ
+        Assert.Equal(new PixelRect(100, 100, 80, 50), _session.Selection);
+
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+        Drag(125, 100, 0, 70); // 上の辺: 縦だけ（下の辺を固定）
+        Assert.Equal(new PixelRect(100, 70, 50, 80), _session.Selection);
+    }
+
+    [Fact]
+    public void FixedAspect_CornerHandleKeepsRatio()
+    {
+        _session.Aspect = new AspectRatio(1, 1);
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+
+        Drag(150, 150, 250, 170); // 角: 幅と高さのうち、大きくなる方に合わせる
+
+        Assert.Equal(new PixelRect(100, 100, 150, 150), _session.Selection);
+    }
+
+    [Fact]
+    public void FixedAspect_NoEdgeHandles()
+    {
+        // 比率が固定なら辺のハンドルは無い: 右の辺の中ほど（内側）をドラッグすると移動になる
+        _session.Aspect = new AspectRatio(1, 1);
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+
+        Drag(149, 125, 179, 125);
+
+        Assert.Equal(new PixelRect(130, 100, 50, 50), _session.Selection);
+    }
+
+    [Fact]
+    public void ClickOnHandle_KeepsSelection()
+    {
+        // ハンドル（選択範囲の外にはみ出した所も）をドラッグせずにクリックしても、解除しない
+        var selection = new PixelRect(100, 100, 50, 50);
+        _session.Selection = selection;
+
+        _tool.OnPointerDown(At(153, 153));
+        _tool.OnPointerUp(At(153, 153));
+
+        Assert.Equal(selection, _session.Selection);
+        Assert.False(_host.Captured);
+    }
+
+    [Fact]
+    public void Handle_HitTestUsesScreenDistance()
+    {
+        // 拡大中（1 px = 2 DIP）: 選択範囲は画面で (200, 200) 100×100。右下のハンドルは画面で 6 DIP 以内
+        _host.View = new ViewTransform(2, 0, 0);
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+
+        _tool.OnPointerDown(Zoomed(305, 305));
+        _tool.OnPointerMove(Zoomed(325, 345));
+
+        Assert.Equal(new PixelRect(100, 100, 60, 70), _session.Selection);
+    }
+
+    [Fact]
+    public void Handles_EdgesOnlyWhenFreeAndLongEnough()
+    {
+        var big = new Rect(0, 0, 100, 100);
+        Assert.Equal(8, SelectTool.Handles(big, withEdges: true).Count);
+        Assert.Equal(
+            new[] { FrameHandle.TopLeft, FrameHandle.TopRight, FrameHandle.BottomRight, FrameHandle.BottomLeft },
+            SelectTool.Handles(big, withEdges: false).Select(h => h.Handle));
+
+        // 短い辺には、辺のハンドルを出さない（幅が短いので上下の辺は無く、左右の辺はある）
+        var narrow = new Rect(0, 0, SelectTool.MinSideForEdgeHandle - 1, SelectTool.MinSideForEdgeHandle);
+        Assert.Equal(
+            new[] { FrameHandle.TopLeft, FrameHandle.TopRight, FrameHandle.BottomRight, FrameHandle.BottomLeft,
+                    FrameHandle.Left, FrameHandle.Right },
+            SelectTool.Handles(narrow, withEdges: true).Select(h => h.Handle));
+    }
+
+    [Fact]
+    public void HitHandle_PicksNearest_AndNullOutsideRadius()
+    {
+        var tiny = new Rect(100, 100, 4, 4); // 四隅のつかめる範囲が重なる
+        Assert.Equal(FrameHandle.BottomRight, SelectTool.HitHandle(tiny, true, new Point(103, 103)));
+        Assert.Equal(FrameHandle.TopLeft, SelectTool.HitHandle(tiny, true, new Point(101, 99)));
+
+        var rect = new Rect(100, 100, 50, 50);
+        Assert.Equal(FrameHandle.Right, SelectTool.HitHandle(rect, true, new Point(155, 120)));
+        Assert.Null(SelectTool.HitHandle(rect, false, new Point(155, 120)));
+        Assert.Null(SelectTool.HitHandle(rect, true, new Point(100 + SelectTool.HandleHitRadius + 0.1, 100)));
+    }
+
+    [Theory]
+    [InlineData(1.0, 10, 20, 6, 16)]
+    [InlineData(1.5, 10, 20, 6, 16)]
+    [InlineData(2.0, 10.4, 20.6, 6.5, 16.5)]
+    public void HandleBounds_AlignedToPhysicalPixels(double dpiScale, double centerX, double centerY, double x, double y)
+    {
+        var bounds = SelectTool.HandleBounds(new Point(centerX, centerY), dpiScale);
+
+        Assert.Equal(new Rect(x, y, SelectTool.HandleSize, SelectTool.HandleSize), bounds);
+        Assert.Equal(Math.Round(bounds.Left * dpiScale), bounds.Left * dpiScale, 9);
+        Assert.Equal(Math.Round(bounds.Right * dpiScale), bounds.Right * dpiScale, 9);
+    }
+
+    [Fact]
+    public void Render_DrawsHandlesOnlyWithSelection()
+    {
+        var view = new ViewTransform(1, 0, 0);
+        Assert.Equal(0, RenderCount(view));
+
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+        Assert.Equal(8 * 2, RenderCount(view)); // 四隅と四辺。1 つにつき黒い四角と白い四角
+
+        _session.Aspect = new AspectRatio(1, 1);
+        Assert.Equal(4 * 2, RenderCount(view)); // 比率が固定なら四隅だけ
+    }
+
+    // ---------------------------------------------------------------- カーソル
+
+    [Fact]
+    public void Cursor_ByPosition()
+    {
+        Assert.Same(Cursors.Cross, _tool.GetCursor(At(125, 125, null))); // 選択範囲が無い
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+
+        Assert.Same(Cursors.SizeAll, _tool.GetCursor(At(125, 125, null)));  // 内側
+        Assert.Same(Cursors.SizeNWSE, _tool.GetCursor(At(100, 100, null))); // 左上
+        Assert.Same(Cursors.SizeNWSE, _tool.GetCursor(At(150, 150, null))); // 右下
+        Assert.Same(Cursors.SizeNESW, _tool.GetCursor(At(150, 100, null))); // 右上
+        Assert.Same(Cursors.SizeNESW, _tool.GetCursor(At(100, 150, null))); // 左下
+        Assert.Same(Cursors.SizeNS, _tool.GetCursor(At(125, 100, null)));   // 上の辺
+        Assert.Same(Cursors.SizeWE, _tool.GetCursor(At(150, 125, null)));   // 右の辺
+        Assert.Same(Cursors.Cross, _tool.GetCursor(At(20, 20, null)));      // 外
+    }
+
+    [Fact]
+    public void Cursor_DuringDrag_KeepsKindOfDrag()
+    {
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+
+        _tool.OnPointerDown(At(120, 120));
+        _tool.OnPointerMove(At(900, 900));
+        Assert.Same(Cursors.SizeAll, _tool.GetCursor(At(900, 900))); // 動かしている間は、外に出ても移動
+        _tool.OnPointerUp(At(900, 900));
+
+        _tool.OnPointerDown(At(400, 300)); // 右下のハンドル（選択範囲は (350, 250) 50×50）
+        _tool.OnPointerMove(At(10, 10));
+        Assert.Same(Cursors.SizeNWSE, _tool.GetCursor(At(10, 10)));
+    }
+
+    /// <summary>画面の座標から、拡大中（1 px = 2 DIP）のポインターを作る</summary>
+    private static CanvasPointer Zoomed(double viewX, double viewY)
+        => new(new Point(viewX, viewY), new Point(viewX / 2, viewY / 2), MouseButton.Left, ModifierKeys.None);
+
+    /// <summary>道具が描いたものの数</summary>
+    private int RenderCount(ViewTransform view)
+    {
+        var drawing = new DrawingGroup();
+        using (var dc = drawing.Open()) _tool.Render(dc, view);
+        return drawing.Children.Count;
     }
 
     [Theory]

@@ -183,6 +183,7 @@ internal sealed class FakeHost : ICanvasHost
 {
     public List<CanvasPointer> PanRequests { get; } = new();
     public ViewTransform View { get; set; } = new(1, 0, 0);
+    public double DpiScale { get; set; } = 1;
     public bool CanPan { get; set; }
     public int InvalidateCount { get; private set; }
     public bool Captured { get; private set; }
