@@ -129,7 +129,165 @@ public static class CropFrameCalculator
         }
     }
 
+    /// <summary>書き出し倍率（書き出し画像の幅 ÷ 枠の幅）。1 を超えると拡大になる（M03）</summary>
+    public static double OutputScale(PixelRect rect, OutputSize outputSize)
+        => (double)OutputPixelSize(rect, outputSize).Width / rect.Width;
+
+    // ---------------------------------------------------------------- 枠の操作
+
+    /// <summary>
+    /// 枠を書き出し画像の px 単位で動かす（矢印キー）。編集画像のピクセルでは、
+    /// 1 回の移動量 n を max(1, round(|n| ÷ 書き出し倍率)) にする（縦も横と同じ倍率を使う）。画像の外には出ない
+    /// </summary>
+    /// <param name="rect">今の枠</param>
+    /// <param name="outputDx">横の移動量（書き出し画像の px。右が正）</param>
+    /// <param name="outputDy">縦の移動量（書き出し画像の px。下が正）</param>
+    /// <param name="rules">枠の規則</param>
+    /// <param name="outputSize">書き出しサイズ（書き出し倍率を求めるのに使う）</param>
+    public static PixelRect Move(PixelRect rect, int outputDx, int outputDy, FrameRules rules, OutputSize outputSize)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        rect = Clamp(rect, rules);
+        int outputWidth = OutputPixelSize(rect, outputSize).Width;
+
+        int ToImagePixels(int n)
+        {
+            if (n == 0) return 0;
+            int pixels = Math.Max(1, RoundDiv(Math.Abs((long)n) * rect.Width, outputWidth));
+            return n > 0 ? pixels : -pixels;
+        }
+
+        return Clamp(rect with { X = rect.X + ToImagePixels(outputDx), Y = rect.Y + ToImagePixels(outputDy) }, rules);
+    }
+
+    /// <summary>
+    /// 枠の中心を保って幅を変える（＋ / － キー）。比率が決まっていれば高さは幅から求め、
+    /// 自由なら今の枠の縦横比を保つ。大きさは最小〜最大に収め、画像からはみ出す場合は内側へずらす
+    /// </summary>
+    public static PixelRect ResizeAroundCenter(PixelRect rect, int newWidth, FrameRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        rect = Clamp(rect, rules);
+
+        int width = Math.Clamp(newWidth, rules.MinWidth, rules.MaxWidth);
+        int height = rules.Aspect is null
+            ? Math.Clamp(RoundDiv((long)width * rect.Height, rect.Width), rules.MinHeight, rules.MaxHeight)
+            : rules.HeightForWidth(width);
+
+        // 中心を保つ（端数は左上へ寄せる）。はみ出した分は Clamp が内側へずらす
+        int x = rect.X + FloorHalf(rect.Width - width);
+        int y = rect.Y + FloorHalf(rect.Height - height);
+        return Clamp(new PixelRect(x, y, width, height), rules);
+    }
+
+    /// <summary>
+    /// ハンドルのドラッグで枠の大きさを変える。反対側の角（辺）を固定し、ポインターの位置に合わせる。
+    /// 反対側を越えても裏返らず最小で止まり、画像の端でも止まる。
+    /// 比率が決まっているときは、角のハンドルでは幅と高さのうち大きくなる方に合わせ、
+    /// 辺のハンドルでは、もう一方の向きの中心を保つ
+    /// </summary>
+    /// <param name="rect">ドラッグを始めたときの枠</param>
+    /// <param name="handle">ドラッグしているハンドル</param>
+    /// <param name="pointerX">ポインターの位置（編集画像のピクセル座標。小数でよい）</param>
+    /// <param name="pointerY">ポインターの位置（編集画像のピクセル座標。小数でよい）</param>
+    /// <param name="rules">枠の規則</param>
+    public static PixelRect ResizeFromHandle(PixelRect rect, FrameHandle handle, double pointerX, double pointerY, FrameRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        if (!double.IsFinite(pointerX) || !double.IsFinite(pointerY))
+            throw new ArgumentOutOfRangeException(nameof(pointerX), "ポインターの位置が数値ではありません。");
+        rect = Clamp(rect, rules);
+
+        var (sx, sy) = Directions(handle);
+        // 固定する側（反対側の辺）の座標と、動かす向きに使える長さ（画像の端まで）
+        int anchorX = sx < 0 ? rect.X + rect.Width : rect.X;
+        int anchorY = sy < 0 ? rect.Y + rect.Height : rect.Y;
+        int roomX = sx < 0 ? anchorX : rules.ImageWidth - anchorX;
+        int roomY = sy < 0 ? anchorY : rules.ImageHeight - anchorY;
+        // ポインターまでの長さ（反対側を越えたときは負になり、最小で止まる）
+        double wantWidth = sx < 0 ? anchorX - pointerX : pointerX - anchorX;
+        double wantHeight = sy < 0 ? anchorY - pointerY : pointerY - anchorY;
+
+        int width, height;
+        if (rules.Aspect is not { } a)
+        {
+            width = sx == 0 ? rect.Width : Math.Clamp(RoundToInt(wantWidth), rules.MinWidth, Math.Min(rules.MaxWidth, roomX));
+            height = sy == 0 ? rect.Height : Math.Clamp(RoundToInt(wantHeight), rules.MinHeight, Math.Min(rules.MaxHeight, roomY));
+        }
+        else
+        {
+            // 比率が決まっているとき: 幅で決め、高さは幅から求める
+            double widthFromHeight = wantHeight * a.Width / a.Height;
+            double want = (sx, sy) switch
+            {
+                (0, _) => widthFromHeight,                      // 上・下の辺
+                (_, 0) => wantWidth,                            // 左・右の辺
+                _ => Math.Max(wantWidth, widthFromHeight),      // 角: 大きくなる方に合わせる
+            };
+
+            // 動かす向きに収まる幅（辺のハンドルでは、もう一方の向きは画像全体まで使える）
+            long limit = rules.MaxWidth;
+            if (sx != 0) limit = Math.Min(limit, roomX);
+            // 高さ round(幅 × a.H ÷ a.W) が roomY 以下になる、いちばん大きい幅
+            if (sy != 0) limit = Math.Min(limit, ((2L * roomY + 1) * a.Width - 1) / (2L * a.Height));
+            width = (int)Math.Clamp(RoundToInt(want), rules.MinWidth, Math.Max(rules.MinWidth, limit));
+            height = rules.HeightForWidth(width);
+        }
+
+        // 固定した側から位置を決める。辺のハンドルで動かさない向きは、中心を保つ
+        int x = sx switch
+        {
+            < 0 => anchorX - width,
+            > 0 => anchorX,
+            _ => rect.X + FloorHalf(rect.Width - width),
+        };
+        int y = sy switch
+        {
+            < 0 => anchorY - height,
+            > 0 => anchorY,
+            _ => rect.Y + FloorHalf(rect.Height - height),
+        };
+        return Clamp(new PixelRect(x, y, width, height), rules);
+    }
+
+    /// <summary>
+    /// 画像を反転したときに、枠の位置を反転に合わせて移す（大きさは保つ）。
+    /// 左右反転: X' = 画像の幅 − X − 枠の幅、上下反転: Y' = 画像の高さ − Y − 枠の高さ
+    /// </summary>
+    /// <param name="rect">反転する前の枠</param>
+    /// <param name="horizontal">true なら左右反転、false なら上下反転</param>
+    /// <param name="rules">反転した後の画像の枠の規則（反転では画像の大きさは変わらない）</param>
+    public static PixelRect Mirror(PixelRect rect, bool horizontal, FrameRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        rect = Clamp(rect, rules);
+        return horizontal
+            ? rect with { X = rules.ImageWidth - rect.X - rect.Width }
+            : rect with { Y = rules.ImageHeight - rect.Y - rect.Height };
+    }
+
     // ---------------------------------------------------------------- 内部
+
+    /// <summary>ハンドルが動かす向き（−1: 左・上の辺を動かす、+1: 右・下の辺を動かす、0: その向きは動かさない）</summary>
+    private static (int X, int Y) Directions(FrameHandle handle) => handle switch
+    {
+        FrameHandle.TopLeft => (-1, -1),
+        FrameHandle.Top => (0, -1),
+        FrameHandle.TopRight => (1, -1),
+        FrameHandle.Right => (1, 0),
+        FrameHandle.BottomRight => (1, 1),
+        FrameHandle.Bottom => (0, 1),
+        FrameHandle.BottomLeft => (-1, 1),
+        FrameHandle.Left => (-1, 0),
+        _ => throw new ArgumentOutOfRangeException(nameof(handle), handle, null),
+    };
+
+    /// <summary>四捨五入（0.5 は 0 から遠い方へ）して int に収める</summary>
+    private static int RoundToInt(double value)
+        => (int)Math.Clamp(Math.Round(value, MidpointRounding.AwayFromZero), int.MinValue, int.MaxValue);
+
+    /// <summary>value ÷ 2 の切り捨て（負の数も小さい方へ）</summary>
+    private static int FloorHalf(int value) => value >> 1;
 
     private static (int Width, int Height) ClampSize(int width, int height, FrameRules rules)
     {
