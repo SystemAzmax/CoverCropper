@@ -108,7 +108,7 @@
 | 2-5 | 背景色で塗る | `Operations/Flatten` | E08 | 小 | 済 |
 | 2-6 | （欠番） | 表紙用のサイズ計算 `CoverFit` は作らない。CoverCropper だけの計算なので、CoverCropper の `ImageResizer.CalculateSize` に今のまま残す。webDeza の書き出しの大きさは 2-12 の `OutputPixelSize` で決まり、リサイズそのものは 2-4 の `Resize` で行う | — | — | — |
 | 2-7 | パラメーターの記述と値 | `Parameters/`（`ParameterKind`・`ParameterDescriptor`・`ChoiceItem`・`ParameterValues`） | E12 | 中 | 済 |
-| 2-8 | フィルターの仕組みと基本補正 | `Filters/`（`IImageFilter`・`FilterContext`・`FilterRegistry`・`BasicAdjustFilter`） | E10・E11。追加: `FilterRegistry`（登録順に並ぶ / 同じ Id は例外） | 中 | 未 |
+| 2-8 | フィルターの仕組みと基本補正 | `Filters/`（`IImageFilter`・`FilterContext`・`FilterRegistry`・`BasicAdjustFilter`） | E10・E11。追加: `FilterRegistry`（登録順に並ぶ / 同じ Id は例外） | 中 | 済 |
 | 2-9 | 形式の仕組み | `Formats/`（`FormatCapabilities`・`IImageFormat`・`IImageDecoder`・`IImageEncoder`・`SizeTuning`・`DecodedImage`・`ImageMetadata`・`UnsupportedImageFormatException`・`FormatRegistry`） | E13。追加: `FormatRegistry.Decode` が元ファイルを読み取り専用で開き、読み終えたら閉じている / 登録の無い拡張子は `UnsupportedImageFormatException` | 中 | 未 |
 | 2-10 | 安全な書き込み | `IO/SafeFileWriter` | E14 | 小 | 未 |
 | 2-11 | 編集モデル | `Editing/`（`CropAspect`・`OutputSize`・`ExportSettings`・`ExportPreset`・`EditRecipe`。`EditRecipe` と `ExportSettings` は中身で比べる） | E24 | 中 | 未 |
