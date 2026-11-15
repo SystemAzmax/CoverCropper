@@ -42,9 +42,11 @@ public partial class MainWindow : Window
         for (int i = 0; i < _vm.Documents.Count; i++)
         {
             var document = _vm.Documents[i];
+            // Fluent テーマは、IsCheckable の項目にだけチェックの欄を出す（選ぶとメニューは閉じ、次に開くときに作り直す）
             WindowMenu.Items.Add(new MenuItem
             {
                 Header = WindowListHeader(i, document.FileName),
+                IsCheckable = true,
                 IsChecked = document.IsActive,
                 Command = _vm.ActivateDocumentCommand,
                 CommandParameter = document,
@@ -65,7 +67,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 一覧の項目の文字: 「1 photo.jpg」。1〜9 番目は、その数字がアクセスキーになる。
+    /// 一覧の項目の文字: 「1: photo.jpg」（数字で始まるファイル名でも番号と見分けられるように、コロンで区切る）。
+    /// 1〜9 番目は、その数字がアクセスキーになる。
     /// ファイル名の「_」は、アクセスキーの印と見なされないように「__」にする
     /// </summary>
     /// <param name="index">開いた順の番号（0 から）</param>
@@ -76,7 +79,7 @@ public partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(fileName);
         int number = index + 1;
         string name = fileName.Replace("_", "__");
-        return number <= 9 ? $"_{number} {name}" : $"{number} {name}";
+        return number <= 9 ? $"_{number}: {name}" : $"{number}: {name}";
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)

@@ -324,10 +324,11 @@ public sealed class MainViewModelDocumentsTests : IDisposable
     }
 
     [Theory]
-    [InlineData(0, "photo.jpg", "_1 photo.jpg")]
-    [InlineData(8, "photo.jpg", "_9 photo.jpg")]
-    [InlineData(9, "photo.jpg", "10 photo.jpg")]        // 10 番目からはアクセスキーにしない
-    [InlineData(1, "my_photo.jpg", "_2 my__photo.jpg")] // 「_」はアクセスキーの印と見なされないようにする
+    [InlineData(0, "photo.jpg", "_1: photo.jpg")]
+    [InlineData(8, "photo.jpg", "_9: photo.jpg")]
+    [InlineData(9, "photo.jpg", "10: photo.jpg")]                  // 10 番目からはアクセスキーにしない
+    [InlineData(1, "my_photo.jpg", "_2: my__photo.jpg")]           // 「_」はアクセスキーの印と見なされないようにする
+    [InlineData(0, "202300119-a.jpg", "_1: 202300119-a.jpg")]     // 数字で始まるファイル名も、番号とコロンで区切る
     public void WindowListHeader_NumberAndEscapedName(int index, string fileName, string expected)
     {
         Assert.Equal(expected, WebDeza.Views.MainWindow.WindowListHeader(index, fileName));
