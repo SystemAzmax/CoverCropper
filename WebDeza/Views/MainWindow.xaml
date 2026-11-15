@@ -23,6 +23,17 @@
         <KeyBinding Modifiers="Control" Key="W" Command="{Binding CloseCommand}" />
         <KeyBinding Modifiers="Control" Key="Tab" Command="{Binding NextDocumentCommand}" />
         <KeyBinding Modifiers="Control+Shift" Key="Tab" Command="{Binding PreviousDocumentCommand}" />
+        <!-- + / - はキーコードで判定し、Shift の有無は問わない（日本語キーボードでは + を Shift+; で入力するため。設計書 4.4） -->
+        <KeyBinding Modifiers="Control" Key="OemPlus" Command="{Binding ZoomInCommand}" />
+        <KeyBinding Modifiers="Control+Shift" Key="OemPlus" Command="{Binding ZoomInCommand}" />
+        <KeyBinding Modifiers="Control" Key="Add" Command="{Binding ZoomInCommand}" />
+        <KeyBinding Modifiers="Control" Key="OemMinus" Command="{Binding ZoomOutCommand}" />
+        <KeyBinding Modifiers="Control+Shift" Key="OemMinus" Command="{Binding ZoomOutCommand}" />
+        <KeyBinding Modifiers="Control" Key="Subtract" Command="{Binding ZoomOutCommand}" />
+        <KeyBinding Modifiers="Control" Key="D0" Command="{Binding ZoomToFitCommand}" />
+        <KeyBinding Modifiers="Control" Key="NumPad0" Command="{Binding ZoomToFitCommand}" />
+        <KeyBinding Modifiers="Control" Key="D1" Command="{Binding ZoomToActualSizeCommand}" />
+        <KeyBinding Modifiers="Control" Key="NumPad1" Command="{Binding ZoomToActualSizeCommand}" />
     </Window.InputBindings>
 
     <!-- 設計書 4.1 の領域の枠組み。中身は、それぞれの機能を作るステップで入れる -->
@@ -99,12 +110,12 @@
                 <MenuItem Header="一括回転(_T)…" IsEnabled="False" />                                 <!-- 将来 -->
             </MenuItem>
             <MenuItem Header="表示(_V)">
-                <MenuItem Header="表示拡大(_I)" InputGestureText="Ctrl++" IsEnabled="False" />        <!-- 8-2 -->
-                <MenuItem Header="表示縮小(_O)" InputGestureText="Ctrl+-" IsEnabled="False" />        <!-- 8-2 -->
+                <MenuItem Header="表示拡大(_I)" InputGestureText="Ctrl++" Command="{Binding ZoomInCommand}" />
+                <MenuItem Header="表示縮小(_O)" InputGestureText="Ctrl+-" Command="{Binding ZoomOutCommand}" />
                 <MenuItem Header="表示サイズ(_S)…" IsEnabled="False" />                               <!-- 将来 -->
                 <Separator />
-                <MenuItem Header="全体表示(_F)" InputGestureText="Ctrl+0" IsEnabled="False" />        <!-- 8-2 -->
-                <MenuItem Header="100%(_A)" InputGestureText="Ctrl+1" IsEnabled="False" />            <!-- 8-2 -->
+                <MenuItem Header="全体表示(_F)" InputGestureText="Ctrl+0" Command="{Binding ZoomToFitCommand}" />
+                <MenuItem Header="100%(_A)" InputGestureText="Ctrl+1" Command="{Binding ZoomToActualSizeCommand}" />
             </MenuItem>
             <!-- 区切りの後に、開いている画像の一覧（アクティブな画像に印）を、メニューを開くたびに作る（MainWindow.xaml.cs） -->
             <MenuItem x:Name="WindowMenu" Header="ウィンドウ(_W)" SubmenuOpened="OnWindowMenuOpened">
@@ -123,10 +134,10 @@
                 <Button Content="元に戻す" IsEnabled="False" ToolTip="元に戻す (Ctrl+Z)" />            <!-- 9-2 -->
                 <Button Content="やり直し" IsEnabled="False" ToolTip="やり直し (Ctrl+Y)" />            <!-- 9-2 -->
                 <Border Style="{StaticResource ToolbarSeparatorStyle}" />
-                <Button Content="全体" IsEnabled="False" ToolTip="全体表示 (Ctrl+0)" />                <!-- 8-2 -->
-                <Button Content="100%" IsEnabled="False" ToolTip="100% (Ctrl+1)" />                    <!-- 8-2 -->
-                <Button Content="－" IsEnabled="False" ToolTip="表示縮小 (Ctrl+-)" />                  <!-- 8-2 -->
-                <Button Content="＋" IsEnabled="False" ToolTip="表示拡大 (Ctrl++)" />                  <!-- 8-2 -->
+                <Button Content="全体" Command="{Binding ZoomToFitCommand}" ToolTip="全体表示 (Ctrl+0)" />
+                <Button Content="100%" Command="{Binding ZoomToActualSizeCommand}" ToolTip="100% (Ctrl+1)" />
+                <Button Content="－" Command="{Binding ZoomOutCommand}" ToolTip="表示縮小 (Ctrl+-)" />
+                <Button Content="＋" Command="{Binding ZoomInCommand}" ToolTip="表示拡大 (Ctrl++)" />
             </StackPanel>
         </Border>
 

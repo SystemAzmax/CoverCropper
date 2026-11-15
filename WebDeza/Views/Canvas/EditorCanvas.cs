@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using WebDeza.Imaging;
 using WebDeza.ViewModels;
@@ -10,7 +11,9 @@ namespace WebDeza.Views.Canvas;
 /// </summary>
 /// <remarks>
 /// 表示用画像は、画像（フル解像度）の大きさとして描く。選択範囲は画像のピクセル座標で、IEditorSession から読む。
-/// 倍率と位置は ViewTransform で計算する。今は全体表示だけで、ズーム（8-2）とパン（8-3）はこれから足す。
+/// 倍率と位置は ViewTransform で計算する。ズームの状態はキャンバスが持つ（ViewModel には持たせない。設計書 5.6）。
+/// 全体表示のときは、大きさが変わるたびに全体表示し直す。ズーム中は、倍率と表示の中心を保つ（設計書 F-03）。
+/// パン（8-3）はこれから足す。
 /// マウスで選択範囲を作る・動かすのは、道具の仕組み（8-4）と「選択」の道具（8-5・8-6）で作る。
 /// </remarks>
 public sealed class EditorCanvas : FrameworkElement
@@ -29,7 +32,7 @@ public sealed class EditorCanvas : FrameworkElement
 
     public static readonly DependencyProperty ImageProperty = DependencyProperty.Register(
         nameof(Image), typeof(DisplayImage), typeof(EditorCanvas),
-        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender, OnImageChanged));
 
     public static readonly DependencyProperty SessionProperty = DependencyProperty.Register(
         nameof(Session), typeof(IEditorSession), typeof(EditorCanvas),
@@ -37,7 +40,10 @@ public sealed class EditorCanvas : FrameworkElement
 
     public static readonly DependencyProperty ResetViewRequestProperty = DependencyProperty.Register(
         nameof(ResetViewRequest), typeof(int), typeof(EditorCanvas),
-        new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender));
+        new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender, OnResetViewRequestChanged));
+
+    public static readonly DependencyProperty ZoomPercentProperty = DependencyProperty.Register(
+        nameof(ZoomPercent), typeof(double), typeof(EditorCanvas), new FrameworkPropertyMetadata(0.0));
 
     public static readonly DependencyProperty CheckerLightColorProperty = DependencyProperty.Register(
         nameof(CheckerLightColor), typeof(Color), typeof(EditorCanvas),
@@ -58,6 +64,9 @@ public sealed class EditorCanvas : FrameworkElement
     private Brush? _checkerBrush;
     private (Pen Dark, Pen Light)? _selectionPens;
 
+    /// <summary>ズーム中の倍率と位置。null なら全体表示（大きさが変わるたびに全体表示し直す）</summary>
+    private ViewTransform? _zoomed;
+
     public EditorCanvas()
     {
         ClipToBounds = true;
@@ -77,15 +86,25 @@ public sealed class EditorCanvas : FrameworkElement
         set => SetValue(SessionProperty, value);
     }
 
-    /// <summary>
-    /// この値が変わったら全体表示に戻す（画像の大きさが変わる編集のたびに 1 増える）。
-    /// 今は常に全体表示なので描き直すだけ。ズームの状態を持つ 8-2 から意味を持つ
-    /// </summary>
+    /// <summary>この値が変わったら全体表示に戻す（画像の大きさが変わる編集のたびに 1 増える。設計書 5.6）</summary>
     public int ResetViewRequest
     {
         get => (int)GetValue(ResetViewRequestProperty);
         set => SetValue(ResetViewRequestProperty, value);
     }
+
+    /// <summary>
+    /// 今の表示倍率（%。100% = 画像の 1 px が 1 物理ピクセル）。画像が無ければ 0。
+    /// キャンバスが書き、ステータスバーに出すために OneWayToSource で ViewModel に渡す
+    /// </summary>
+    public double ZoomPercent
+    {
+        get => (double)GetValue(ZoomPercentProperty);
+        set => SetValue(ZoomPercentProperty, value);
+    }
+
+    /// <summary>全体表示か（ズームしていない）</summary>
+    public bool IsFit => _zoomed is null;
 
     /// <summary>市松模様の白いマスの色</summary>
     public Color CheckerLightColor
@@ -130,6 +149,99 @@ public sealed class EditorCanvas : FrameworkElement
 
     private void OnSessionContentChanged(object? sender, EventArgs e) => InvalidateVisual();
 
+    private static void OnImageChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        // 大きさの違う画像になったら、全体表示に戻す
+        if (e.OldValue is DisplayImage old && e.NewValue is DisplayImage image
+            && (old.ImageWidth != image.ImageWidth || old.ImageHeight != image.ImageHeight))
+        {
+            ((EditorCanvas)d)._zoomed = null;
+        }
+    }
+
+    private static void OnResetViewRequestChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        => ((EditorCanvas)d)._zoomed = null;
+
+    // ---------------------------------------------------------------- ズーム（設計書 F-03）
+
+    private double DpiScale => VisualTreeHelper.GetDpi(this).DpiScaleX;
+
+    private Point ViewCenter => new(RenderSize.Width / 2, RenderSize.Height / 2);
+
+    private ViewTransform FitView(DisplayImage image)
+        => ViewTransform.Fit(RenderSize, image.ImageWidth, image.ImageHeight, DpiScale, FitMargin);
+
+    /// <summary>今の倍率と位置（全体表示なら、今の大きさでの全体表示）</summary>
+    private ViewTransform CurrentView(DisplayImage image) => _zoomed ?? FitView(image);
+
+    /// <summary>メニュー［表示］とツールバーのズーム（中央が中心）</summary>
+    public void Zoom(ZoomAction action)
+    {
+        if (Image is not { } image) return;
+        switch (action)
+        {
+            case ZoomAction.In:
+                ZoomAt(ViewCenter, ViewTransform.ZoomStep);
+                break;
+            case ZoomAction.Out:
+                ZoomAt(ViewCenter, 1 / ViewTransform.ZoomStep);
+                break;
+            case ZoomAction.Fit:
+                _zoomed = null;
+                InvalidateVisual();
+                break;
+            case ZoomAction.ActualSize:
+                ZoomAt(ViewCenter, 1 / DpiScale / CurrentView(image).Scale);
+                break;
+        }
+    }
+
+    /// <summary>viewPoint を中心に、倍率を factor 倍にする（範囲は「全体表示の倍率と 10% の小さい方」〜 3200%）</summary>
+    public void ZoomAt(Point viewPoint, double factor)
+    {
+        if (Image is not { } image || RenderSize.Width <= 0 || RenderSize.Height <= 0) return;
+        var (min, max) = ViewTransform.ScaleRange(FitView(image).Scale, DpiScale);
+        _zoomed = CurrentView(image).ZoomAt(viewPoint, factor, min, max)
+            .ClampPan(RenderSize, image.ImageWidth, image.ImageHeight);
+        InvalidateVisual();
+    }
+
+    /// <summary>ホイール: カーソル位置を中心にズームする（1 ノッチで 1.25 倍。細かく回せるホイールは、その分だけ）</summary>
+    protected override void OnMouseWheel(MouseWheelEventArgs e)
+    {
+        base.OnMouseWheel(e);
+        if (Image is null || e.Delta == 0) return;
+        ZoomAt(e.GetPosition(this), Math.Pow(ViewTransform.ZoomStep, e.Delta / (double)Mouse.MouseWheelDeltaForOneLine));
+        e.Handled = true;
+    }
+
+    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+    {
+        base.OnRenderSizeChanged(sizeInfo);
+
+        // ズーム中は、倍率と表示の中心を保つ（全体表示のときは、描くときに全体表示し直す）
+        if (_zoomed is { } zoomed && Image is { } image && sizeInfo.PreviousSize.Width > 0 && sizeInfo.PreviousSize.Height > 0)
+        {
+            _zoomed = zoomed.Resized(sizeInfo.PreviousSize, sizeInfo.NewSize)
+                .ClampPan(sizeInfo.NewSize, image.ImageWidth, image.ImageHeight);
+        }
+        InvalidateVisual();
+    }
+
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi, newDpi);
+
+        // ズーム中は、表示倍率（%）を保つ（100% は、どのモニターでも 1 px = 1 物理ピクセル。設計書 5.10-8）
+        if (_zoomed is { } zoomed && Image is { } image && RenderSize.Width > 0)
+        {
+            var (min, max) = ViewTransform.ScaleRange(FitView(image).Scale, newDpi.DpiScaleX);
+            _zoomed = zoomed.ZoomAt(ViewCenter, oldDpi.DpiScaleX / newDpi.DpiScaleX, min, max)
+                .ClampPan(RenderSize, image.ImageWidth, image.ImageHeight);
+        }
+        InvalidateVisual();
+    }
+
     // ---------------------------------------------------------------- 計算（画面を使わずにテストできる）
 
     /// <summary>
@@ -166,17 +278,28 @@ public sealed class EditorCanvas : FrameworkElement
         // マウス操作を受けるため、全面にヒットテストできる背景を敷く（背景の色は親が持つ）
         dc.DrawRectangle(Brushes.Transparent, null, new Rect(RenderSize));
 
-        if (Image is not { } image) return;
-        double dpiScale = VisualTreeHelper.GetDpi(this).DpiScaleX;
-        var view = ViewTransform.Fit(RenderSize, image.ImageWidth, image.ImageHeight, dpiScale, FitMargin);
+        if (Image is not { } image)
+        {
+            UpdateZoomPercent(0);
+            return;
+        }
+        double dpiScale = DpiScale;
+        // 位置は物理ピクセルの境目にそろえて描く（ズーム中も、画素がにじまないように）
+        var view = CurrentView(image).SnapToPixels(dpiScale);
         var rect = view.ImageBounds(image.ImageWidth, image.ImageHeight);
+        UpdateZoomPercent(view.ZoomPercent(dpiScale));
 
-        // 透過のある画像だけ、下に市松模様を描く（模様は画像の左上からそろえる）
+        // 透過のある画像だけ、下に市松模様を描く（模様は画像の左上からそろえる。拡大中は、見えている所だけ）
         if (!image.IsOpaque)
         {
-            dc.PushTransform(new TranslateTransform(rect.X, rect.Y));
-            dc.DrawRectangle(GetCheckerBrush(), null, new Rect(0, 0, rect.Width, rect.Height));
-            dc.Pop();
+            var visible = Rect.Intersect(rect, new Rect(RenderSize));
+            if (!visible.IsEmpty)
+            {
+                visible.Offset(-rect.X, -rect.Y);
+                dc.PushTransform(new TranslateTransform(rect.X, rect.Y));
+                dc.DrawRectangle(GetCheckerBrush(), null, visible);
+                dc.Pop();
+            }
         }
 
         var drawing = new DrawingGroup();
@@ -193,6 +316,11 @@ public sealed class EditorCanvas : FrameworkElement
         {
             RenderSelection(dc, ImageRectToView(selection, view, dpiScale), dpiScale);
         }
+    }
+
+    private void UpdateZoomPercent(double percent)
+    {
+        if (ZoomPercent != percent) SetCurrentValue(ZoomPercentProperty, percent);
     }
 
     /// <summary>選択範囲の縁: 暗い線の上に、明るい点線を重ねる（どの道具のときも描く。設計書 F-03）</summary>

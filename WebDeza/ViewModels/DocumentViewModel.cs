@@ -74,6 +74,13 @@ public sealed partial class DocumentViewModel : ObservableObject, IEditorSession
     [ObservableProperty]
     private Rect? _windowBounds;
 
+    /// <summary>
+    /// 子ウィンドウのキャンバスの表示倍率（%）。キャンバスが書く、ステータスバーに出すための値で、0 なら不明。
+    /// ズームの状態そのものはキャンバスが持つ（設計書 5.6）
+    /// </summary>
+    [ObservableProperty]
+    private double _zoomPercent;
+
     /// <summary>アクティブな画像か（MainViewModel が ActiveDocument に合わせて入れる。メニュー［ウィンドウ］の一覧の印に使う）</summary>
     [ObservableProperty]
     private bool _isActive;

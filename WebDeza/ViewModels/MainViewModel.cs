@@ -60,12 +60,14 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>アクティブな画像（メニュー・道具・編集パネル・ステータスバーの対象）。画像が無ければ null</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasImage), nameof(WindowTitle), nameof(StatusText))]
-    [NotifyCanExecuteChangedFor(nameof(CloseCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CloseCommand), nameof(ZoomInCommand), nameof(ZoomOutCommand),
+        nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand))]
     private DocumentViewModel? _activeDocument;
 
     /// <summary>読み込み中・編集の確定中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(OpenCommand), nameof(CloseCommand), nameof(ExitCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenCommand), nameof(CloseCommand), nameof(ExitCommand),
+        nameof(ZoomInCommand), nameof(ZoomOutCommand), nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand))]
     private bool _isBusy;
 
     partial void OnIsBusyChanged(bool value) => NotifyDocumentCommandsChanged();
@@ -94,8 +96,8 @@ public sealed partial class MainViewModel : ObservableObject
         : AppInfo.ProductName;
 
     /// <summary>
-    /// ステータスバー（設計書 4.2）: 「画像: {幅}×{高さ} ／ 選択範囲: ({X}, {Y}) {幅}×{高さ} ／ {メッセージ}」。
-    /// 選択範囲が無いときは、その項目を出さない。倍率は、ズームを作るステップ（8-2）で足す
+    /// ステータスバー（設計書 4.2）: 「画像: {幅}×{高さ} ／ 選択範囲: ({X}, {Y}) {幅}×{高さ} ／ {倍率}% ／ {メッセージ}」。
+    /// 選択範囲が無いときは、その項目を出さない。倍率は、子ウィンドウのキャンバスが書いた値（まだ描いていなければ出さない）
     /// </summary>
     public string StatusText
     {
@@ -106,6 +108,7 @@ public sealed partial class MainViewModel : ObservableObject
             {
                 parts.Add($"画像: {document.ImageWidth}×{document.ImageHeight}");
                 if (document.Selection is { } s) parts.Add($"選択範囲: ({s.X}, {s.Y}) {s.Width}×{s.Height}");
+                if (document.ZoomPercent > 0) parts.Add(FormatZoomPercent(document.ZoomPercent));
             }
             if (!string.IsNullOrEmpty(StatusMessage)) parts.Add(StatusMessage);
             return string.Join(" ／ ", parts);
@@ -341,6 +344,36 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>［ウィンドウ］→［並べて表示］（格子に分けて、すべてが見えるようにする。最大化を解く。設計書 F-02）</summary>
     [RelayCommand(CanExecute = nameof(HasDocumentsAndIdle))]
     private void TileWindows() => ArrangeWindowsRequested?.Invoke(this, WindowArrangement.Tile);
+
+    /// <summary>ステータスバーの倍率: 10% 以上は整数、10% 未満は小数 1 桁まで（例: 37%、156%、6.3%）</summary>
+    public static string FormatZoomPercent(double percent)
+        => (percent >= 10 ? Math.Round(percent, MidpointRounding.AwayFromZero).ToString("0", System.Globalization.CultureInfo.InvariantCulture)
+                          : percent.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)) + "%";
+
+    // ---------------------------------------------------------------- ズーム（メニュー［表示］・ツールバー）
+
+    /// <summary>
+    /// ズームを頼まれた（ズームの状態は子ウィンドウのキャンバスが持つので、メインウィンドウが受けて、アクティブな画像のキャンバスに伝える。設計書 5.6）
+    /// </summary>
+    public event EventHandler<ZoomAction>? ZoomRequested;
+
+    private bool CanZoom => !IsBusy && ActiveDocument is not null;
+
+    /// <summary>［表示］→［表示拡大］ / ツールバー［＋］ / Ctrl++（中央が中心）</summary>
+    [RelayCommand(CanExecute = nameof(CanZoom))]
+    private void ZoomIn() => ZoomRequested?.Invoke(this, ZoomAction.In);
+
+    /// <summary>［表示］→［表示縮小］ / ツールバー［－］ / Ctrl+-（中央が中心）</summary>
+    [RelayCommand(CanExecute = nameof(CanZoom))]
+    private void ZoomOut() => ZoomRequested?.Invoke(this, ZoomAction.Out);
+
+    /// <summary>［表示］→［全体表示］ / ツールバー［全体］ / Ctrl+0</summary>
+    [RelayCommand(CanExecute = nameof(CanZoom))]
+    private void ZoomToFit() => ZoomRequested?.Invoke(this, ZoomAction.Fit);
+
+    /// <summary>［表示］→［100%］ / ツールバー［100%］ / Ctrl+1</summary>
+    [RelayCommand(CanExecute = nameof(CanZoom))]
+    private void ZoomToActualSize() => ZoomRequested?.Invoke(this, ZoomAction.ActualSize);
 
     // ---------------------------------------------------------------- 閉じる
 

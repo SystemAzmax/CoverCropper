@@ -70,6 +70,45 @@ public readonly record struct ViewTransform(double Scale, double OffsetX, double
             ? (viewport - displayed) / 2
             : Math.Clamp(offset, viewport - displayed, 0);
 
+    /// <summary>ズームの 1 段階の倍率（設計書 F-03）</summary>
+    public const double ZoomStep = 1.25;
+
+    /// <summary>
+    /// ズームできる倍率の範囲（設計書 F-03）: 最小は「全体表示の倍率」と 10% の小さい方、最大は 3200%（% は物理ピクセルで数える）
+    /// </summary>
+    /// <param name="fitScale">全体表示の倍率（Scale）</param>
+    /// <param name="dpiScale">1 DIP あたりの物理ピクセル</param>
+    public static (double Min, double Max) ScaleRange(double fitScale, double dpiScale)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(fitScale);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(dpiScale);
+        return (Math.Min(fitScale, 0.1 / dpiScale), 32 / dpiScale);
+    }
+
+    /// <summary>
+    /// キャンバスの大きさが変わったとき（ズーム中）: 倍率と、表示の中心にある画像の点を保つ（設計書 F-03）
+    /// </summary>
+    public ViewTransform Resized(Size oldViewport, Size newViewport)
+    {
+        var center = ViewToImage(new Point(oldViewport.Width / 2, oldViewport.Height / 2));
+        return this with
+        {
+            OffsetX = newViewport.Width / 2 - center.X * Scale,
+            OffsetY = newViewport.Height / 2 - center.Y * Scale,
+        };
+    }
+
+    /// <summary>位置を物理ピクセルの境目にそろえる（描くときに、画像をにじませないため）。倍率は変えない</summary>
+    public ViewTransform SnapToPixels(double dpiScale)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(dpiScale);
+        return this with
+        {
+            OffsetX = Math.Round(OffsetX * dpiScale) / dpiScale,
+            OffsetY = Math.Round(OffsetY * dpiScale) / dpiScale,
+        };
+    }
+
     /// <summary>画像のピクセル座標を、画面の座標（DIP）にする</summary>
     public Point ImageToView(double x, double y) => new(OffsetX + x * Scale, OffsetY + y * Scale);
 

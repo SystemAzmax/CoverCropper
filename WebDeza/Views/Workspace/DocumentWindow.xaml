@@ -50,6 +50,7 @@
                                          Image="{Binding Display}"
                                          Session="{Binding}"
                                          ResetViewRequest="{Binding ResetViewRequest}"
+                                         ZoomPercent="{Binding ZoomPercent, Mode=OneWayToSource}"
                                          CheckerLightColor="{StaticResource CheckerLightColor}"
                                          CheckerDarkColor="{StaticResource CheckerDarkColor}"
                                          SelectionLightBrush="{StaticResource SelectionLightBrush}"

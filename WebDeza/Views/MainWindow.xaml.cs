@@ -20,6 +20,7 @@ public partial class MainWindow : Window
         _vm.PropertyChanged += OnViewModelPropertyChanged;
         _vm.ExitRequested += (_, _) => Close();
         _vm.ArrangeWindowsRequested += OnArrangeWindowsRequested;
+        _vm.ZoomRequested += OnZoomRequested;
         WindowMenu.SubmenuClosed += OnWindowMenuClosed;
         RestorePlacement();
     }
@@ -65,6 +66,15 @@ public partial class MainWindow : Window
 
         Activate();
         await _vm.OpenPathsAsync(paths!);
+    }
+
+    // ---------------------------------------------------------------- ズーム（メニュー［表示］・ツールバー）
+
+    /// <summary>メニューとツールバーのズームは、アクティブな画像の子ウィンドウのキャンバスに伝える（設計書 5.6）</summary>
+    private void OnZoomRequested(object? sender, ZoomAction action)
+    {
+        if (_vm.ActiveDocument is { } document && Workspace.GetWindow(document) is { } window)
+            window.Canvas.Zoom(action);
     }
 
     // ---------------------------------------------------------------- メニュー［ウィンドウ］

@@ -201,4 +201,68 @@ public class ViewTransformTests
 
         Assert.Equal((350.0, 200.0), (clamped.OffsetX, clamped.OffsetY));
     }
+
+    // ---------------------------------------------------------------- 8-2: 倍率の範囲・大きさの変化・ピクセルへのそろえ
+
+    [Theory]
+    [InlineData(0.05, 1.0, 0.05, 32.0)]       // 全体表示が 10% より小さい → 最小は全体表示の倍率
+    [InlineData(0.5, 1.0, 0.1, 32.0)]         // 全体表示が 10% より大きい → 最小は 10%
+    [InlineData(0.5, 1.5, 0.1 / 1.5, 32 / 1.5)] // 高 DPI では、% を物理ピクセルで数える
+    public void ScaleRange_MinIsSmallerOfFitAnd10Percent_MaxIs3200Percent(double fitScale, double dpiScale, double min, double max)
+    {
+        var range = ViewTransform.ScaleRange(fitScale, dpiScale);
+
+        Assert.Equal(min, range.Min, 10);
+        Assert.Equal(max, range.Max, 10);
+        Assert.Equal(3200, new ViewTransform(range.Max, 0, 0).ZoomPercent(dpiScale), 9);
+    }
+
+    [Fact]
+    public void Resized_KeepsScaleAndImagePointAtCenter()
+    {
+        var view = new ViewTransform(2, -1500, -800);
+        var oldSize = new Size(1000, 600);
+        var newSize = new Size(700, 900);
+        var centerBefore = view.ViewToImage(new Point(500, 300));
+
+        var resized = view.Resized(oldSize, newSize);
+
+        Assert.Equal(2, resized.Scale);
+        var centerAfter = resized.ViewToImage(new Point(350, 450));
+        Assert.Equal(centerBefore.X, centerAfter.X, 9);
+        Assert.Equal(centerBefore.Y, centerAfter.Y, 9);
+    }
+
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.25)]
+    [InlineData(1.5)]
+    public void SnapToPixels_OffsetsAreOnPhysicalPixelsAndScaleIsKept(double dpiScale)
+    {
+        var view = new ViewTransform(1.2345, 10.37, -33.61);
+
+        var snapped = view.SnapToPixels(dpiScale);
+
+        Assert.Equal(view.Scale, snapped.Scale);
+        Assert.Equal(Math.Round(snapped.OffsetX * dpiScale), snapped.OffsetX * dpiScale, 9);
+        Assert.Equal(Math.Round(snapped.OffsetY * dpiScale), snapped.OffsetY * dpiScale, 9);
+        Assert.True(Math.Abs(snapped.OffsetX - view.OffsetX) <= 0.5 / dpiScale + 1e-9);
+        Assert.True(Math.Abs(snapped.OffsetY - view.OffsetY) <= 0.5 / dpiScale + 1e-9);
+    }
+
+    [Fact]
+    public void ZoomFromFit_StepsOf125Percent_Reach100AndStayInRange()
+    {
+        // 全体表示 25% から 1.25 倍ずつ拡大すると、上限の 3200% で止まる
+        var viewport = new Size(1000, 600);
+        var view = ViewTransform.Fit(viewport, 3800, 2200, dpiScale: 1, Margin);
+        var (min, max) = ViewTransform.ScaleRange(view.Scale, 1);
+        var center = new Point(500, 300);
+        for (int i = 0; i < 40; i++)
+            view = view.ZoomAt(center, ViewTransform.ZoomStep, min, max).ClampPan(viewport, 3800, 2200);
+
+        Assert.Equal(3200, view.ZoomPercent(1), 9);
+        var bounds = view.ImageBounds(3800, 2200);
+        Assert.True(bounds.Left <= 0 && bounds.Right >= 1000 && bounds.Top <= 0 && bounds.Bottom >= 600);
+    }
 }

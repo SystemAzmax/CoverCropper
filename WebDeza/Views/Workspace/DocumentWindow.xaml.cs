@@ -83,6 +83,9 @@ public partial class DocumentWindow : UserControl
 
     private DocumentViewModel? Document => DataContext as DocumentViewModel;
 
+    /// <summary>この子ウィンドウのキャンバス（メニューとツールバーのズームを伝える先）</summary>
+    public EditorCanvas Canvas => ImageCanvas;
+
     private void UpdateActiveState()
     {
         TitleBar.Style = (Style)FindResource(IsActive ? "DocumentTitleBarActiveStyle" : "DocumentTitleBarStyle");
