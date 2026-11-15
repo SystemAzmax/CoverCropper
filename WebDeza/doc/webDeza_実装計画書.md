@@ -111,7 +111,7 @@
 | 2-8 | フィルターの仕組みと基本補正 | `Filters/`（`IImageFilter`・`FilterContext`・`FilterRegistry`・`BasicAdjustFilter`） | E10・E11。追加: `FilterRegistry`（登録順に並ぶ / 同じ Id は例外） | 中 | 済 |
 | 2-9 | 形式の仕組み | `Formats/`（`FormatCapabilities`・`IImageFormat`・`IImageDecoder`・`IImageEncoder`・`SizeTuning`・`DecodedImage`・`ImageMetadata`・`UnsupportedImageFormatException`・`FormatRegistry`） | E13。追加: `FormatRegistry.Decode` が元ファイルを読み取り専用で開き、読み終えたら閉じている / 登録の無い拡張子は `UnsupportedImageFormatException` | 中 | 済 |
 | 2-10 | 安全な書き込み | `IO/SafeFileWriter` | E14 | 小 | 済 |
-| 2-11 | 編集モデル | `Editing/`（`CropAspect`・`OutputSize`・`ExportSettings`・`ExportPreset`・`EditRecipe`。`EditRecipe` と `ExportSettings` は中身で比べる） | E24 | 中 | 未 |
+| 2-11 | 編集モデル | `Editing/`（`CropAspect`・`OutputSize`・`ExportSettings`・`ExportPreset`・`EditRecipe`。`EditRecipe` と `ExportSettings` は中身で比べる） | E24 | 中 | 済 |
 | 2-12 | 切り抜きの計算（枠の規則） | `Editing/FrameRules`、`CropFrameCalculator` の `Rules`・`Initial`・`Clamp`・`Center`・`OutputPixelSize` | E15〜E18・E22 | 中 | 未 |
 | 2-13 | 切り抜きの計算（枠の操作） | `FrameHandle`、`CropFrameCalculator` の `Move`・`ResizeAroundCenter`・`ResizeFromHandle`・`Mirror` | E19〜E21。追加: E17 の乱数のテストを、操作した後の枠にも広げる | 中 | 未 |
 | 2-14 | 処理の流れ | `Editing/RenderPipeline`（`RenderForExport`・`RenderPreview`）・`PreviewImage` | E25〜E27。追加: 値が既定値のフィルターは呼ばれない | 中 | 未 |
@@ -234,6 +234,7 @@
 
 - 画像ごとに別の履歴になること（V29）と［フィルターを全画像に適用］（V27）は、複数の画像を扱えるようになってから作る（9-2・9-8）。
 - 7-1: 表示は差分の変換で作り、書き出しは合成した向きで作る。両者がずれないことは E03（2-2）で確かめてある。
+- 7-2: フィルターの値がすべて既定値に戻ったとき（［リセット］を含む）は、そのフィルターをレシピの `Filters` から外す。`EditRecipe` は「無いフィルター」と「既定値を入れたフィルター」を別の中身として比べる（2-11）ので、外さないと、元に戻しても `EditRecipe.Initial` と等しくならず、編集済みの印（9-5）が消えない。
 
 ### 4.8 段階 8: ファイルサイズの確認
 
