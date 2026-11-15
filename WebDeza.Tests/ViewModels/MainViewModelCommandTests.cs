@@ -53,6 +53,87 @@ public sealed class MainViewModelCommandTests : IDisposable
         Assert.False(_vm.ZoomOutCommand.CanExecute(null));
         Assert.False(_vm.ZoomToFitCommand.CanExecute(null));
         Assert.False(_vm.ZoomToActualSizeCommand.CanExecute(null));
+        Assert.False(_vm.SelectAllCommand.CanExecute(null));
+        Assert.False(_vm.DeselectCommand.CanExecute(null));
+    }
+
+    // ---------------------------------------------------------------- 選択範囲（8-5）
+
+    [Fact]
+    public async Task SelectAll_SelectsWholeImage()
+    {
+        _fake.Image = WebDeza.Imaging.ImageBuffer.Create(120, 80, new byte[120 * 80 * 4]);
+        await _vm.LoadAsync(CreateFile("a.fake"));
+
+        Assert.True(_vm.SelectAllCommand.CanExecute(null));
+        _vm.SelectAllCommand.Execute(null);
+
+        Assert.Equal(new WebDeza.Imaging.PixelRect(0, 0, 120, 80), _vm.ActiveDocument!.Selection);
+    }
+
+    [Fact]
+    public async Task SelectAll_WithAspect_LargestRectInCenter()
+    {
+        // 比率が決まっていれば、その比率でいちばん大きい矩形を中央に置く（CropFrameCalculator.Initial）
+        _fake.Image = WebDeza.Imaging.ImageBuffer.Create(120, 80, new byte[120 * 80 * 4]);
+        _vm.Settings.SelectionAspect = WebDeza.Models.SelectionAspectData.Fixed(1, 1);
+        await _vm.LoadAsync(CreateFile("a.fake"));
+
+        _vm.SelectAllCommand.Execute(null);
+
+        Assert.Equal(new WebDeza.Imaging.PixelRect(20, 0, 80, 80), _vm.ActiveDocument!.Selection);
+    }
+
+    [Fact]
+    public async Task Deselect_EnabledOnlyWithSelection()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        var document = _vm.ActiveDocument!;
+        var changed = 0;
+        _vm.DeselectCommand.CanExecuteChanged += (_, _) => changed++;
+
+        Assert.False(_vm.DeselectCommand.CanExecute(null)); // V42: 選択範囲が無いときは無効
+        document.Selection = new WebDeza.Imaging.PixelRect(1, 1, 5, 5);
+        Assert.True(_vm.DeselectCommand.CanExecute(null));
+        Assert.True(changed > 0); // メニューに知らせる
+
+        _vm.DeselectCommand.Execute(null);
+
+        Assert.Null(document.Selection);
+        Assert.False(_vm.DeselectCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Deselect_FollowsActiveDocument()
+    {
+        await _vm.OpenPathsAsync([CreateFile("a.fake"), CreateFile("b.fake")]);
+        _vm.Documents[0].Selection = new WebDeza.Imaging.PixelRect(1, 1, 5, 5);
+
+        _vm.ActiveDocument = _vm.Documents[1];
+        Assert.False(_vm.DeselectCommand.CanExecute(null));
+        _vm.ActiveDocument = _vm.Documents[0];
+        Assert.True(_vm.DeselectCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task UseSelectTool_SwitchesToSelect()
+    {
+        var vm = CreateWithTools(out var tools);
+        await vm.LoadAsync(CreateFile("a.fake"));
+        vm.SelectToolByShortcut(System.Windows.Input.Key.H);
+
+        Assert.True(vm.UseSelectToolCommand.CanExecute(null));
+        vm.UseSelectToolCommand.Execute(null);
+
+        Assert.Equal(SelectToolFactory.ToolId, vm.CurrentTool!.Id);
+    }
+
+    [Fact]
+    public void UseSelectTool_NoImage_Disabled()
+    {
+        var vm = CreateWithTools(out _);
+
+        Assert.False(vm.UseSelectToolCommand.CanExecute(null));
     }
 
     // ---------------------------------------------------------------- 道具（8-4）
@@ -60,7 +141,7 @@ public sealed class MainViewModelCommandTests : IDisposable
     private MainViewModel CreateWithTools(out ToolRegistry tools)
     {
         tools = new ToolRegistry();
-        tools.Register(new WebDeza.Tests.Views.FakeToolFactory("select", "選択", System.Windows.Input.Key.M));
+        tools.Register(new SelectToolFactory());
         tools.Register(new HandToolFactory());
         return new MainViewModel(_formats, new SettingsService(_formats, _temp.Combine("settings2.json")),
             _dialogs, new AppLog(_temp.Combine("logs", "app2.log")), tools);

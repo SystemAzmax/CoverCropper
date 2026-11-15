@@ -22,6 +22,8 @@
     <Window.InputBindings>
         <KeyBinding Modifiers="Control" Key="O" Command="{Binding OpenCommand}" />
         <KeyBinding Modifiers="Control" Key="W" Command="{Binding CloseCommand}" />
+        <KeyBinding Modifiers="Control" Key="A" Command="{Binding SelectAllCommand}" />
+        <KeyBinding Modifiers="Control" Key="D" Command="{Binding DeselectCommand}" />
         <KeyBinding Modifiers="Control" Key="Tab" Command="{Binding NextDocumentCommand}" />
         <KeyBinding Modifiers="Control+Shift" Key="Tab" Command="{Binding PreviousDocumentCommand}" />
         <!-- + / - はキーコードで判定し、Shift の有無は問わない（日本語キーボードでは + を Shift+; で入力するため。設計書 4.4） -->
@@ -68,9 +70,9 @@
                 <MenuItem Header="画像複製(_D)" IsEnabled="False" />                                  <!-- 将来 -->
             </MenuItem>
             <MenuItem Header="選択範囲(_S)">
-                <MenuItem Header="すべて選択(_A)" InputGestureText="Ctrl+A" IsEnabled="False" />      <!-- 8-5 -->
-                <MenuItem Header="選択の取り消し(_D)" InputGestureText="Ctrl+D" IsEnabled="False" />  <!-- 8-5 -->
-                <MenuItem Header="領域選択(_M)" InputGestureText="M" IsEnabled="False" />             <!-- 8-5（「選択」の道具にする） -->
+                <MenuItem Header="すべて選択(_A)" InputGestureText="Ctrl+A" Command="{Binding SelectAllCommand}" />
+                <MenuItem Header="選択の取り消し(_D)" InputGestureText="Ctrl+D" Command="{Binding DeselectCommand}" />
+                <MenuItem Header="領域選択(_M)" InputGestureText="M" Command="{Binding UseSelectToolCommand}" />
             </MenuItem>
             <MenuItem Header="画像(_I)">
                 <MenuItem Header="選択範囲で切り抜き(_P)" InputGestureText="Ctrl+Shift+X" IsEnabled="False" /> <!-- 9-1 -->

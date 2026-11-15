@@ -199,8 +199,9 @@ internal sealed class FakeSession : IEditorSession
     public int ImageWidth { get; set; } = 100;
     public int ImageHeight { get; set; } = 80;
     public WebDeza.Imaging.PixelRect? Selection { get; set; }
+    public WebDeza.Imaging.AspectRatio? Aspect { get; set; }
     public WebDeza.Imaging.Editing.FrameRules SelectionRules
-        => WebDeza.Imaging.Editing.CropFrameCalculator.Rules(ImageWidth, ImageHeight, null);
+        => WebDeza.Imaging.Editing.CropFrameCalculator.Rules(ImageWidth, ImageHeight, Aspect);
 #pragma warning disable CS0067 // テストでは使わない
     public event EventHandler? Changed;
 #pragma warning restore CS0067

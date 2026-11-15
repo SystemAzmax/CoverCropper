@@ -23,8 +23,8 @@ public class AppModulesTests
         Assert.Equal(new[] { "jpeg", "png", "bmp", "tiff" }, formats.Encodable.Select(f => f.Id));
         // フィルターは ぼかし・基本補正 の順（設計書 F-06）
         Assert.Equal(new[] { BlurFilter.FilterId, BasicAdjustFilter.FilterId }, filters.All.Select(f => f.Id));
-        // 道具は手のひら（「選択」は 8-5 で、その前に足す）
-        Assert.Equal(new[] { HandToolFactory.ToolId }, tools.All.Select(t => t.Id));
+        // 道具は 選択（既定）・手のひら の順（設計書 F-03）
+        Assert.Equal(new[] { SelectToolFactory.ToolId, HandToolFactory.ToolId }, tools.All.Select(t => t.Id));
     }
 
     [Fact]

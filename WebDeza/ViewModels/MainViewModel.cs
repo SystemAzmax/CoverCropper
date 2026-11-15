@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WebDeza.Core;
 using WebDeza.Imaging;
+using WebDeza.Imaging.Editing;
 using WebDeza.Imaging.Formats;
 using WebDeza.Models;
 using WebDeza.Services;
@@ -69,14 +70,15 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasImage), nameof(WindowTitle), nameof(StatusText))]
     [NotifyCanExecuteChangedFor(nameof(CloseCommand), nameof(ZoomInCommand), nameof(ZoomOutCommand),
-        nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand), nameof(SelectToolCommand))]
+        nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand), nameof(SelectToolCommand),
+        nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand))]
     private DocumentViewModel? _activeDocument;
 
     /// <summary>読み込み中・編集の確定中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(OpenCommand), nameof(CloseCommand), nameof(ExitCommand),
         nameof(ZoomInCommand), nameof(ZoomOutCommand), nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand),
-        nameof(SelectToolCommand))]
+        nameof(SelectToolCommand), nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand))]
     private bool _isBusy;
 
     partial void OnIsBusyChanged(bool value) => NotifyDocumentCommandsChanged();
@@ -142,6 +144,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         // 選択範囲・画像が変わったら、ステータスバーを更新する（子ウィンドウの位置やアクティブの印が変わっただけのときは要らない）
         if (e.PropertyName is nameof(DocumentViewModel.WindowBounds) or nameof(DocumentViewModel.IsActive)) return;
+        if (e.PropertyName == nameof(DocumentViewModel.Selection)) DeselectCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(StatusText));
     }
 
@@ -416,6 +419,40 @@ public sealed partial class MainViewModel : ObservableObject
         CurrentTool = item!.Factory;
         return true;
     }
+
+    // ---------------------------------------------------------------- 選択範囲（メニュー［選択範囲］。設計書 F-04）
+
+    private bool CanEditSelection => !IsBusy && ActiveDocument is not null;
+
+    /// <summary>
+    /// ［選択範囲］→［すべて選択］ / Ctrl+A。比率が自由なら画像全体、比率があれば、その比率でいちばん大きい矩形を中央に置く
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanEditSelection))]
+    private void SelectAll()
+    {
+        if (ActiveDocument is { } document && !IsBusy)
+            document.Selection = CropFrameCalculator.Initial(document.SelectionRules);
+    }
+
+    private bool CanDeselect => CanEditSelection && ActiveDocument?.Selection is not null;
+
+    /// <summary>［選択範囲］→［選択の取り消し］ / Ctrl+D（選択範囲が無いときは無効。設計書 4.2）</summary>
+    [RelayCommand(CanExecute = nameof(CanDeselect))]
+    private void Deselect()
+    {
+        if (CanDeselect) ActiveDocument!.Selection = null;
+    }
+
+    /// <summary>［選択範囲］→［領域選択］: 「選択」の道具にする（M と同じ）</summary>
+    [RelayCommand(CanExecute = nameof(CanUseSelectTool))]
+    private void UseSelectTool()
+    {
+        if (CanUseSelectTool()) CurrentTool = SelectToolItem!.Factory;
+    }
+
+    private ToolItemViewModel? SelectToolItem => ToolItems.FirstOrDefault(t => t.Factory.Id == SelectToolFactory.ToolId);
+
+    private bool CanUseSelectTool() => CanSelectTool(SelectToolItem);
 
     // ---------------------------------------------------------------- 閉じる
 
