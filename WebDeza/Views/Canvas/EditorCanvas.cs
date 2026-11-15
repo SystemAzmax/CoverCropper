@@ -10,7 +10,7 @@ namespace WebDeza.Views.Canvas;
 /// </summary>
 /// <remarks>
 /// 表示用画像は、画像（フル解像度）の大きさとして描く。選択範囲は画像のピクセル座標で、IEditorSession から読む。
-/// 今は全体表示だけ。倍率と位置の計算は 8-1 で ViewTransform に移し、ズーム（8-2）とパン（8-3）を足す。
+/// 倍率と位置は ViewTransform で計算する。今は全体表示だけで、ズーム（8-2）とパン（8-3）はこれから足す。
 /// マウスで選択範囲を作る・動かすのは、道具の仕組み（8-4）と「選択」の道具（8-5・8-6）で作る。
 /// </remarks>
 public sealed class EditorCanvas : FrameworkElement
@@ -133,33 +133,6 @@ public sealed class EditorCanvas : FrameworkElement
     // ---------------------------------------------------------------- 計算（画面を使わずにテストできる）
 
     /// <summary>
-    /// 全体表示の倍率と位置。倍率は「画像の 1 px あたりの DIP」で、画像全体が余白の内側に収まる倍率。
-    /// ただし 100%（画像の 1 px = 1 物理ピクセル）を超えて拡大しない。
-    /// 位置は中央に置き、物理ピクセルの境目にそろえる（にじませないため）
-    /// </summary>
-    /// <param name="viewport">キャンバスの大きさ（DIP）</param>
-    /// <param name="imageWidth">画像の幅（px）</param>
-    /// <param name="imageHeight">画像の高さ（px）</param>
-    /// <param name="dpiScale">1 DIP あたりの物理ピクセル（100% の DPI なら 1）</param>
-    /// <returns>画像を描く矩形（DIP）と、倍率</returns>
-    public static (Rect ImageRect, double Scale) Fit(Size viewport, int imageWidth, int imageHeight, double dpiScale)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(imageWidth);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(imageHeight);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(dpiScale);
-
-        double availableWidth = Math.Max(1, viewport.Width - FitMargin * 2);
-        double availableHeight = Math.Max(1, viewport.Height - FitMargin * 2);
-        double scale = Math.Min(1 / dpiScale, Math.Min(availableWidth / imageWidth, availableHeight / imageHeight));
-
-        double width = imageWidth * scale;
-        double height = imageHeight * scale;
-        double x = Math.Round((viewport.Width - width) / 2 * dpiScale) / dpiScale;
-        double y = Math.Round((viewport.Height - height) / 2 * dpiScale) / dpiScale;
-        return (new Rect(x, y, width, height), scale);
-    }
-
-    /// <summary>
     /// 補間の方法: 表示用画像の 1 px が 2 物理ピクセル未満なら HighQuality、それ以上なら NearestNeighbor（設計書 F-03）
     /// </summary>
     /// <param name="displayedWidth">表示用画像を描く幅（DIP）</param>
@@ -174,16 +147,15 @@ public sealed class EditorCanvas : FrameworkElement
     /// 画像のピクセル座標の矩形を、画面の矩形（DIP）にする。辺は物理ピクセルの境目にそろえる
     /// </summary>
     /// <param name="rect">画像のピクセル座標の矩形</param>
-    /// <param name="imageRect">画像を描いている矩形（DIP）</param>
-    /// <param name="scale">画像の 1 px あたりの DIP</param>
+    /// <param name="view">表示倍率と位置</param>
     /// <param name="dpiScale">1 DIP あたりの物理ピクセル</param>
-    public static Rect ImageRectToView(PixelRect rect, Rect imageRect, double scale, double dpiScale)
+    public static Rect ImageRectToView(PixelRect rect, ViewTransform view, double dpiScale)
     {
         double Snap(double value) => Math.Round(value * dpiScale) / dpiScale;
-        double left = Snap(imageRect.X + rect.X * scale);
-        double top = Snap(imageRect.Y + rect.Y * scale);
-        double right = Snap(imageRect.X + (rect.X + rect.Width) * scale);
-        double bottom = Snap(imageRect.Y + (rect.Y + rect.Height) * scale);
+        var topLeft = view.ImageToView(rect.X, rect.Y);
+        var bottomRight = view.ImageToView(rect.X + rect.Width, rect.Y + rect.Height);
+        double left = Snap(topLeft.X), top = Snap(topLeft.Y);
+        double right = Snap(bottomRight.X), bottom = Snap(bottomRight.Y);
         return new Rect(left, top, Math.Max(0, right - left), Math.Max(0, bottom - top));
     }
 
@@ -196,7 +168,8 @@ public sealed class EditorCanvas : FrameworkElement
 
         if (Image is not { } image) return;
         double dpiScale = VisualTreeHelper.GetDpi(this).DpiScaleX;
-        var (rect, scale) = Fit(RenderSize, image.ImageWidth, image.ImageHeight, dpiScale);
+        var view = ViewTransform.Fit(RenderSize, image.ImageWidth, image.ImageHeight, dpiScale, FitMargin);
+        var rect = view.ImageBounds(image.ImageWidth, image.ImageHeight);
 
         // 透過のある画像だけ、下に市松模様を描く（模様は画像の左上からそろえる）
         if (!image.IsOpaque)
@@ -218,7 +191,7 @@ public sealed class EditorCanvas : FrameworkElement
         if (Session is { Selection: { } selection } session
             && session.ImageWidth == image.ImageWidth && session.ImageHeight == image.ImageHeight)
         {
-            RenderSelection(dc, ImageRectToView(selection, rect, scale, dpiScale), dpiScale);
+            RenderSelection(dc, ImageRectToView(selection, view, dpiScale), dpiScale);
         }
     }
 
