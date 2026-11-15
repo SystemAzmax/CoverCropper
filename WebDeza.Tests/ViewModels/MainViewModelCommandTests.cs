@@ -115,6 +115,34 @@ public sealed class MainViewModelCommandTests : IDisposable
         Assert.True(_vm.DeselectCommand.CanExecute(null));
     }
 
+    // ---------------------------------------------------------------- 編集パネル（8-7）
+
+    [Fact]
+    public async Task EditPanel_FollowsActiveDocument_AndDisabledWithoutImageOrWhileBusy()
+    {
+        var changed = new List<string?>();
+        _vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        Assert.False(_vm.IsEditPanelEnabled); // 画像が無い（設計書 4.2）
+        Assert.Null(_vm.SelectionPanel.Document);
+
+        await _vm.OpenPathsAsync([CreateFile("a.fake"), CreateFile("b.fake")]);
+        Assert.True(_vm.IsEditPanelEnabled);
+        Assert.Contains(nameof(MainViewModel.IsEditPanelEnabled), changed);
+        Assert.Same(_vm.ActiveDocument, _vm.SelectionPanel.Document);
+
+        _vm.Documents[0].Selection = new WebDeza.Imaging.PixelRect(1, 2, 3, 4);
+        _vm.ActiveDocument = _vm.Documents[0];
+        Assert.Equal("3", _vm.SelectionPanel.WidthText);
+
+        _vm.IsBusy = true; // 読み込み中・編集の確定中
+        Assert.False(_vm.IsEditPanelEnabled);
+        _vm.IsBusy = false;
+
+        _vm.CloseAllCommand.Execute(null);
+        Assert.False(_vm.IsEditPanelEnabled);
+        Assert.Null(_vm.SelectionPanel.Document);
+    }
+
     [Fact]
     public async Task UseSelectTool_SwitchesToSelect()
     {

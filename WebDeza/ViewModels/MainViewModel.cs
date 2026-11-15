@@ -68,7 +68,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>アクティブな画像（メニュー・道具・編集パネル・ステータスバーの対象）。画像が無ければ null</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasImage), nameof(WindowTitle), nameof(StatusText))]
+    [NotifyPropertyChangedFor(nameof(HasImage), nameof(WindowTitle), nameof(StatusText), nameof(IsEditPanelEnabled))]
     [NotifyCanExecuteChangedFor(nameof(CloseCommand), nameof(ZoomInCommand), nameof(ZoomOutCommand),
         nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand), nameof(SelectToolCommand),
         nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand))]
@@ -76,6 +76,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>読み込み中・編集の確定中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditPanelEnabled))]
     [NotifyCanExecuteChangedFor(nameof(OpenCommand), nameof(CloseCommand), nameof(ExitCommand),
         nameof(ZoomInCommand), nameof(ZoomOutCommand), nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand),
         nameof(SelectToolCommand), nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand))]
@@ -100,6 +101,12 @@ public sealed partial class MainViewModel : ObservableObject
     private string? _statusMessage;
 
     public bool HasImage => ActiveDocument is not null;
+
+    /// <summary>編集パネルを操作できるか（画像があり、読み込み中・編集の確定中でない。設計書 4.2）</summary>
+    public bool IsEditPanelEnabled => !IsBusy && ActiveDocument is not null;
+
+    /// <summary>編集パネルの「選択範囲」の入力欄（アクティブな画像の選択範囲）</summary>
+    public SelectionPanelViewModel SelectionPanel { get; } = new();
 
     /// <summary>ウィンドウのタイトル: 「{アクティブな画像のファイル名} - webDeza」（画像が無いときは「webDeza」）</summary>
     public string WindowTitle => ActiveDocument is { } document
@@ -138,6 +145,7 @@ public sealed partial class MainViewModel : ObservableObject
             newValue.PropertyChanged += OnActiveDocumentPropertyChanged;
             newValue.IsActive = true;
         }
+        SelectionPanel.Document = newValue;
     }
 
     private void OnActiveDocumentPropertyChanged(object? sender, PropertyChangedEventArgs e)

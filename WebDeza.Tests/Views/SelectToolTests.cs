@@ -7,7 +7,7 @@ using WebDeza.Views.Canvas;
 
 namespace WebDeza.Tests.Views;
 
-/// <summary>「選択」の道具: 作る・解除・移動・ハンドル（設計書 F-04・4.5。V30。実装計画書 8-5・8-6）</summary>
+/// <summary>「選択」の道具: 作る・解除・移動・ハンドル・矢印（設計書 F-04・4.4・4.5。V30。実装計画書 8-5〜8-7）</summary>
 public class SelectToolTests
 {
     private readonly FakeSession _session = new() { ImageWidth = 400, ImageHeight = 300 };
@@ -402,6 +402,54 @@ public class SelectToolTests
 
         _session.Aspect = new AspectRatio(1, 1);
         Assert.Equal(4 * 2, RenderCount(view)); // 比率が固定なら四隅だけ
+    }
+
+    // ---------------------------------------------------------------- 矢印（画像 400×300、選択範囲 (100, 100) 50×50）
+
+    [Theory]
+    [InlineData(Key.Left, ModifierKeys.None, 99, 100)]
+    [InlineData(Key.Right, ModifierKeys.None, 101, 100)]
+    [InlineData(Key.Up, ModifierKeys.None, 100, 99)]
+    [InlineData(Key.Down, ModifierKeys.None, 100, 101)]
+    [InlineData(Key.Left, ModifierKeys.Shift, 90, 100)]
+    [InlineData(Key.Down, ModifierKeys.Shift, 100, 110)]
+    public void Arrow_Moves1px_Shift10px(Key key, ModifierKeys modifiers, int x, int y)
+    {
+        _session.Selection = new PixelRect(100, 100, 50, 50);
+
+        Assert.True(_tool.OnKeyDown(key, modifiers));
+
+        Assert.Equal(new PixelRect(x, y, 50, 50), _session.Selection);
+    }
+
+    [Fact]
+    public void Arrow_StopsAtImageEdge()
+    {
+        _session.Selection = new PixelRect(345, 3, 50, 50);
+
+        _tool.OnKeyDown(Key.Right, ModifierKeys.Shift);
+        _tool.OnKeyDown(Key.Up, ModifierKeys.Shift);
+
+        Assert.Equal(new PixelRect(350, 0, 50, 50), _session.Selection);
+    }
+
+    [Fact]
+    public void Arrow_WithoutSelection_UsedButNothingHappens()
+    {
+        // 選択範囲が無くても矢印は使ったことにする（フォーカスがほかのコントロールへ移らないように）
+        Assert.True(_tool.OnKeyDown(Key.Left, ModifierKeys.None));
+        Assert.Null(_session.Selection);
+    }
+
+    [Fact]
+    public void OtherKeys_NotUsed()
+    {
+        var selection = new PixelRect(100, 100, 50, 50);
+        _session.Selection = selection;
+
+        Assert.False(_tool.OnKeyDown(Key.H, ModifierKeys.None));       // 道具の切り替えのキーへ
+        Assert.False(_tool.OnKeyDown(Key.Left, ModifierKeys.Control)); // Shift のほかの修飾キーつき
+        Assert.Equal(selection, _session.Selection);
     }
 
     // ---------------------------------------------------------------- カーソル

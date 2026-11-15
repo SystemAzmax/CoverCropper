@@ -26,12 +26,18 @@ public sealed class SelectToolFactory : ICanvasToolFactory
 /// そのほか: 新しく作る（始めた点と今の点を対角にする矩形。画像の外へドラッグしたら端で止まる。前の選択範囲は置き換わる）。
 /// 選択範囲の外を、ドラッグせずにクリックしたら解除する。選択範囲の操作は履歴に積まない。
 /// ハンドルは、比率が自由なら四隅と四辺、決まっていれば四隅（この道具のときだけ描く）。
+/// 矢印 / Shift+矢印で、選択範囲を 1 px / 10 px 動かす。
 /// </summary>
-/// <remarks>矢印キーでの移動は 8-7 で足す。</remarks>
 public sealed class SelectTool : ICanvasTool
 {
     /// <summary>押してからこれ以上（DIP）動かしたらドラッグ、それより小さければクリックとみなす</summary>
     public const double DragThreshold = 4;
+
+    /// <summary>矢印 1 回で動かす量（px）</summary>
+    public const int KeyStep = 1;
+
+    /// <summary>Shift+矢印 1 回で動かす量（px）</summary>
+    public const int ShiftKeyStep = 10;
 
     /// <summary>ハンドルの四角の大きさ（DIP）</summary>
     public const double HandleSize = 8;
@@ -143,7 +149,29 @@ public sealed class SelectTool : ICanvasTool
             _session.Selection = null;
     }
 
-    public bool OnKeyDown(Key key, ModifierKeys modifiers) => false;
+    /// <summary>
+    /// 矢印で選択範囲を 1 px、Shift+矢印で 10 px 動かす（設計書 4.4。画像の端で止まる）。
+    /// 矢印は、選択範囲が無いときも使ったことにする（フォーカスが矢印でほかのコントロールへ移らないように）
+    /// </summary>
+    public bool OnKeyDown(Key key, ModifierKeys modifiers)
+    {
+        var (dx, dy) = key switch
+        {
+            Key.Left => (-1, 0),
+            Key.Right => (1, 0),
+            Key.Up => (0, -1),
+            Key.Down => (0, 1),
+            _ => (0, 0),
+        };
+        if ((dx, dy) == (0, 0) || modifiers is not (ModifierKeys.None or ModifierKeys.Shift)) return false;
+
+        if (_session.Selection is { } selection)
+        {
+            int step = modifiers == ModifierKeys.Shift ? ShiftKeyStep : KeyStep;
+            _session.Selection = CropFrameCalculator.Move(selection, dx * step, dy * step, _session.SelectionRules);
+        }
+        return true;
+    }
 
     /// <summary>ハンドルを描く（白い四角に黒い縁。辺は物理ピクセルにそろえる）</summary>
     public void Render(DrawingContext dc, ViewTransform view)

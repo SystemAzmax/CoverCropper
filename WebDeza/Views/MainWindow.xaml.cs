@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using WebDeza.ViewModels;
 
@@ -91,6 +92,34 @@ public partial class MainWindow : Window
 
         if (KeyRouting.IsToolShortcut(modifiers) && _vm.SelectToolByShortcut(key))
             e.Handled = true;
+    }
+
+    // ---------------------------------------------------------------- 編集パネルの数値の入力欄
+
+    /// <summary>Enter で入力した値を当てはめ、Esc で今の値に戻す（どちらも、続けて入力できるように全体を選んでおく）</summary>
+    private void OnNumberInputKeyDown(object sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox box) return;
+        var binding = BindingOperations.GetBindingExpression(box, TextBox.TextProperty);
+        switch (e.Key)
+        {
+            case Key.Enter:
+                binding?.UpdateSource();
+                break;
+            case Key.Escape:
+                binding?.UpdateTarget();
+                break;
+            default:
+                return;
+        }
+        box.SelectAll();
+        e.Handled = true;
+    }
+
+    /// <summary>キーボードでフォーカスが来たら、全体を選ぶ（打てば置き換わる）</summary>
+    private void OnNumberInputGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is TextBox box) box.SelectAll();
     }
 
     // ---------------------------------------------------------------- ズーム（メニュー［表示］・ツールバー）

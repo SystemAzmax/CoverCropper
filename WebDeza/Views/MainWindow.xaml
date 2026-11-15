@@ -151,10 +151,55 @@
             </StatusBarItem>
         </StatusBar>
 
-        <!-- 編集パネル（右・幅 300）。スクロールでき、セクションが縦に並ぶ -->
+        <!-- 編集パネル（右・幅 300）。スクロールでき、セクションが縦に並ぶ（折りたためる）。画像が無いときと読み込み中は操作できない -->
         <Border DockPanel.Dock="Right" Width="300" BorderThickness="1,0,0,0" Style="{StaticResource AreaBorderStyle}">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
-                <StackPanel x:Name="EditPanelArea" Margin="8" />
+                <StackPanel x:Name="EditPanelArea" Margin="8" IsEnabled="{Binding IsEditPanelEnabled}">
+                    <!-- 「選択範囲」（設計書 4.1・F-04）。比率は 8-8、［切り抜き］は 9-1 で足す -->
+                    <Expander x:Name="SelectionSection" Header="選択範囲" IsExpanded="True">
+                        <StackPanel Margin="0,4,0,0">
+                            <!-- X・Y・幅・高さ。Enter かフォーカスが外れたときに選択範囲を変える（Esc で元の値に戻す）。選択範囲が無いときは空欄で入力できない -->
+                            <Grid DataContext="{Binding SelectionPanel}" IsEnabled="{Binding HasSelection}">
+                                <Grid.Resources>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="VerticalAlignment" Value="Center" />
+                                        <Setter Property="Margin" Value="0,0,6,0" />
+                                    </Style>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                        <Setter Property="TextAlignment" Value="Right" />
+                                        <Setter Property="Margin" Value="0,2,12,2" />
+                                        <Setter Property="MaxLength" Value="11" />
+                                        <Setter Property="InputMethod.IsInputMethodEnabled" Value="False" />
+                                        <EventSetter Event="KeyDown" Handler="OnNumberInputKeyDown" />
+                                        <EventSetter Event="GotKeyboardFocus" Handler="OnNumberInputGotKeyboardFocus" />
+                                    </Style>
+                                </Grid.Resources>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="X" />
+                                <TextBox x:Name="SelectionXInput" Grid.Row="0" Grid.Column="1" Text="{Binding XText}" ToolTip="左端の位置 (px)" />
+                                <TextBlock Grid.Row="0" Grid.Column="2" Text="Y" />
+                                <TextBox x:Name="SelectionYInput" Grid.Row="0" Grid.Column="3" Text="{Binding YText}" ToolTip="上端の位置 (px)" Margin="0,2,0,2" />
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="幅" />
+                                <TextBox x:Name="SelectionWidthInput" Grid.Row="1" Grid.Column="1" Text="{Binding WidthText}" ToolTip="幅 (px)" />
+                                <TextBlock Grid.Row="1" Grid.Column="2" Text="高さ" />
+                                <TextBox x:Name="SelectionHeightInput" Grid.Row="1" Grid.Column="3" Text="{Binding HeightText}" ToolTip="高さ (px)" Margin="0,2,0,2" />
+                            </Grid>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button Content="すべて選択" Command="{Binding SelectAllCommand}" ToolTip="すべて選択 (Ctrl+A)" />
+                                <Button Content="解除" Command="{Binding DeselectCommand}" ToolTip="選択の取り消し (Ctrl+D)" Margin="8,0,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Expander>
+                </StackPanel>
             </ScrollViewer>
         </Border>
 
