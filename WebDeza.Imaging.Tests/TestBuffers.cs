@@ -23,6 +23,14 @@ internal static class TestBuffers
         return ImageBuffer.Create(width, height, pixels);
     }
 
+    /// <summary>Distinct と同じ色で、アルファをすべて 255 にした（不透明な）画像</summary>
+    public static ImageBuffer DistinctOpaque(int width, int height)
+    {
+        var pixels = Distinct(width, height).Pixels;
+        for (int i = 3; i < pixels.Length; i += 4) pixels[i] = 255;
+        return ImageBuffer.Create(width, height, pixels, isOpaque: true);
+    }
+
     /// <summary>(x, y) の画素を B・G・R・A をまとめた 1 つの値で返す</summary>
     public static uint PixelAt(ImageBuffer image, int x, int y)
         => BitConverter.ToUInt32(image.Pixels, (y * image.Width + x) * 4);

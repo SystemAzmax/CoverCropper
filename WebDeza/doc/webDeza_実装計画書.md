@@ -114,7 +114,7 @@
 | 2-11 | 編集モデル | `Editing/`（`CropAspect`・`OutputSize`・`ExportSettings`・`ExportPreset`・`EditRecipe`。`EditRecipe` と `ExportSettings` は中身で比べる） | E24 | 中 | 済 |
 | 2-12 | 切り抜きの計算（枠の規則） | `Editing/FrameRules`、`CropFrameCalculator` の `Rules`・`Initial`・`Clamp`・`Center`・`OutputPixelSize` | E15〜E18・E22 | 中 | 済 |
 | 2-13 | 切り抜きの計算（枠の操作） | `FrameHandle`、`CropFrameCalculator` の `Move`・`ResizeAroundCenter`・`ResizeFromHandle`・`Mirror` | E19〜E21。追加: E17 の乱数のテストを、操作した後の枠にも広げる | 中 | 済 |
-| 2-14 | 処理の流れ | `Editing/RenderPipeline`（`RenderForExport`・`RenderPreview`）・`PreviewImage` | E25〜E27。追加: 値が既定値のフィルターは呼ばれない | 中 | 未 |
+| 2-14 | 処理の流れ | `Editing/RenderPipeline`（`RenderForExport`・`RenderPreview`）・`PreviewImage` | E25〜E27。追加: 値が既定値のフィルターは呼ばれない | 中 | 済 |
 | 2-15 | 上限に合う品質の探索 | `Editing/SizeTargetSearch` | E28・E29 | 小 | 未 |
 | 2-16 | メモリ上へのエンコード | `Editing/ExportEncoder`・`EncodedImage` | E30（ここでは偽のエンコーダーで。実際の JPEG・PNG では 3-4 で確かめる） | 小 | 未 |
 | 2-17 | 履歴 | `Editing/EditHistory` | E23 | 小 | 未 |
