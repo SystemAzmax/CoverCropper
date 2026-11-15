@@ -20,10 +20,17 @@
         <SolidColorBrush x:Key="SelectionLightBrush" Color="#FFFFFFFF" />
         <SolidColorBrush x:Key="SelectionDarkBrush" Color="#FF000000" />
 
-        <!-- 領域（ツールバー・画像一覧・道具・編集パネル）の枠 -->
+        <!-- 領域（ツールバー・道具・編集パネル）の枠 -->
         <Style x:Key="AreaBorderStyle" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorBaseBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource DividerStrokeColorDefaultBrush}" />
+        </Style>
+
+        <!-- ツールバーのボタンの区切り（縦線） -->
+        <Style x:Key="ToolbarSeparatorStyle" TargetType="Border">
+            <Setter Property="Width" Value="1" />
+            <Setter Property="Margin" Value="2,2,8,2" />
+            <Setter Property="Background" Value="{DynamicResource DividerStrokeColorDefaultBrush}" />
         </Style>
 
         <!-- ボタンはフォーカスを取らない（キー操作をキャンバスに残すため。設計書 4.1） -->

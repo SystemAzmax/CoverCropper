@@ -19,10 +19,67 @@
 
     <!-- 設計書 4.1 の領域の枠組み。中身は、それぞれの機能を作るステップで入れる -->
     <DockPanel>
-        <!-- ツールバー（上） -->
-        <Border DockPanel.Dock="Top" Padding="8,6" BorderThickness="0,0,0,1" Style="{StaticResource AreaBorderStyle}">
+        <!-- メニューバー（設計書 4.3）。ショートカットの InputGestureText は表示だけで、実際のキーは
+             Window.InputBindings で受ける（設計書 5.10-7）。
+             IsEnabled="False" の項目は、コマンドを作るステップ（括弧の中）で、ツールバーと同じコマンドにつなぐ -->
+        <Menu x:Name="MainMenu" DockPanel.Dock="Top">
+            <MenuItem Header="ファイル(_F)">
+                <MenuItem Header="開く(_O)…" InputGestureText="Ctrl+O" Command="{Binding OpenCommand}" />
+                <MenuItem Header="閉じる(_C)" InputGestureText="Ctrl+W" IsEnabled="False" />          <!-- 7-2 -->
+                <MenuItem Header="すべて閉じる(_L)" IsEnabled="False" />                              <!-- 7-4 -->
+                <Separator />
+                <MenuItem Header="書き出し(_E)…" InputGestureText="Ctrl+E" IsEnabled="False" />       <!-- 10-2 -->
+                <MenuItem Header="すべて書き出し(_A)…" InputGestureText="Ctrl+Shift+E" IsEnabled="False" /> <!-- 10-11 -->
+                <Separator />
+                <MenuItem Header="終了(_X)" Command="{Binding ExitCommand}" />
+            </MenuItem>
+            <MenuItem Header="編集(_E)">
+                <MenuItem Header="元に戻す(_U)" InputGestureText="Ctrl+Z" IsEnabled="False" />        <!-- 9-2 -->
+                <MenuItem Header="やり直し(_R)" InputGestureText="Ctrl+Y" IsEnabled="False" />        <!-- 9-2 -->
+            </MenuItem>
+            <MenuItem Header="選択範囲(_S)">
+                <MenuItem Header="すべて選択(_A)" InputGestureText="Ctrl+A" IsEnabled="False" />      <!-- 8-5 -->
+                <MenuItem Header="選択を解除(_D)" InputGestureText="Ctrl+D" IsEnabled="False" />      <!-- 8-5 -->
+            </MenuItem>
+            <MenuItem Header="画像(_I)">
+                <MenuItem Header="選択範囲で切り抜き(_P)" InputGestureText="Ctrl+Shift+X" IsEnabled="False" /> <!-- 9-1 -->
+                <Separator />
+                <MenuItem Header="右に 90° 回転(_R)" InputGestureText="Ctrl+R" IsEnabled="False" />   <!-- 9-3 -->
+                <MenuItem Header="左に 90° 回転(_L)" InputGestureText="Ctrl+Shift+R" IsEnabled="False" /> <!-- 9-3 -->
+                <MenuItem Header="左右反転(_H)" IsEnabled="False" />                                  <!-- 9-3 -->
+                <MenuItem Header="上下反転(_V)" IsEnabled="False" />                                  <!-- 9-3 -->
+                <Separator />
+                <MenuItem Header="画像サイズ(_S)…" IsEnabled="False" />                               <!-- 9-4 -->
+            </MenuItem>
+            <!-- 登録されたフィルターを登録順に並べる（9-7）。それまでは項目が無いので、見出しごと無効にしておく -->
+            <MenuItem Header="フィルター(_T)" IsEnabled="False" />
+            <MenuItem Header="表示(_V)">
+                <MenuItem Header="拡大(_I)" InputGestureText="Ctrl++" IsEnabled="False" />            <!-- 8-2 -->
+                <MenuItem Header="縮小(_O)" InputGestureText="Ctrl+-" IsEnabled="False" />            <!-- 8-2 -->
+                <Separator />
+                <MenuItem Header="全体表示(_F)" InputGestureText="Ctrl+0" IsEnabled="False" />        <!-- 8-2 -->
+                <MenuItem Header="100%(_A)" InputGestureText="Ctrl+1" IsEnabled="False" />            <!-- 8-2 -->
+            </MenuItem>
+            <!-- 開いている画像の一覧（アクティブな画像に印）は 7-4 で、区切りの後に足す -->
+            <MenuItem Header="ウィンドウ(_W)">
+                <MenuItem Header="重ねて表示(_C)" IsEnabled="False" />                                <!-- 7-4 -->
+                <MenuItem Header="並べて表示(_T)" IsEnabled="False" />                                <!-- 7-4 -->
+            </MenuItem>
+        </Menu>
+
+        <!-- ツールバー（上。設計書 4.2）。メニューと同じコマンドにつなぐ -->
+        <Border DockPanel.Dock="Top" Padding="8,6" BorderThickness="0,1,0,1" Style="{StaticResource AreaBorderStyle}">
             <StackPanel x:Name="ToolbarArea" Orientation="Horizontal" MinHeight="26">
                 <Button Content="開く" Command="{Binding OpenCommand}" ToolTip="画像を開く (Ctrl+O)" />
+                <Button Content="書き出し" IsEnabled="False" ToolTip="書き出し (Ctrl+E)" />            <!-- 10-2 -->
+                <Border Style="{StaticResource ToolbarSeparatorStyle}" />
+                <Button Content="元に戻す" IsEnabled="False" ToolTip="元に戻す (Ctrl+Z)" />            <!-- 9-2 -->
+                <Button Content="やり直し" IsEnabled="False" ToolTip="やり直し (Ctrl+Y)" />            <!-- 9-2 -->
+                <Border Style="{StaticResource ToolbarSeparatorStyle}" />
+                <Button Content="全体" IsEnabled="False" ToolTip="全体表示 (Ctrl+0)" />                <!-- 8-2 -->
+                <Button Content="100%" IsEnabled="False" ToolTip="100% (Ctrl+1)" />                    <!-- 8-2 -->
+                <Button Content="－" IsEnabled="False" ToolTip="縮小 (Ctrl+-)" />                      <!-- 8-2 -->
+                <Button Content="＋" IsEnabled="False" ToolTip="拡大 (Ctrl++)" />                      <!-- 8-2 -->
             </StackPanel>
         </Border>
 
@@ -32,13 +89,6 @@
                 <TextBlock Text="{Binding StatusText}" ToolTip="{Binding StatusText}" TextTrimming="CharacterEllipsis" />
             </StatusBarItem>
         </StatusBar>
-
-        <!-- 画像一覧（左・幅 220） -->
-        <Border DockPanel.Dock="Left" Width="220" BorderThickness="0,0,1,0" Style="{StaticResource AreaBorderStyle}">
-            <DockPanel x:Name="ImageListArea">
-                <TextBlock DockPanel.Dock="Top" Text="画像一覧" Margin="8,6" FontWeight="SemiBold" />
-            </DockPanel>
-        </Border>
 
         <!-- 編集パネル（右・幅 300）。スクロールでき、セクションが縦に並ぶ -->
         <Border DockPanel.Dock="Right" Width="300" BorderThickness="1,0,0,0" Style="{StaticResource AreaBorderStyle}">

@@ -58,7 +58,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>読み込み中・編集の確定中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(OpenCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenCommand), nameof(ExitCommand))]
     private bool _isBusy;
 
     /// <summary>ステータスバーの末尾に出すメッセージ</summary>
@@ -198,6 +198,17 @@ public sealed partial class MainViewModel : ObservableObject
             _dialogs.ShowError(error);
         }
     }
+
+    // ---------------------------------------------------------------- 終了
+
+    /// <summary>終了を頼まれた（メインウィンドウが受けて閉じる。閉じるときの処理はウィンドウの Closing に集める）</summary>
+    public event EventHandler? ExitRequested;
+
+    private bool CanExit => !IsBusy;
+
+    /// <summary>メニュー［ファイル］→［終了］（設計書 F-13。M17 の確認は 9-8 で足す）</summary>
+    [RelayCommand(CanExecute = nameof(CanExit))]
+    private void Exit() => ExitRequested?.Invoke(this, EventArgs.Empty);
 
     // ---------------------------------------------------------------- 設定
 

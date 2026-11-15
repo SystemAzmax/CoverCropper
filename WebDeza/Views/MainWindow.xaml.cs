@@ -17,6 +17,7 @@ public partial class MainWindow : Window
         _vm = viewModel;
         DataContext = viewModel;
         _vm.PropertyChanged += OnViewModelPropertyChanged;
+        _vm.ExitRequested += (_, _) => Close();
         RestorePlacement();
     }
 
