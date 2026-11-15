@@ -8,7 +8,7 @@ namespace WebDeza.Tests;
 public class AppModulesTests
 {
     [Fact]
-    public void Register_AddsStandardFormatsAndBasicAdjustFilter()
+    public void Register_AddsStandardFormatsAndFilters()
     {
         var formats = new FormatRegistry();
         var filters = new FilterRegistry();
@@ -19,9 +19,8 @@ public class AppModulesTests
         Assert.Equal(new[] { "jpeg", "png", "bmp", "tiff", "gif", "jxr", "ico", "webp", "heif", "avif" },
             formats.All.Select(f => f.Id));
         Assert.Equal(new[] { "jpeg", "png", "bmp", "tiff" }, formats.Encodable.Select(f => f.Id));
-        // フィルターは基本補正だけ
-        var filter = Assert.Single(filters.All);
-        Assert.Equal(BasicAdjustFilter.FilterId, filter.Id);
+        // フィルターは ぼかし・基本補正 の順（設計書 F-06）
+        Assert.Equal(new[] { BlurFilter.FilterId, BasicAdjustFilter.FilterId }, filters.All.Select(f => f.Id));
     }
 
     [Fact]

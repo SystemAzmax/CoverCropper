@@ -16,6 +16,7 @@ public static class AppModules
         ArgumentNullException.ThrowIfNull(filters);
 
         formats.AddWicFormats();                 // 標準の形式（設計書 5.4）
+        filters.Register(new BlurFilter());      // 標準のフィルター（設計書 F-06。メニューと編集パネルにこの順に並ぶ）
         filters.Register(new BasicAdjustFilter());
     }
 }
