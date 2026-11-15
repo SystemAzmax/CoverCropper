@@ -73,7 +73,7 @@
 |---|---|---|---|---|
 | 1 | 基準ファイルの作成 | 1 | 置き換える前の CoverCropper の処理結果が、基準として残っている | 済 |
 | 2 | エンジン（`WebDeza.Imaging`） | 16 | 画像処理の計算がそろい、すべてテストで確かめてある（画面も、ファイルの読み書きもまだ無い） | 済 |
-| 3 | WIC プラグイン（`WebDeza.Imaging.Wic`） | 4 | 画像ファイルを読み書きできる | 未 |
+| 3 | WIC プラグイン（`WebDeza.Imaging.Wic`） | 4 | 画像ファイルを読み書きできる | 済 |
 | 4 | Core と CoverCropper の載せ替え | 8 | CoverCropper が共通部品の上で動き、今までと同じ結果を出す | 未 |
 | 5 | webDeza の土台 | 13 | webDeza で画像を 1 枚開き、枠を動かし、書き出し設定を変えて書き出せる | 未 |
 | 6 | キャンバスと道具 | 8 | ズーム・パンをしながら、枠の移動・大きさ・比率を変えられる | 未 |
@@ -132,10 +132,10 @@
 
 | No | 機能 | 作るもの・変えるもの | 確かめること | 規模 | 状態 |
 |---|---|---|---|---|---|
-| 3-1 | プロジェクトと表示用の変換 | `WebDeza.Imaging.Wic`（net10.0-windows・UseWPF）を作り、`CoverCropper.slnx` とテストプロジェクトの参照に足す。`BitmapSourceConverter`（`ImageBuffer` ↔ `BitmapSource`） | W08 | 小 | 未 |
-| 3-2 | 読み込み（デコード） | `WicDecoder`（`Decode`: 1 枚目を読む・ICO はいちばん大きい画像・向きを直す・Bgra32 にする。`DecodeThumbnail`） | W01〜W04・W07。追加: サムネイルの長辺が指定以下で、向きが直っている | 中 | 未 |
-| 3-3 | 書き出し（エンコード） | `WicEncoders`（JPEG / PNG / BMP / TIFF と、それぞれのオプション。メタデータは付けない） | W05・W06・W09 | 中 | 未 |
-| 3-4 | 形式の登録 | `WicFormats`（`AddWicFormats`。設計書 5.4 の 10 形式） | 追加: 10 形式の ID・拡張子・読み書きと透過の可否が 5.4 の表どおり / 中身が画像でないファイルは `UnsupportedImageFormatException`。E30 を実際の JPEG・PNG で | 小 | 未 |
+| 3-1 | プロジェクトと表示用の変換 | `WebDeza.Imaging.Wic`（net10.0-windows・UseWPF）を作り、`CoverCropper.slnx` とテストプロジェクトの参照に足す。`BitmapSourceConverter`（`ImageBuffer` ↔ `BitmapSource`） | W08 | 小 | 済 |
+| 3-2 | 読み込み（デコード） | `WicDecoder`（`Decode`: 1 枚目を読む・ICO はいちばん大きい画像・向きを直す・Bgra32 にする。`DecodeThumbnail`） | W01〜W04・W07。追加: サムネイルの長辺が指定以下で、向きが直っている | 中 | 済 |
+| 3-3 | 書き出し（エンコード） | `WicEncoders`（JPEG / PNG / BMP / TIFF と、それぞれのオプション。メタデータは付けない） | W05・W06・W09 | 中 | 済 |
+| 3-4 | 形式の登録 | `WicFormats`（`AddWicFormats`。設計書 5.4 の 10 形式） | 追加: 10 形式の ID・拡張子・読み書きと透過の可否が 5.4 の表どおり / 中身が画像でないファイルは `UnsupportedImageFormatException`。E30 を実際の JPEG・PNG で | 小 | 済 |
 
 注意:
 

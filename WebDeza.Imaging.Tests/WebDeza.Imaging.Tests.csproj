@@ -27,6 +27,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\WebDeza.Imaging\WebDeza.Imaging.csproj" />
+    <ProjectReference Include="..\WebDeza.Imaging.Wic\WebDeza.Imaging.Wic.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ICO（16〜256 px の 10 サイズ入り）の読み込みのテストに、CoverCropper のアイコンをリンクで参照して使う -->
+    <None Include="..\CoverCropper\Assets\AppIcon.ico"
+          Link="TestData\AppIcon.ico"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
