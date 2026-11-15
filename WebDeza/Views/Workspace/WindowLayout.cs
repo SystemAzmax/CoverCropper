@@ -98,12 +98,13 @@ public static class WindowLayout
 
     /// <summary>
     /// 縁・角のドラッグでの大きさの変更。つかんだ辺だけを動かし、反対の辺は動かさない。
-    /// 最小の大きさより小さくせず、ワークスペースの外へは広げない
+    /// 最小の大きさより小さくせず、ワークスペースの外へは広げない。
+    /// 上の辺（タイトルバー）は、下の辺がワークスペースの外にはみ出していても、ワークスペースの下に出る所までは動かさない
     /// </summary>
     /// <param name="start">ドラッグを始めたときの子ウィンドウ</param>
     /// <param name="edges">つかんだ辺</param>
     /// <param name="delta">ドラッグを始めてからのマウスの移動量</param>
-    public static Rect Resize(Rect start, ResizeEdges edges, Vector delta, Size workspace)
+    public static Rect Resize(Rect start, ResizeEdges edges, Vector delta, Size workspace, double titleBarHeight)
     {
         double left = start.Left, top = start.Top, right = start.Right, bottom = start.Bottom;
 
@@ -112,7 +113,7 @@ public static class WindowLayout
         if (edges.HasFlag(ResizeEdges.Right))
             right = Clamp(start.Right + delta.X, left + MinWidth, Math.Max(left + MinWidth, workspace.Width));
         if (edges.HasFlag(ResizeEdges.Top))
-            top = Clamp(start.Top + delta.Y, 0, bottom - MinHeight);
+            top = Clamp(start.Top + delta.Y, 0, Math.Min(bottom - MinHeight, workspace.Height - titleBarHeight));
         if (edges.HasFlag(ResizeEdges.Bottom))
             bottom = Clamp(start.Bottom + delta.Y, top + MinHeight, Math.Max(top + MinHeight, workspace.Height));
 

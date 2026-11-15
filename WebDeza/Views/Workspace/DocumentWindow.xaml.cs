@@ -125,7 +125,7 @@ public partial class DocumentWindow : UserControl
         var workspace = Workspace.RenderSize;
         document.WindowBounds = _drag == DragKind.Move
             ? WindowLayout.Move(_dragStartBounds, delta, workspace, TitleBarHeight)
-            : WindowLayout.Resize(_dragStartBounds, _dragEdges, delta, workspace);
+            : WindowLayout.Resize(_dragStartBounds, _dragEdges, delta, workspace, TitleBarHeight);
         e.Handled = true;
     }
 

@@ -78,7 +78,7 @@ public class WindowLayoutTests
     [Fact]
     public void Resize_RightBottom_MovesOnlyThoseEdges()
     {
-        var result = WindowLayout.Resize(new Rect(100, 100, 400, 300), ResizeEdges.BottomRight, new Vector(60, 40), Workspace);
+        var result = WindowLayout.Resize(new Rect(100, 100, 400, 300), ResizeEdges.BottomRight, new Vector(60, 40), Workspace, TitleBar);
 
         Assert.Equal(new Rect(100, 100, 460, 340), result);
     }
@@ -86,7 +86,7 @@ public class WindowLayoutTests
     [Fact]
     public void Resize_TopLeft_KeepsOppositeEdges()
     {
-        var result = WindowLayout.Resize(new Rect(100, 100, 400, 300), ResizeEdges.TopLeft, new Vector(-40, 30), Workspace);
+        var result = WindowLayout.Resize(new Rect(100, 100, 400, 300), ResizeEdges.TopLeft, new Vector(-40, 30), Workspace, TitleBar);
 
         Assert.Equal(new Rect(60, 130, 440, 270), result);
     }
@@ -95,18 +95,37 @@ public class WindowLayoutTests
     public void Resize_NotSmallerThanMinimum()
     {
         // 左の辺を右の辺より右まで引いても、最小の幅で止まり、右の辺は動かない
-        var left = WindowLayout.Resize(new Rect(100, 100, 400, 300), ResizeEdges.Left, new Vector(1000, 0), Workspace);
-        var bottom = WindowLayout.Resize(new Rect(100, 100, 400, 300), ResizeEdges.Bottom, new Vector(0, -1000), Workspace);
+        var left = WindowLayout.Resize(new Rect(100, 100, 400, 300), ResizeEdges.Left, new Vector(1000, 0), Workspace, TitleBar);
+        var bottom = WindowLayout.Resize(new Rect(100, 100, 400, 300), ResizeEdges.Bottom, new Vector(0, -1000), Workspace, TitleBar);
 
         Assert.Equal(new Rect(500 - WindowLayout.MinWidth, 100, WindowLayout.MinWidth, 300), left);
         Assert.Equal(new Rect(100, 100, 400, WindowLayout.MinHeight), bottom);
     }
 
     [Fact]
+    public void Resize_Top_TitleBarDoesNotGoBelowWorkspace()
+    {
+        // 下側がワークスペースの外にはみ出した子ウィンドウ（下の辺は 800、ワークスペースの高さは 600）を、上の辺で縮める。
+        // 上の辺はタイトルバーが見える所（600 - 30）で止まる
+        var result = WindowLayout.Resize(new Rect(100, 500, 400, 300), ResizeEdges.Top, new Vector(0, 200), Workspace, TitleBar);
+
+        Assert.Equal(new Rect(100, 570, 400, 230), result);
+        Assert.True(WindowLayout.IsTitleBarInside(result, Workspace, TitleBar));
+    }
+
+    [Fact]
+    public void Resize_TopLeft_TitleBarDoesNotGoBelowWorkspace()
+    {
+        var result = WindowLayout.Resize(new Rect(100, 500, 400, 300), ResizeEdges.TopLeft, new Vector(50, 1000), Workspace, TitleBar);
+
+        Assert.Equal(new Rect(150, 570, 350, 230), result);
+    }
+
+    [Fact]
     public void Resize_NotBeyondWorkspace()
     {
-        var topLeft = WindowLayout.Resize(new Rect(100, 100, 400, 300), ResizeEdges.TopLeft, new Vector(-500, -500), Workspace);
-        var bottomRight = WindowLayout.Resize(new Rect(100, 100, 400, 300), ResizeEdges.BottomRight, new Vector(2000, 2000), Workspace);
+        var topLeft = WindowLayout.Resize(new Rect(100, 100, 400, 300), ResizeEdges.TopLeft, new Vector(-500, -500), Workspace, TitleBar);
+        var bottomRight = WindowLayout.Resize(new Rect(100, 100, 400, 300), ResizeEdges.BottomRight, new Vector(2000, 2000), Workspace, TitleBar);
 
         Assert.Equal(new Rect(0, 0, 500, 400), topLeft);
         Assert.Equal(new Rect(100, 100, 900, 500), bottomRight);
