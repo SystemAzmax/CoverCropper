@@ -29,25 +29,36 @@
     <DockPanel>
         <!-- メニューバー（設計書 4.3）。ショートカットの InputGestureText は表示だけで、実際のキーは
              Window.InputBindings で受ける（設計書 5.10-7）。
-             IsEnabled="False" の項目は、コマンドを作るステップ（括弧の中）で、ツールバーと同じコマンドにつなぐ -->
+             IsEnabled="False" の項目は、コマンドを作るステップ（括弧の中）で、ツールバーと同じコマンドにつなぐ。
+             「将来」の項目は設計書 8 章の将来拡張で、どんな機能が入るかが分かるように、作るまで無効のまま置いておく -->
         <Menu x:Name="MainMenu" DockPanel.Dock="Top">
             <MenuItem Header="ファイル(_F)">
+                <MenuItem Header="新規画像作成(_N)…" InputGestureText="Ctrl+N" IsEnabled="False" />    <!-- 将来 -->
                 <MenuItem Header="開く(_O)…" InputGestureText="Ctrl+O" Command="{Binding OpenCommand}" />
                 <MenuItem Header="閉じる(_C)" InputGestureText="Ctrl+W" Command="{Binding CloseCommand}" />
                 <MenuItem Header="すべて閉じる(_L)" Command="{Binding CloseAllCommand}" />
                 <Separator />
-                <MenuItem Header="書き出し(_E)…" InputGestureText="Ctrl+E" IsEnabled="False" />       <!-- 10-2 -->
-                <MenuItem Header="すべて書き出し(_A)…" InputGestureText="Ctrl+Shift+E" IsEnabled="False" /> <!-- 10-11 -->
+                <MenuItem Header="上書き保存(_S)" InputGestureText="Ctrl+S" IsEnabled="False" />        <!-- 将来 -->
+                <MenuItem Header="保存(_E)…" InputGestureText="Ctrl+E" IsEnabled="False" />            <!-- 10-2 -->
+                <MenuItem Header="すべて保存(_A)…" InputGestureText="Ctrl+Shift+E" IsEnabled="False" /> <!-- 10-11 -->
                 <Separator />
                 <MenuItem Header="終了(_X)" Command="{Binding ExitCommand}" />
             </MenuItem>
             <MenuItem Header="編集(_E)">
                 <MenuItem Header="元に戻す(_U)" InputGestureText="Ctrl+Z" IsEnabled="False" />        <!-- 9-2 -->
                 <MenuItem Header="やり直し(_R)" InputGestureText="Ctrl+Y" IsEnabled="False" />        <!-- 9-2 -->
+                <Separator />
+                <MenuItem Header="コピー(_C)" InputGestureText="Ctrl+C" IsEnabled="False" />          <!-- 将来 -->
+                <MenuItem Header="切り取り(_T)" InputGestureText="Ctrl+X" IsEnabled="False" />        <!-- 将来 -->
+                <MenuItem Header="貼り付け(_P)" InputGestureText="Ctrl+V" IsEnabled="False" />        <!-- 将来 -->
+                <MenuItem Header="透過貼り付け(_A)…" IsEnabled="False" />                             <!-- 将来 -->
+                <Separator />
+                <MenuItem Header="画像複製(_D)" IsEnabled="False" />                                  <!-- 将来 -->
             </MenuItem>
             <MenuItem Header="選択範囲(_S)">
                 <MenuItem Header="すべて選択(_A)" InputGestureText="Ctrl+A" IsEnabled="False" />      <!-- 8-5 -->
-                <MenuItem Header="選択を解除(_D)" InputGestureText="Ctrl+D" IsEnabled="False" />      <!-- 8-5 -->
+                <MenuItem Header="選択の取り消し(_D)" InputGestureText="Ctrl+D" IsEnabled="False" />  <!-- 8-5 -->
+                <MenuItem Header="領域選択(_M)" InputGestureText="M" IsEnabled="False" />             <!-- 8-5（「選択」の道具にする） -->
             </MenuItem>
             <MenuItem Header="画像(_I)">
                 <MenuItem Header="選択範囲で切り抜き(_P)" InputGestureText="Ctrl+Shift+X" IsEnabled="False" /> <!-- 9-1 -->
@@ -56,14 +67,41 @@
                 <MenuItem Header="左に 90° 回転(_L)" InputGestureText="Ctrl+Shift+R" IsEnabled="False" /> <!-- 9-3 -->
                 <MenuItem Header="左右反転(_H)" IsEnabled="False" />                                  <!-- 9-3 -->
                 <MenuItem Header="上下反転(_V)" IsEnabled="False" />                                  <!-- 9-3 -->
+                <MenuItem Header="回転(_T)…" IsEnabled="False" />                                     <!-- 将来（任意角度） -->
                 <Separator />
                 <MenuItem Header="画像サイズ(_S)…" IsEnabled="False" />                               <!-- 9-4 -->
             </MenuItem>
-            <!-- 登録されたフィルターを登録順に並べる（9-7）。それまでは項目が無いので、見出しごと無効にしておく -->
-            <MenuItem Header="フィルター(_T)" IsEnabled="False" />
+            <!-- サブメニューに分けない（設計書 F-06）。9-7 で、ぼかしと基本補正を、登録されたフィルター（登録順）の項目に
+                 置き換える。それより後ろは、まだ無いフィルター（将来）で、作って登録したら外す -->
+            <MenuItem Header="フィルター(_T)">
+                <MenuItem Header="ぼかし…" IsEnabled="False" />                                       <!-- 9-7 -->
+                <MenuItem Header="基本補正…" IsEnabled="False" />                                     <!-- 9-7 -->
+                <MenuItem Header="明度・コントラスト調整…" IsEnabled="False" />                       <!-- 将来 -->
+                <MenuItem Header="ガンマ・レベル補正…" IsEnabled="False" />                           <!-- 将来 -->
+                <MenuItem Header="色相・彩度調整…" IsEnabled="False" />                               <!-- 将来 -->
+                <MenuItem Header="シャープ…" IsEnabled="False" />                                     <!-- 将来 -->
+                <MenuItem Header="セピア調…" IsEnabled="False" />                                     <!-- 将来 -->
+                <MenuItem Header="グレイスケール…" IsEnabled="False" />                               <!-- 将来 -->
+                <MenuItem Header="ネガポジ反転…" IsEnabled="False" />                                 <!-- 将来 -->
+                <MenuItem Header="タイリング…" IsEnabled="False" />                                   <!-- 将来 -->
+                <MenuItem Header="エンボス…" IsEnabled="False" />                                     <!-- 将来 -->
+                <MenuItem Header="CG原画調変換…" IsEnabled="False" />                                 <!-- 将来 -->
+                <MenuItem Header="レンガ模様…" IsEnabled="False" />                                   <!-- 将来 -->
+                <MenuItem Header="ラスタ効果…" IsEnabled="False" />                                   <!-- 将来 -->
+                <MenuItem Header="モザイク…" IsEnabled="False" />                                     <!-- 将来 -->
+                <MenuItem Header="カラー合成…" IsEnabled="False" />                                   <!-- 将来 -->
+                <MenuItem Header="ノイズ除去…" IsEnabled="False" />                                   <!-- 将来 -->
+                <MenuItem Header="エッジ抽出…" IsEnabled="False" />                                   <!-- 将来 -->
+            </MenuItem>
+            <MenuItem Header="一括処理(_B)">
+                <MenuItem Header="一括フォーマット変換(_F)…" IsEnabled="False" />                     <!-- 将来 -->
+                <MenuItem Header="一括拡大縮小(_R)…" IsEnabled="False" />                             <!-- 将来 -->
+                <MenuItem Header="一括回転(_T)…" IsEnabled="False" />                                 <!-- 将来 -->
+            </MenuItem>
             <MenuItem Header="表示(_V)">
-                <MenuItem Header="拡大(_I)" InputGestureText="Ctrl++" IsEnabled="False" />            <!-- 8-2 -->
-                <MenuItem Header="縮小(_O)" InputGestureText="Ctrl+-" IsEnabled="False" />            <!-- 8-2 -->
+                <MenuItem Header="表示拡大(_I)" InputGestureText="Ctrl++" IsEnabled="False" />        <!-- 8-2 -->
+                <MenuItem Header="表示縮小(_O)" InputGestureText="Ctrl+-" IsEnabled="False" />        <!-- 8-2 -->
+                <MenuItem Header="表示サイズ(_S)…" IsEnabled="False" />                               <!-- 将来 -->
                 <Separator />
                 <MenuItem Header="全体表示(_F)" InputGestureText="Ctrl+0" IsEnabled="False" />        <!-- 8-2 -->
                 <MenuItem Header="100%(_A)" InputGestureText="Ctrl+1" IsEnabled="False" />            <!-- 8-2 -->
@@ -80,15 +118,15 @@
         <Border DockPanel.Dock="Top" Padding="8,6" BorderThickness="0,1,0,1" Style="{StaticResource AreaBorderStyle}">
             <StackPanel x:Name="ToolbarArea" Orientation="Horizontal" MinHeight="26">
                 <Button Content="開く" Command="{Binding OpenCommand}" ToolTip="画像を開く (Ctrl+O)" />
-                <Button Content="書き出し" IsEnabled="False" ToolTip="書き出し (Ctrl+E)" />            <!-- 10-2 -->
+                <Button Content="保存" IsEnabled="False" ToolTip="保存 (Ctrl+E)" />                    <!-- 10-2 -->
                 <Border Style="{StaticResource ToolbarSeparatorStyle}" />
                 <Button Content="元に戻す" IsEnabled="False" ToolTip="元に戻す (Ctrl+Z)" />            <!-- 9-2 -->
                 <Button Content="やり直し" IsEnabled="False" ToolTip="やり直し (Ctrl+Y)" />            <!-- 9-2 -->
                 <Border Style="{StaticResource ToolbarSeparatorStyle}" />
                 <Button Content="全体" IsEnabled="False" ToolTip="全体表示 (Ctrl+0)" />                <!-- 8-2 -->
                 <Button Content="100%" IsEnabled="False" ToolTip="100% (Ctrl+1)" />                    <!-- 8-2 -->
-                <Button Content="－" IsEnabled="False" ToolTip="縮小 (Ctrl+-)" />                      <!-- 8-2 -->
-                <Button Content="＋" IsEnabled="False" ToolTip="拡大 (Ctrl++)" />                      <!-- 8-2 -->
+                <Button Content="－" IsEnabled="False" ToolTip="表示縮小 (Ctrl+-)" />                  <!-- 8-2 -->
+                <Button Content="＋" IsEnabled="False" ToolTip="表示拡大 (Ctrl++)" />                  <!-- 8-2 -->
             </StackPanel>
         </Border>
 

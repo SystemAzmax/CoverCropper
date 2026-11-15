@@ -38,11 +38,11 @@ public class AppModulesTests
     {
         Assert.Equal("対応していないファイル形式です。", Messages.M01_UnsupportedFormat);
         Assert.Equal("画像を読み込めませんでした。（壊れています）", Messages.M02_LoadFailed("壊れています"));
-        Assert.Equal("書き出しました: a.jpg（182.4 KB）", Messages.M04_Exported("a.jpg", "182.4 KB"));
+        Assert.Equal("保存しました: a.jpg（182.4 KB）", Messages.M04_Exported("a.jpg", "182.4 KB"));
         Assert.Equal("3 件を開きました。", Messages.M09_Opened(3, 0));
         Assert.Equal("3 件を開きました。非対応 2 件を除きました。", Messages.M09_Opened(3, 2));
         Assert.Equal("同時に開けるのは 50 枚までです。2 件は開きませんでした。", Messages.M15_OverLimit(50, 2));
-        Assert.Equal("「a.jpg」には書き出していない編集があります。閉じますか？", Messages.M16_ConfirmClose("a.jpg"));
+        Assert.Equal("「a.jpg」には保存していない編集があります。閉じますか？", Messages.M16_ConfirmClose("a.jpg"));
         Assert.Equal("編集できませんでした。（メモリが不足しています）", Messages.M28_EditFailed(Messages.OutOfMemory));
         Assert.Equal("2 件を開けませんでした。\na.jpg: 壊れています\nb.png: 対応していないファイル形式です。",
             Messages.M29_OpenFailed(new[] { ("a.jpg", "壊れています"), ("b.png", Messages.M01_UnsupportedFormat) }));
