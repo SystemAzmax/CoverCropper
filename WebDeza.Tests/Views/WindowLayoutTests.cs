@@ -168,6 +168,100 @@ public class WindowLayoutTests
         Assert.Equal(new Point(0, 0), position);
     }
 
+    // ---------------------------------------------------------------- V40: 並べて表示（7-4）
+
+    [Theory]
+    [InlineData(1, new[] { 1 })]
+    [InlineData(2, new[] { 2 })]
+    [InlineData(3, new[] { 2, 1 })]
+    [InlineData(4, new[] { 2, 2 })]
+    [InlineData(5, new[] { 3, 2 })]
+    [InlineData(7, new[] { 3, 2, 2 })]
+    public void TileRows_ColumnsAreCeilingOfSquareRoot(int count, int[] expected)
+    {
+        Assert.Equal(expected, WindowLayout.TileRows(count));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    public void Tile_OneToFive_NoOverlapAndFillsWorkspace(int count)
+    {
+        var workspace = new Size(1001, 601); // 割り切れない大きさでも、隙間も重なりも作らない
+        var rects = WindowLayout.Tile(count, workspace);
+
+        Assert.Equal(count, rects.Count);
+        foreach (var rect in rects)
+        {
+            Assert.True(new Rect(workspace).Contains(rect), $"{rect} がワークスペースの外に出ている");
+            Assert.Equal(Math.Round(rect.X), rect.X); // 辺は DIP の整数にそろえる
+            Assert.Equal(Math.Round(rect.Right), rect.Right);
+        }
+        for (int i = 0; i < rects.Count; i++)
+        {
+            for (int j = i + 1; j < rects.Count; j++)
+            {
+                var overlap = Rect.Intersect(rects[i], rects[j]);
+                Assert.True(overlap.IsEmpty || overlap.Width == 0 || overlap.Height == 0, $"{rects[i]} と {rects[j]} が重なっている");
+            }
+        }
+        Assert.Equal(workspace.Width * workspace.Height, rects.Sum(r => r.Width * r.Height), 6);
+    }
+
+    [Fact]
+    public void Tile_Three_FewerWindowsRowIsWidened()
+    {
+        var rects = WindowLayout.Tile(3, Workspace);
+
+        Assert.Equal(new[] { new Rect(0, 0, 500, 300), new Rect(500, 0, 500, 300), new Rect(0, 300, 1000, 300) }, rects);
+    }
+
+    [Fact]
+    public void Tile_Many_NotSmallerThanMinimumAndTitleBarsInside()
+    {
+        // 50 枚（8 列 × 7 段）では格子の 1 マスが 125 幅になる → 最小の幅 160 にし、タイトルバーはワークスペースの内側に収める
+        var rects = WindowLayout.Tile(50, Workspace);
+
+        Assert.Equal(50, rects.Count);
+        Assert.All(rects, r =>
+        {
+            Assert.True(r.Width >= WindowLayout.MinWidth && r.Height >= WindowLayout.MinHeight);
+            Assert.True(WindowLayout.IsTitleBarInside(r, Workspace, TitleBar), r.ToString());
+        });
+    }
+
+    [Fact]
+    public void Tile_None_IsEmpty()
+    {
+        Assert.Empty(WindowLayout.Tile(0, Workspace));
+    }
+
+    // ---------------------------------------------------------------- 重ねて表示（7-4）
+
+    [Fact]
+    public void Cascade_ShiftsFromTopLeftKeepingSizes()
+    {
+        var sizes = new[] { new Size(400, 300), new Size(300, 200), new Size(400, 300) };
+
+        var rects = WindowLayout.Cascade(sizes, Workspace);
+
+        Assert.Equal(new[] { new Rect(0, 0, 400, 300), new Rect(30, 30, 300, 200), new Rect(60, 60, 400, 300) }, rects);
+    }
+
+    [Fact]
+    public void Cascade_ReturnsToTopLeftAtEdge()
+    {
+        var sizes = Enumerable.Repeat(new Size(400, 300), 5).ToArray();
+
+        var rects = WindowLayout.Cascade(sizes, new Size(500, 400));
+
+        Assert.Equal(new[] { 0.0, 30, 60, 90, 0 }, rects.Select(r => r.X));
+        Assert.Equal(new[] { 0.0, 30, 60, 90, 0 }, rects.Select(r => r.Y));
+    }
+
     // ---------------------------------------------------------------- 新しく開いたときの大きさ
 
     private static readonly Size Chrome = new(26, 56);

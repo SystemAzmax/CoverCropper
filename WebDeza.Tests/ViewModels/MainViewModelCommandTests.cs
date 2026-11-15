@@ -45,6 +45,9 @@ public sealed class MainViewModelCommandTests : IDisposable
         Assert.True(_vm.OpenCommand.CanExecute(null));
         Assert.True(_vm.ExitCommand.CanExecute(null));
         Assert.False(_vm.CloseCommand.CanExecute(null));
+        Assert.False(_vm.CloseAllCommand.CanExecute(null));
+        Assert.False(_vm.CascadeWindowsCommand.CanExecute(null));
+        Assert.False(_vm.TileWindowsCommand.CanExecute(null));
     }
 
     // ---------------------------------------------------------------- 閉じる（7-2）

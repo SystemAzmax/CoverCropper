@@ -46,11 +46,7 @@ public sealed partial class MainViewModel : ObservableObject
             _log.Write($"Settings: {string.Join(" / ", loaded.Messages)} ({settingsService.FilePath})");
         }
 
-        Documents.CollectionChanged += (_, _) =>
-        {
-            NextDocumentCommand.NotifyCanExecuteChanged();
-            PreviousDocumentCommand.NotifyCanExecuteChanged();
-        };
+        Documents.CollectionChanged += (_, _) => NotifyDocumentCommandsChanged();
     }
 
     /// <summary>検証済みの設定（変えたら SaveSettingsQuietly で保存する）</summary>
@@ -67,9 +63,21 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>読み込み中・編集の確定中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(OpenCommand), nameof(CloseCommand), nameof(ExitCommand),
-        nameof(NextDocumentCommand), nameof(PreviousDocumentCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenCommand), nameof(CloseCommand), nameof(ExitCommand))]
     private bool _isBusy;
+
+    partial void OnIsBusyChanged(bool value) => NotifyDocumentCommandsChanged();
+
+    /// <summary>開いている画像の数で有効・無効が決まるコマンドに、変わったことを知らせる</summary>
+    private void NotifyDocumentCommandsChanged()
+    {
+        NextDocumentCommand.NotifyCanExecuteChanged();
+        PreviousDocumentCommand.NotifyCanExecuteChanged();
+        ActivateDocumentCommand.NotifyCanExecuteChanged();
+        CloseAllCommand.NotifyCanExecuteChanged();
+        CascadeWindowsCommand.NotifyCanExecuteChanged();
+        TileWindowsCommand.NotifyCanExecuteChanged();
+    }
 
     /// <summary>ステータスバーの末尾に出すメッセージ</summary>
     [ObservableProperty]
@@ -104,14 +112,22 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnActiveDocumentChanged(DocumentViewModel? oldValue, DocumentViewModel? newValue)
     {
-        if (oldValue is not null) oldValue.PropertyChanged -= OnActiveDocumentPropertyChanged;
-        if (newValue is not null) newValue.PropertyChanged += OnActiveDocumentPropertyChanged;
+        if (oldValue is not null)
+        {
+            oldValue.PropertyChanged -= OnActiveDocumentPropertyChanged;
+            oldValue.IsActive = false;
+        }
+        if (newValue is not null)
+        {
+            newValue.PropertyChanged += OnActiveDocumentPropertyChanged;
+            newValue.IsActive = true;
+        }
     }
 
     private void OnActiveDocumentPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        // 選択範囲・画像が変わったら、ステータスバーを更新する（子ウィンドウを動かしただけのときは要らない）
-        if (e.PropertyName == nameof(DocumentViewModel.WindowBounds)) return;
+        // 選択範囲・画像が変わったら、ステータスバーを更新する（子ウィンドウの位置やアクティブの印が変わっただけのときは要らない）
+        if (e.PropertyName is nameof(DocumentViewModel.WindowBounds) or nameof(DocumentViewModel.IsActive)) return;
         OnPropertyChanged(nameof(StatusText));
     }
 
@@ -277,6 +293,32 @@ public sealed partial class MainViewModel : ObservableObject
         ActiveDocument = Documents[next];
     }
 
+    private bool CanActivateDocument(DocumentViewModel? document) => !IsBusy && document is not null && Documents.Contains(document);
+
+    /// <summary>メニュー［ウィンドウ］の一覧で選んだ画像をアクティブにする</summary>
+    [RelayCommand(CanExecute = nameof(CanActivateDocument))]
+    private void ActivateDocument(DocumentViewModel? document)
+    {
+        if (CanActivateDocument(document)) ActiveDocument = document;
+    }
+
+    // ---------------------------------------------------------------- 並べ方（メニュー［ウィンドウ］）
+
+    /// <summary>
+    /// 子ウィンドウの並べ方を頼まれた（ワークスペースの大きさは画面にしか無いので、メインウィンドウが受けてワークスペースに並べさせる）
+    /// </summary>
+    public event EventHandler<WindowArrangement>? ArrangeWindowsRequested;
+
+    private bool HasDocumentsAndIdle => !IsBusy && Documents.Count > 0;
+
+    /// <summary>［ウィンドウ］→［重ねて表示］（左上から少しずつずらす。最大化を解く。設計書 F-02）</summary>
+    [RelayCommand(CanExecute = nameof(HasDocumentsAndIdle))]
+    private void CascadeWindows() => ArrangeWindowsRequested?.Invoke(this, WindowArrangement.Cascade);
+
+    /// <summary>［ウィンドウ］→［並べて表示］（格子に分けて、すべてが見えるようにする。最大化を解く。設計書 F-02）</summary>
+    [RelayCommand(CanExecute = nameof(HasDocumentsAndIdle))]
+    private void TileWindows() => ArrangeWindowsRequested?.Invoke(this, WindowArrangement.Tile);
+
     // ---------------------------------------------------------------- 閉じる
 
     private bool CanClose(DocumentViewModel? document) => !IsBusy && (document ?? ActiveDocument) is not null;
@@ -302,6 +344,18 @@ public sealed partial class MainViewModel : ObservableObject
             // 次の画像（無ければ前の画像）をアクティブにする
             ActiveDocument = Documents.Count > 0 ? Documents[Math.Min(index, Documents.Count - 1)] : null;
         }
+    }
+
+    /// <summary>
+    /// ［ファイル］→［すべて閉じる］（設計書 F-02）。開いている画像をすべて閉じ、参照をすべて外す。ファイルは削除しない
+    /// </summary>
+    /// <remarks>書き出していない編集があるときのまとめての確認（M16）は 9-8 で足す</remarks>
+    [RelayCommand(CanExecute = nameof(HasDocumentsAndIdle))]
+    private void CloseAll()
+    {
+        if (!HasDocumentsAndIdle) return;
+        ActiveDocument = null;
+        Documents.Clear();
     }
 
     // ---------------------------------------------------------------- 終了

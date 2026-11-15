@@ -15,7 +15,7 @@ namespace WebDeza.Views.Workspace;
 /// 最大化（ワークスペース全体で 1 つの状態）、ワークスペースの大きさが変わったときの寄せ直しを受け持つ。
 /// </summary>
 /// <remarks>
-/// WPF には MDI の仕組みが無いので自前で作る。重ねて表示・並べて表示は 7-4 で足す。
+/// WPF には MDI の仕組みが無いので自前で作る。
 /// </remarks>
 public sealed class DocumentWorkspace : Panel
 {
@@ -189,6 +189,28 @@ public sealed class DocumentWorkspace : Panel
             SetZIndex(window, i);
             window.IsActive = _zOrder[i] == ActiveDocument;
         }
+    }
+
+    // ---------------------------------------------------------------- 並べ方（メニュー［ウィンドウ］）
+
+    /// <summary>
+    /// 重ねて表示（設計書 F-02）: 奥から手前の順に、左上から少しずつずらして置く（手前のものほど右下）。大きさは今のまま。最大化を解く
+    /// </summary>
+    public void Cascade()
+    {
+        IsMaximized = false;
+        var documents = _zOrder.Where(d => d.WindowBounds is not null).ToList();
+        var rects = WindowLayout.Cascade(documents.Select(d => d.WindowBounds!.Value.Size).ToList(), RenderSize);
+        for (int i = 0; i < documents.Count; i++) documents[i].WindowBounds = rects[i];
+    }
+
+    /// <summary>並べて表示（設計書 F-02）: 開いた順に、ワークスペースを格子に分けて置く。最大化を解く</summary>
+    public void Tile()
+    {
+        IsMaximized = false;
+        var documents = DocumentList.Where(_windows.ContainsKey).ToList();
+        var rects = WindowLayout.Tile(documents.Count, RenderSize);
+        for (int i = 0; i < documents.Count; i++) documents[i].WindowBounds = rects[i];
     }
 
     // ---------------------------------------------------------------- 最大化・大きさの変化

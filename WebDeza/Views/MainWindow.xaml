@@ -29,7 +29,7 @@
             <MenuItem Header="ファイル(_F)">
                 <MenuItem Header="開く(_O)…" InputGestureText="Ctrl+O" Command="{Binding OpenCommand}" />
                 <MenuItem Header="閉じる(_C)" InputGestureText="Ctrl+W" Command="{Binding CloseCommand}" />
-                <MenuItem Header="すべて閉じる(_L)" IsEnabled="False" />                              <!-- 7-4 -->
+                <MenuItem Header="すべて閉じる(_L)" Command="{Binding CloseAllCommand}" />
                 <Separator />
                 <MenuItem Header="書き出し(_E)…" InputGestureText="Ctrl+E" IsEnabled="False" />       <!-- 10-2 -->
                 <MenuItem Header="すべて書き出し(_A)…" InputGestureText="Ctrl+Shift+E" IsEnabled="False" /> <!-- 10-11 -->
@@ -63,10 +63,11 @@
                 <MenuItem Header="全体表示(_F)" InputGestureText="Ctrl+0" IsEnabled="False" />        <!-- 8-2 -->
                 <MenuItem Header="100%(_A)" InputGestureText="Ctrl+1" IsEnabled="False" />            <!-- 8-2 -->
             </MenuItem>
-            <!-- 開いている画像の一覧（アクティブな画像に印）は 7-4 で、区切りの後に足す -->
-            <MenuItem Header="ウィンドウ(_W)">
-                <MenuItem Header="重ねて表示(_C)" IsEnabled="False" />                                <!-- 7-4 -->
-                <MenuItem Header="並べて表示(_T)" IsEnabled="False" />                                <!-- 7-4 -->
+            <!-- 区切りの後に、開いている画像の一覧（アクティブな画像に印）を、メニューを開くたびに作る（MainWindow.xaml.cs） -->
+            <MenuItem x:Name="WindowMenu" Header="ウィンドウ(_W)" SubmenuOpened="OnWindowMenuOpened">
+                <MenuItem Header="重ねて表示(_C)" Command="{Binding CascadeWindowsCommand}" />
+                <MenuItem Header="並べて表示(_T)" Command="{Binding TileWindowsCommand}" />
+                <Separator x:Name="WindowListSeparator" />
             </MenuItem>
         </Menu>
 

@@ -8,7 +8,7 @@ using WebDeza.ViewModels;
 namespace WebDeza.Tests.ViewModels;
 
 /// <summary>
-/// 複数の画像を開く・切り替える・閉じる（設計書 F-01・F-02。V38・V39 の一部。実装計画書 7-3）。
+/// 複数の画像を開く・切り替える・閉じる・並べる（設計書 F-01・F-02。V38・V39 の一部。実装計画書 7-3・7-4）。
 /// 形式とダイアログを差し替えて、ファイルの中身や画面を使わずに確かめる
 /// </summary>
 public sealed class MainViewModelDocumentsTests : IDisposable
@@ -276,5 +276,118 @@ public sealed class MainViewModelDocumentsTests : IDisposable
 
         Assert.Equal(new[] { "b.fake", "c.fake" }, FileNames);
         Assert.Same(active, _vm.ActiveDocument);
+    }
+
+    // ---------------------------------------------------------------- アクティブの印（7-4）
+
+    [Fact]
+    public async Task IsActive_FollowsActiveDocument()
+    {
+        await _vm.OpenFilesAsync(CreateFiles("a.fake", "b.fake"));
+        var (a, b) = (_vm.Documents[0], _vm.Documents[1]);
+        Assert.Equal((false, true), (a.IsActive, b.IsActive));
+
+        _vm.ActiveDocument = a;
+        Assert.Equal((true, false), (a.IsActive, b.IsActive));
+
+        _vm.CloseCommand.Execute(a);
+        Assert.False(a.IsActive); // 閉じた画像の印は外れる
+        Assert.True(b.IsActive);
+    }
+
+    // ---------------------------------------------------------------- メニュー［ウィンドウ］の一覧（7-4）
+
+    [Fact]
+    public async Task ActivateDocument_MakesThatDocumentActive()
+    {
+        await _vm.OpenFilesAsync(CreateFiles("a.fake", "b.fake"));
+        var first = _vm.Documents[0];
+
+        Assert.True(_vm.ActivateDocumentCommand.CanExecute(first));
+        _vm.ActivateDocumentCommand.Execute(first);
+
+        Assert.Same(first, _vm.ActiveDocument);
+        Assert.Equal("a.fake - webDeza", _vm.WindowTitle);
+    }
+
+    [Fact]
+    public async Task ActivateDocument_ClosedDocument_IsIgnored()
+    {
+        await _vm.OpenFilesAsync(CreateFiles("a.fake", "b.fake"));
+        var closed = _vm.Documents[0];
+        _vm.CloseCommand.Execute(closed);
+
+        Assert.False(_vm.ActivateDocumentCommand.CanExecute(closed));
+        _vm.ActivateDocumentCommand.Execute(closed);
+
+        Assert.Equal("b.fake", _vm.ActiveDocument!.FileName);
+    }
+
+    [Theory]
+    [InlineData(0, "photo.jpg", "_1 photo.jpg")]
+    [InlineData(8, "photo.jpg", "_9 photo.jpg")]
+    [InlineData(9, "photo.jpg", "10 photo.jpg")]        // 10 番目からはアクセスキーにしない
+    [InlineData(1, "my_photo.jpg", "_2 my__photo.jpg")] // 「_」はアクセスキーの印と見なされないようにする
+    public void WindowListHeader_NumberAndEscapedName(int index, string fileName, string expected)
+    {
+        Assert.Equal(expected, WebDeza.Views.MainWindow.WindowListHeader(index, fileName));
+    }
+
+    // ---------------------------------------------------------------- 重ねて表示・並べて表示（7-4）
+
+    [Fact]
+    public async Task CascadeAndTile_RequestArrangement()
+    {
+        var requests = new List<WindowArrangement>();
+        _vm.ArrangeWindowsRequested += (_, arrangement) => requests.Add(arrangement);
+        await _vm.LoadAsync(CreateFile("a.fake"));
+
+        Assert.True(_vm.CascadeWindowsCommand.CanExecute(null));
+        Assert.True(_vm.TileWindowsCommand.CanExecute(null));
+        _vm.CascadeWindowsCommand.Execute(null);
+        _vm.TileWindowsCommand.Execute(null);
+
+        Assert.Equal(new[] { WindowArrangement.Cascade, WindowArrangement.Tile }, requests);
+    }
+
+    // ---------------------------------------------------------------- すべて閉じる（7-4）
+
+    [Fact]
+    public async Task CloseAll_ClosesEveryDocumentButKeepsFiles()
+    {
+        var paths = CreateFiles("a.fake", "b.fake", "c.fake");
+        await _vm.OpenFilesAsync(paths);
+        var documents = _vm.Documents.ToList();
+
+        Assert.True(_vm.CloseAllCommand.CanExecute(null));
+        _vm.CloseAllCommand.Execute(null);
+
+        Assert.Empty(_vm.Documents);
+        Assert.Null(_vm.ActiveDocument);
+        Assert.Equal("webDeza", _vm.WindowTitle);
+        Assert.All(documents, d => Assert.False(d.IsActive));
+        Assert.All(paths, p => Assert.True(File.Exists(p)));
+        Assert.False(_vm.CloseAllCommand.CanExecute(null));
+        Assert.False(_vm.TileWindowsCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task WindowCommands_DisabledWhileLoading()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        var gate = new ManualResetEventSlim();
+        _fake.OnDecode = () => gate.Wait(TimeSpan.FromSeconds(10));
+
+        var loading = _vm.LoadAsync(CreateFile("b.fake"));
+
+        Assert.False(_vm.CloseAllCommand.CanExecute(null));
+        Assert.False(_vm.CascadeWindowsCommand.CanExecute(null));
+        Assert.False(_vm.TileWindowsCommand.CanExecute(null));
+        Assert.False(_vm.ActivateDocumentCommand.CanExecute(_vm.Documents[0]));
+        gate.Set();
+        await loading;
+
+        Assert.True(_vm.CloseAllCommand.CanExecute(null));
+        Assert.True(_vm.TileWindowsCommand.CanExecute(null));
     }
 }

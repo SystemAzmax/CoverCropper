@@ -23,7 +23,6 @@ public enum ResizeEdges
 /// </summary>
 /// <remarks>
 /// 子ウィンドウは、タイトルバーがワークスペースの外に出ないようにする（タイトルバーは子ウィンドウの上端にあり、幅いっぱい）。
-/// 重ねて表示・並べて表示は 7-4 で足す。
 /// </remarks>
 public static class WindowLayout
 {
@@ -77,6 +76,67 @@ public static class WindowLayout
         var position = new Point(rect.X + CascadeStep, rect.Y + CascadeStep);
         bool fits = position.X + size.Width <= workspace.Width && position.Y + size.Height <= workspace.Height;
         return fits ? position : new Point(0, 0);
+    }
+
+    /// <summary>
+    /// 重ねて表示（設計書 F-02）: 左上から CascadeStep ずつ右下へずらして置く。大きさは今のまま。
+    /// 収まらなくなったら（端まで来たら）、左上に戻る
+    /// </summary>
+    /// <param name="sizes">子ウィンドウの大きさ（奥から手前の順。手前のものほど右下に来て、奥のタイトルバーが見える）</param>
+    /// <param name="workspace">ワークスペースの大きさ</param>
+    public static IReadOnlyList<Rect> Cascade(IReadOnlyList<Size> sizes, Size workspace)
+    {
+        ArgumentNullException.ThrowIfNull(sizes);
+        var result = new List<Rect>(sizes.Count);
+        Rect? previous = null;
+        foreach (var size in sizes)
+        {
+            var rect = new Rect(NewWindowPosition(previous, size, workspace), size);
+            result.Add(rect);
+            previous = rect;
+        }
+        return result;
+    }
+
+    /// <summary>並べて表示の格子の列の数と、各段の子ウィンドウの数（上の段から）</summary>
+    /// <remarks>列の数は √n の切り上げ、段の数は n ÷ 列の数 の切り上げ。割り切れないときは、上の段に 1 つずつ多く置く</remarks>
+    public static IReadOnlyList<int> TileRows(int count)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        if (count == 0) return [];
+
+        int columns = (int)Math.Ceiling(Math.Sqrt(count));
+        int rows = (int)Math.Ceiling((double)count / columns);
+        return Enumerable.Range(0, rows).Select(row => count / rows + (row < count % rows ? 1 : 0)).ToList();
+    }
+
+    /// <summary>
+    /// 並べて表示（設計書 F-02）: ワークスペースを格子に分けて、すべての子ウィンドウが重ならずに見えるように置く。
+    /// 子ウィンドウの少ない段は、横に広げて隙間を作らない。辺は DIP の整数にそろえる。
+    /// ただし、最小の大きさより小さくはしない（とても多いときは重なる）
+    /// </summary>
+    /// <param name="count">子ウィンドウの数（並べる順は、呼ぶ側が決める）</param>
+    /// <param name="workspace">ワークスペースの大きさ</param>
+    public static IReadOnlyList<Rect> Tile(int count, Size workspace)
+    {
+        var rows = TileRows(count);
+        var result = new List<Rect>(count);
+        for (int row = 0; row < rows.Count; row++)
+        {
+            double top = Math.Round(workspace.Height * row / rows.Count);
+            double bottom = Math.Round(workspace.Height * (row + 1) / rows.Count);
+            int columns = rows[row];
+            for (int column = 0; column < columns; column++)
+            {
+                double left = Math.Round(workspace.Width * column / columns);
+                double right = Math.Round(workspace.Width * (column + 1) / columns);
+                // 最小の幅に広げたときは、タイトルバーが右へはみ出さないように左へ寄せる（縦は上の辺が格子の中にあればよい）
+                double width = Math.Max(MinWidth, right - left);
+                double height = Math.Max(MinHeight, bottom - top);
+                result.Add(new Rect(Clamp(left, 0, workspace.Width - width), top, width, height));
+            }
+        }
+        return result;
     }
 
     /// <summary>DIP に切り上げる（計算の誤差でわずかに超えただけのときは切り上げない）</summary>

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using WebDeza.ViewModels;
 
@@ -18,7 +19,64 @@ public partial class MainWindow : Window
         DataContext = viewModel;
         _vm.PropertyChanged += OnViewModelPropertyChanged;
         _vm.ExitRequested += (_, _) => Close();
+        _vm.ArrangeWindowsRequested += OnArrangeWindowsRequested;
+        WindowMenu.SubmenuClosed += OnWindowMenuClosed;
         RestorePlacement();
+    }
+
+    // ---------------------------------------------------------------- メニュー［ウィンドウ］
+
+    private void OnArrangeWindowsRequested(object? sender, WindowArrangement arrangement)
+    {
+        if (arrangement == WindowArrangement.Cascade) Workspace.Cascade();
+        else Workspace.Tile();
+    }
+
+    /// <summary>メニュー［ウィンドウ］を開いたら、区切りの後に、開いている画像の一覧（開いた順。アクティブな画像に印）を作る</summary>
+    private void OnWindowMenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, WindowMenu)) return;
+
+        RemoveWindowListItems();
+        WindowListSeparator.Visibility = _vm.Documents.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        for (int i = 0; i < _vm.Documents.Count; i++)
+        {
+            var document = _vm.Documents[i];
+            WindowMenu.Items.Add(new MenuItem
+            {
+                Header = WindowListHeader(i, document.FileName),
+                IsChecked = document.IsActive,
+                Command = _vm.ActivateDocumentCommand,
+                CommandParameter = document,
+            });
+        }
+    }
+
+    /// <summary>メニューを閉じたら一覧を外す（閉じた画像への参照を残さないため。設計書 5.10-11）</summary>
+    private void OnWindowMenuClosed(object sender, RoutedEventArgs e)
+    {
+        if (ReferenceEquals(e.OriginalSource, WindowMenu)) RemoveWindowListItems();
+    }
+
+    private void RemoveWindowListItems()
+    {
+        int start = WindowMenu.Items.IndexOf(WindowListSeparator) + 1;
+        while (WindowMenu.Items.Count > start) WindowMenu.Items.RemoveAt(start);
+    }
+
+    /// <summary>
+    /// 一覧の項目の文字: 「1 photo.jpg」。1〜9 番目は、その数字がアクセスキーになる。
+    /// ファイル名の「_」は、アクセスキーの印と見なされないように「__」にする
+    /// </summary>
+    /// <param name="index">開いた順の番号（0 から）</param>
+    /// <param name="fileName">ファイル名</param>
+    public static string WindowListHeader(int index, string fileName)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentNullException.ThrowIfNull(fileName);
+        int number = index + 1;
+        string name = fileName.Replace("_", "__");
+        return number <= 9 ? $"_{number} {name}" : $"{number} {name}";
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)

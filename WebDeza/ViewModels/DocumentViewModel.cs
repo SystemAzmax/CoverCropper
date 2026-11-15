@@ -74,6 +74,10 @@ public sealed partial class DocumentViewModel : ObservableObject, IEditorSession
     [ObservableProperty]
     private Rect? _windowBounds;
 
+    /// <summary>アクティブな画像か（MainViewModel が ActiveDocument に合わせて入れる。メニュー［ウィンドウ］の一覧の印に使う）</summary>
+    [ObservableProperty]
+    private bool _isActive;
+
     /// <summary>書き出していない編集があるか（履歴の状態が、開いたとき・最後に書き出したときと違う）</summary>
     public bool HasUnexportedEdits => History.StateId != _exportedStateId;
 
