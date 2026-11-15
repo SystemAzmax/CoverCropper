@@ -1,28 +1,30 @@
 using System.ComponentModel;
 using System.Windows;
-using WebDeza.Models;
+using System.Windows.Input;
+using WebDeza.ViewModels;
 
 namespace WebDeza.Views;
 
 public partial class MainWindow : Window
 {
-    private readonly AppSettings _settings;
-    private readonly Action _saveSettings;
+    private readonly MainViewModel _vm;
 
-    /// <param name="settings">検証済みの設定（ウィンドウの位置の復元と保存に使う）</param>
-    /// <param name="saveSettings">設定を保存する処理（閉じるときに呼ぶ）</param>
-    /// <param name="startupMessages">起動時にステータスバーに出すメッセージ（M20・M25 など）</param>
-    public MainWindow(AppSettings settings, Action saveSettings, IReadOnlyList<string> startupMessages)
+    public MainWindow(MainViewModel viewModel)
     {
-        ArgumentNullException.ThrowIfNull(settings);
-        ArgumentNullException.ThrowIfNull(saveSettings);
-        ArgumentNullException.ThrowIfNull(startupMessages);
+        ArgumentNullException.ThrowIfNull(viewModel);
 
         InitializeComponent();
-        _settings = settings;
-        _saveSettings = saveSettings;
-        StatusTextBlock.Text = string.Join(" ／ ", startupMessages);
+        _vm = viewModel;
+        DataContext = viewModel;
+        _vm.PropertyChanged += OnViewModelPropertyChanged;
         RestorePlacement();
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // 読み込み中・書き出し中は待機カーソル（設計書 4.2）
+        if (e.PropertyName == nameof(MainViewModel.IsBusy))
+            Mouse.OverrideCursor = _vm.IsBusy ? Cursors.Wait : null;
     }
 
     // ---------------------------------------------------------------- ウィンドウの位置の保存・復元
@@ -31,7 +33,7 @@ public partial class MainWindow : Window
     {
         var screen = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
             SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
-        if (WindowPlacement.GetRestoreBounds(_settings, screen, MinWidth, MinHeight) is not { } bounds)
+        if (WindowPlacement.GetRestoreBounds(_vm.Settings, screen, MinWidth, MinHeight) is not { } bounds)
             return;
 
         WindowStartupLocation = WindowStartupLocation.Manual;
@@ -39,7 +41,7 @@ public partial class MainWindow : Window
         Top = bounds.Top;
         Width = bounds.Width;
         Height = bounds.Height;
-        if (_settings.WindowMaximized) WindowState = WindowState.Maximized;
+        if (_vm.Settings.WindowMaximized) WindowState = WindowState.Maximized;
     }
 
     protected override void OnClosing(CancelEventArgs e)
@@ -48,7 +50,7 @@ public partial class MainWindow : Window
         if (e.Cancel) return;
 
         var normal = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
-        WindowPlacement.Save(_settings, WindowState, normal);
-        _saveSettings();
+        WindowPlacement.Save(_vm.Settings, WindowState, normal);
+        _vm.SaveSettingsQuietly();
     }
 }

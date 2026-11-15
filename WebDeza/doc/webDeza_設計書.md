@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| 文書バージョン | 2.2 |
+| 文書バージョン | 2.3 |
 | 作成日 | 2026-10-24 |
 | 対象 | Claude Code による実装 |
 | 対象OS | Windows 10 / 11（64bit）のみ |
@@ -16,6 +16,7 @@
 | 2.0 | 2026-10-24 | 画像編集ソフトとして、入力形式・出力形式・編集機能を足しやすい構成に変更。CoverCropper を、共通の画像処理エンジンを固定の設定で使う簡易版と位置付けた |
 | 2.1 | 2026-10-24 | 名称を webDeza に決定。書き出しサイズの表示・書き出しプレビュー・ファイルサイズの上限を追加。減色は行わないことを明記。CoverCropper の載せ替えを、ファイルを移さずに中身だけ置き換える方式に変更 |
 | 2.2 | 2026-11-14 | 表紙用のサイズ計算（`CoverFit`）をエンジンに入れないことにした。CoverCropper だけの計算なので、CoverCropper の `ImageResizer.CalculateSize` に今のまま残す（テスト E09 は欠番） |
+| 2.3 | 2026-11-15 | CoverCropper の設定の引き継ぎをやめた。CoverCropper は自分用のツールで公開しないため（F-12・M19・V17・T20 を修正） |
 
 ---
 
@@ -293,7 +294,7 @@ webDeza での登録は `WebDeza/Composition/AppModules.cs` の 1 か所にま�
 | 形式 | `System.Text.Json`。パラメーターの値は「キー → 数値・真偽・文字列」の JSON オブジェクトで書く |
 | 読み込みの失敗 | JSON が壊れているときは既定値で起動し、M20（CoverCropper と同じ） |
 | 値の検証 | 登録されていない形式 ID（プラグインを外した場合など）は JPEG にして M25。オプション・サイズ・上限が範囲外なら、その項目を既定値にする |
-| 初回の引き継ぎ | webDeza の設定ファイルが無い初回の起動に限り、CoverCropper の `%APPDATA%\CoverCropper\settings.json` から保存先フォルダと前回のフォルダを読み取って使い、M19。CoverCropper の設定ファイルは読むだけで変更しない |
+| CoverCropper の設定 | 引き継がない（CoverCropper は自分用のツールで公開しないため）。webDeza は CoverCropper の設定ファイルを読まない |
 | ログ | `%APPDATA%\webDeza\logs\app.log`（書式は CoverCropper と同じ） |
 
 ---
@@ -457,7 +458,7 @@ CoverCropper は、共通エンジンの機能を固定の設定・固定の順�
 | M16 | 確認 | 書き出していない編集があります。一覧をクリアしますか？ |
 | M17 | 確認 | 書き出していない編集があります。終了しますか？ |
 | M18 | 確認 | 一括書き出し中です。中止して終了しますか？（「はい」なら書き出し中の 1 件が終わるのを待って終了する） |
-| M19 | 情報(ステータス) | CoverCropper の保存先フォルダを引き継ぎました。 |
+| M19 | （欠番） | CoverCropper の設定を引き継がないため使わない |
 | M20 | 警告(ステータス) | 設定ファイルを読み込めなかったため、既定値で起動しました。 |
 | M21 | エラー（M01 に続けて） | この形式を読むには {必要なもの} が必要です。（例: Microsoft Store の「HEIF 画像拡張機能」） |
 | M22 | 情報(ステータス) | プリセット「{名前}」を保存しました。 |
@@ -990,7 +991,7 @@ public readonly record struct ViewTransform(double Scale, double OffsetX, double
 | `ExportService` | 1 枚の書き出し。今の条件と同じ計算結果が `ExportPreviewService` にあればそのバイト列を、無ければその場で `RenderForExport` → `ExportEncoder` で作り、`SafeFileWriter` で書く（保護するパス = 元画像）。ファイル名は `OutputFileNamer`（拡張子は形式の先頭の拡張子） |
 | `BatchExporter` | 一括書き出し: 1 件ずつ `FormatRegistry.Decode` → `RenderForExport` → `ExportEncoder` → `SafeFileWriter`。キャンセルは 1 件ごとの区切りで確かめる。進捗は `IProgress<BatchProgress>`、合計サイズを結果に入れる |
 | `FileCollector` | D&D・開く・コマンドライン引数のパスを、追加する画像ファイルの並びにする（F-01 の規則） |
-| `SettingsService` | 設定の読み書き・値の検証（F-12）・CoverCropper からの引き継ぎ |
+| `SettingsService` | 設定の読み書き・値の検証（F-12） |
 | `PresetService` | 組み込みと利用者のプリセットの一覧・保存・削除 |
 
 ```csharp
@@ -1100,7 +1101,7 @@ public sealed record CollectResult(IReadOnlyList<string> Files, int Duplicates, 
 
 ### 5.10 実装上の注意点
 
-1. **元画像の保護**: 元ファイルを開くのは `FormatRegistry` だけにする。書き込みは `SafeFileWriter` だけにし、保護するパスに元画像を必ず渡す。CoverCropper の設定ファイルは引き継ぎで読むだけにする。
+1. **元画像の保護**: 元ファイルを開くのは `FormatRegistry` だけにする。書き込みは `SafeFileWriter` だけにし、保護するパスに元画像を必ず渡す。CoverCropper の設定ファイルは読まない。
 2. **非同期と古い結果の破棄**: 読み込み・表示用画像の作成・フィルターのかけ直し・書き出しサイズの計算・書き出しは `Task.Run` で行う。画像の切り替え・フィルターのかけ直し・書き出しサイズの計算は、連番かキャンセルで「最後に頼んだもの」だけを画面に反映する。
 3. **メモリ**: 次の画像を読む前に、前の画像への参照を外す。8000×6000 では、元画像 約 192 MB、表示用画像 2 枚 約 128 MB、書き出し時の一時的な画像 最大約 400 MB を見込む。書き出しサイズが「指定しない」で画像が大きいときは、書き出しプレビューの圧縮前・圧縮後も同じだけ要る。`OutOfMemoryException` は捕まえて M02 / M07。一括書き出しは並列にしない。
 4. **Resize の互換性**: CoverCropper の出力を変えないため、不透明な画像の計算（重みの作り方・足す順番・丸め）は CoverCropper の `ImageResizer.ResizePixels` と同じにする。
@@ -1212,7 +1213,7 @@ User        MainWindow/VM                  BatchExporter
 | V14 | FileCollector | `a10.jpg`, `a2.jpg`, `a1.jpg` | `a1`, `a2`, `a10` の順 |
 | V15 | FileCollector | 空きが 2 件のところに 5 件 | 2 件を返し、超過 3 件 |
 | V16 | SettingsService | 範囲外のサイズ・オプション・上限 / 登録されていない形式 ID | 既定値 / JPEG にして警告 |
-| V17 | SettingsService | webDeza の設定なし・CoverCropper の設定あり / 両方あり | 保存先と前回のフォルダを引き継ぎ、CoverCropper のファイルの内容と更新日時は変わらない / 引き継がない |
+| V17 | （欠番） | CoverCropper の設定を引き継がないため使わない | |
 | V18 | SettingsService | 書き出し設定・比率・利用者のプリセットを保存して読み直す | 同じ値 |
 | V19 | PresetService | 組み込みの「表紙画像」 | JPEG・品質 85・Exact 1024×768（CoverCropper の AppConstants と同じ値） |
 | V20 | PresetService | 利用者のプリセットを保存 → 削除 / 組み込みを削除 | 一覧に増えて消える / できない |
@@ -1262,7 +1263,7 @@ ViewModel と道具のテストでは、形式・エンコーダー・ダイア�
 | T17 | 一括書き出し | 20 件で進捗・中止・失敗の混在・途中で出力先を消したとき。M11 の合計サイズ |
 | T18 | 大きな画像 | 8000×6000 程度で、選択から表示・ズーム・フィルターのプレビュー・書き出しサイズの計算が実用的な速さ |
 | T19 | 終了時の確認 | 書き出していない編集があるとき M17、一括書き出し中は M18 |
-| T20 | CoverCropper との分離 | CoverCropper と webDeza を同時に動かし、互いの設定・ログが変わらない。初回起動で保存先を引き継ぐ |
+| T20 | CoverCropper との分離 | CoverCropper と webDeza を同時に動かし、互いの設定・ログが変わらない |
 
 ---
 

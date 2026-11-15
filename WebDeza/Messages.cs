@@ -1,6 +1,6 @@
 namespace WebDeza;
 
-/// <summary>設計書 4.5 のメッセージ一覧（M08 は欠番）</summary>
+/// <summary>設計書 4.5 のメッセージ一覧（M08・M19 は欠番）</summary>
 public static class Messages
 {
     public const string M01_UnsupportedFormat = "対応していないファイル形式です。";
@@ -31,7 +31,6 @@ public static class Messages
     public const string M16_ConfirmClearList = "書き出していない編集があります。一覧をクリアしますか？";
     public const string M17_ConfirmExit = "書き出していない編集があります。終了しますか？";
     public const string M18_ConfirmExitDuringBatch = "一括書き出し中です。中止して終了しますか？";
-    public const string M19_InheritedFromCoverCropper = "CoverCropper の保存先フォルダを引き継ぎました。";
     public const string M20_SettingsLoadFailed = "設定ファイルを読み込めなかったため、既定値で起動しました。";
     public static string M21_Requirement(string requirement) => $"この形式を読むには {requirement} が必要です。";
     public static string M22_PresetSaved(string name) => $"プリセット「{name}」を保存しました。";
@@ -40,6 +39,9 @@ public static class Messages
     public static string M25_FormatNotFound(string formatId) => $"形式「{formatId}」が見つからないため、JPEG にしました。";
     public static string M26_OverSizeLimit(string limit, string size) => $"品質をいちばん低くしても上限（{limit}）を超えます（{size}）。";
     public const string M27_CannotDecodeResult = "この形式は読み直せないため、圧縮後の画像を表示できません（サイズは表示します）。";
+
+    /// <summary>M02・M07 の詳細に入れる、メモリが足りないときの文（CoverCropper と同じ）</summary>
+    public const string OutOfMemory = "メモリが不足しています";
 
     /// <summary>画像が無いときに、キャンバスの中央に出す案内文（設計書 4.1）</summary>
     public const string Placeholder = "ここに画像やフォルダをドラッグ＆ドロップ、または［開く］";

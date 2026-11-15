@@ -1,4 +1,3 @@
-using System.IO;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -6,8 +5,8 @@ using WebDeza.Composition;
 using WebDeza.Core;
 using WebDeza.Imaging.Filters;
 using WebDeza.Imaging.Formats;
-using WebDeza.Models;
 using WebDeza.Services;
+using WebDeza.ViewModels;
 using WebDeza.Views;
 
 namespace WebDeza;
@@ -40,28 +39,12 @@ public partial class App : Application
         var filters = new FilterRegistry();
         AppModules.Register(formats, filters);
 
-        // 設定（%APPDATA%\webDeza\settings.json）。形式の登録の後に読む（形式 Id とオプションの検証に使うため）
-        var settingsService = new SettingsService(formats);
-        var loaded = settingsService.Load();
-        if (loaded.Messages.Count > 0)
-            log.Write($"Settings: {string.Join(" / ", loaded.Messages)} ({settingsService.FilePath})");
+        // 設定は形式の登録の後に読む（形式 Id とオプションの検証に使うため）
+        var viewModel = new MainViewModel(formats, new SettingsService(formats), new DialogService(), log);
 
-        var window = new MainWindow(loaded.Settings, () => SaveSettingsQuietly(settingsService, loaded.Settings), loaded.Messages);
+        var window = new MainWindow(viewModel);
         MainWindow = window;
         window.Show();
-    }
-
-    /// <summary>設定を保存する。失敗してもアプリは止めず、ログに書く</summary>
-    private void SaveSettingsQuietly(SettingsService service, AppSettings settings)
-    {
-        try
-        {
-            service.Save(settings);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            _log?.Error("Settings save failed", ex);
-        }
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
