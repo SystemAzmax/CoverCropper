@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| 文書バージョン | 2.1 |
+| 文書バージョン | 2.2 |
 | 作成日 | 2026-10-24 |
 | 対象 | Claude Code による実装 |
 | 対象OS | Windows 10 / 11（64bit）のみ |
@@ -15,6 +15,7 @@
 | 1.0 | 2026-10-24 | 初版（仮称 CoverCropper2。CoverCropper に 4 つの拡張を加えた別アプリ） |
 | 2.0 | 2026-10-24 | 画像編集ソフトとして、入力形式・出力形式・編集機能を足しやすい構成に変更。CoverCropper を、共通の画像処理エンジンを固定の設定で使う簡易版と位置付けた |
 | 2.1 | 2026-10-24 | 名称を webDeza に決定。書き出しサイズの表示・書き出しプレビュー・ファイルサイズの上限を追加。減色は行わないことを明記。CoverCropper の載せ替えを、ファイルを移さずに中身だけ置き換える方式に変更 |
+| 2.2 | 2026-11-14 | 表紙用のサイズ計算（`CoverFit`）をエンジンに入れないことにした。CoverCropper だけの計算なので、CoverCropper の `ImageResizer.CalculateSize` に今のまま残す（テスト E09 は欠番） |
 
 ---
 
@@ -309,7 +310,7 @@ CoverCropper は、共通エンジンの機能を固定の設定・固定の順�
 |---|---|---|
 | 入力形式 | .jpg .jpeg .png .bmp .gif .tif .tiff .webp | `AppConstants.SupportedExtensions`。形式レジストリのうち、この拡張子の形式だけを使う |
 | 透過 | 白で塗る | エンジンの `Flatten`（読み込み直後） |
-| リサイズの大きさ | 横 1024 基準。縦が 768 未満なら縦 768 基準（CoverCropper 設計書 F-02） | エンジンの `CoverFit.CalculateSize` に 1024・768 を渡す |
+| リサイズの大きさ | 横 1024 基準。縦が 768 未満なら縦 768 基準（CoverCropper 設計書 F-02） | CoverCropper の `ImageResizer.CalculateSize`（今のまま。CoverCropper だけの計算なので、エンジンには入れない） |
 | 補間 | Lanczos3 | エンジンの `Resize` |
 | 切り抜き | 1024×768 | エンジンの `Crop` |
 | 書き出し | JPEG・品質 85・メタデータなし | WIC プラグインの JPEG エンコーダーと `SafeFileWriter` |
@@ -497,8 +498,7 @@ WebDeza.Imaging/                        … 【新規】画像処理エンジン
 ├─ Operations/
 │  ├─ Crop.cs
 │  ├─ Resize.cs                         … Lanczos3（CoverCropper の ImageResizer と同じ計算。透過は乗算済みで計算）
-│  ├─ Flatten.cs                        … 背景色で塗って不透明にする
-│  └─ CoverFit.cs                       … CoverCropper 設計書 F-02 のサイズ計算
+│  └─ Flatten.cs                        … 背景色で塗って不透明にする
 ├─ Parameters/
 │  ├─ ParameterDescriptor.cs            … パラメーターの記述（UI の自動生成に使う）
 │  └─ ParameterValues.cs                … パラメーターの値（不変・値で比較・JSON 化できる）
@@ -586,7 +586,6 @@ public sealed class ImageBuffer
 | `Crop.Apply(image, PixelRect)` | 矩形を切り出す。はみ出す矩形は `ArgumentOutOfRangeException` |
 | `Resize.Apply(image, width, height)` | Lanczos3 の分離型畳み込み（CoverCropper の `ImageResizer.ResizePixels` と同じ計算）。不透明な画像は CoverCropper と同じ計算、透過のある画像は乗算済みアルファで計算して、透明部分の色がにじまないようにする |
 | `Flatten.Apply(image, RgbColor)` | 背景色で塗って不透明にする（CoverCropper の白背景合成と同じ式） |
-| `CoverFit.CalculateSize(w, h, targetW, targetH)` | CoverCropper 設計書 F-02 の式を、目標サイズを引数にして一般化したもの |
 
 **パラメーターの記述と値**（フィルターと出力形式のオプションで共用）
 
@@ -871,7 +870,7 @@ public static class SafeFileWriter
    |---|---|
    | `ImageLoader.Load` | 拡張子を `AppConstants.SupportedExtensions` で確かめる → `FormatRegistry.Decode` → `Flatten(白)` → Bgr24 の `BitmapSource` |
    | `ImageLoader.ApplyOrientation`（public static） | エンジンの `Orientation` を使う（Bgr24 の配列を受け取る形は残す） |
-   | `ImageResizer.CalculateSize` / `Resize` | `CoverFit.CalculateSize(w, h, 1024, 768)` / `Resize.Apply` |
+   | `ImageResizer.CalculateSize` / `Resize` | CalculateSize は今のまま（CoverCropper だけの計算）。Resize は `Resize.Apply` |
    | `ImageCropper.Clamp` / `Center` / `Crop` | Clamp と Center は今のまま。Crop は `Crop.Apply` |
    | `JpegSaver.Save` | WIC プラグインの JPEG エンコーダー（品質は引数）＋ `SafeFileWriter` |
 
@@ -1085,7 +1084,7 @@ public sealed record CollectResult(IReadOnlyList<string> Files, int Duplicates, 
 **CoverCropper（簡易版）**
 
 ```
-元ファイル → FormatRegistry.Decode → Flatten(白) → CoverFit + Resize（全体） → Crop(1024×768) → JPEG(85) → SafeFileWriter
+元ファイル → FormatRegistry.Decode → Flatten(白) → ImageResizer.CalculateSize + Resize（全体） → Crop(1024×768) → JPEG(85) → SafeFileWriter
 ```
 
 ### 5.9 名称の表記
@@ -1161,7 +1160,7 @@ User        MainWindow/VM                  BatchExporter
 | E06 | Resize.Apply | 左半分が透明な黒 (0,0,0,0)、右半分が不透明な白 | 縮小後、不透明な部分の色が灰色にならない（透明部分の色がにじまない） |
 | E07 | Resize.Apply | 不透明な画像（`CoverCropper.Tests/Baseline/expected/*.loaded.png`） | 同じフォルダの `*.resized.png`（置き換え前の CoverCropper の ImageResizer の結果）と全画素一致 |
 | E08 | Flatten.Apply | 半透明の赤を白で | CoverCropper の白背景合成と同じ値 |
-| E09 | CoverFit.CalculateSize | CoverCropper 設計書 U01〜U07 の入力（目標 1024×768） | U01〜U07 の期待値 |
+| E09 | （欠番） | `CoverFit` をエンジンに入れないため使わない。サイズ計算は CoverCropper の `ImageResizerTests`（U01〜U07）で確かめている | |
 | E10 | BasicAdjustFilter | 既定値 / 明るさ ±100 / コントラスト ±100 / 彩度 −100 / 彩度 +100 の灰色 | IsIdentity / 0 と 255 は変わらず 128 は増減 / +100 で 32→0・224→255、−100 で 0→64・255→191 / R=G=B / 変わらない |
 | E11 | BasicAdjustFilter | 半透明の画像 | アルファが変わらない |
 | E12 | ParameterValues | 既定値 / With / 中身が同じ 2 つ / Normalize（範囲外・無いキー・知らないキー） | 記述の既定値 / 元は変わらない / Equals が true / 丸め・補い・捨てる |
@@ -1270,7 +1269,7 @@ ViewModel と道具のテストでは、形式・エンコーダー・ダイア�
 ## 7. 受け入れ基準
 
 - [ ] CoverCropper の画面・動作・出力結果が変わっていない（6.3 の R01〜R05 をすべて満たす）
-- [ ] CoverCropper の画像処理と設定・ログ・ファイル名の処理が共通部品を通っている（CoverCropper の Services に独自の処理が残っていない）
+- [ ] CoverCropper の画像処理と設定・ログ・ファイル名の処理が共通部品を通っている（CoverCropper の Services に独自の画素の処理やファイルの読み書きが残っていない。リサイズ後の大きさと枠の位置の計算は、CoverCropper だけのものなので残す）
 - [ ] 形式・フィルター・道具を、`AppModules` への登録だけで足せる（画面のコードを変えずに、テスト用の形式とフィルターを足して確かめる）
 - [ ] 5.4 の形式を読み込め、JPEG / PNG / BMP / TIFF で書き出せる
 - [ ] 複数の画像・フォルダを読み込み、一覧で切り替えられる

@@ -2,14 +2,15 @@
 
 | 項目 | 内容 |
 |---|---|
-| 文書バージョン | 1.0 |
+| 文書バージョン | 1.1 |
 | 作成日 | 2026-11-14 |
-| 対象 | `webDeza_設計書.md`（文書バージョン 2.1。以下「設計書」）の実装 |
-| 分け方 | 設計書 9 章の 11 段階を、機能 1 つごとの 75 ステップに分けた（段階 1 の 1 ステップは済み） |
+| 対象 | `webDeza_設計書.md`（文書バージョン 2.2。以下「設計書」）の実装 |
+| 分け方 | 設計書 9 章の 11 段階を、機能 1 つごとの 74 ステップに分けた（段階 1 の 1 ステップは済み） |
 
 | 版 | 日付 | 内容 |
 |---|---|---|
 | 1.0 | 2026-11-14 | 初版 |
+| 1.1 | 2026-11-14 | 2-6（表紙用のサイズ計算 `CoverFit`）を欠番にした。CoverCropper だけの計算で、エンジンには要らないため（設計書 2.2）。4-2 もそれに合わせた |
 
 ---
 
@@ -71,7 +72,7 @@
 | 段階 | 内容 | ステップ数 | ここまででできること | 状態 |
 |---|---|---|---|---|
 | 1 | 基準ファイルの作成 | 1 | 置き換える前の CoverCropper の処理結果が、基準として残っている | 済 |
-| 2 | エンジン（`WebDeza.Imaging`） | 17 | 画像処理の計算がそろい、すべてテストで確かめてある（画面も、ファイルの読み書きもまだ無い） | 未 |
+| 2 | エンジン（`WebDeza.Imaging`） | 16 | 画像処理の計算がそろい、すべてテストで確かめてある（画面も、ファイルの読み書きもまだ無い） | 未 |
 | 3 | WIC プラグイン（`WebDeza.Imaging.Wic`） | 4 | 画像ファイルを読み書きできる | 未 |
 | 4 | Core と CoverCropper の載せ替え | 8 | CoverCropper が共通部品の上で動き、今までと同じ結果を出す | 未 |
 | 5 | webDeza の土台 | 13 | webDeza で画像を 1 枚開き、枠を動かし、書き出し設定を変えて書き出せる | 未 |
@@ -82,7 +83,7 @@
 | 10 | 仕上げ | 3 | 拡張のしかたを確かめてあり、CI と README がそろう | 未 |
 | 11 | レビューと受け入れ | 2 | 設計書 7 章の受け入れ基準をすべて満たす | 未 |
 
-段階 2〜4（29 ステップ）は画面の無い部品づくりで、テストだけで確かめる。webDeza の画面が初めて出るのは 5-1、画像を書き出せるようになるのは 5-8 である。
+段階 2〜4（28 ステップ）は画面の無い部品づくりで、テストだけで確かめる。webDeza の画面が初めて出るのは 5-1、画像を書き出せるようになるのは 5-8 である。
 
 ---
 
@@ -105,8 +106,8 @@
 | 2-3 | 切り出し | `Operations/Crop` | E04 | 小 | 済 |
 | 2-4 | リサイズ | `Operations/Resize`（Lanczos3。不透明な画像は CoverCropper と同じ計算、透過のある画像は乗算済みアルファ） | E05〜E07 | 中 | 済 |
 | 2-5 | 背景色で塗る | `Operations/Flatten` | E08 | 小 | 済 |
-| 2-6 | 表紙用のサイズ計算 | `Operations/CoverFit` | E09 | 小 | 未 |
-| 2-7 | パラメーターの記述と値 | `Parameters/`（`ParameterKind`・`ParameterDescriptor`・`ChoiceItem`・`ParameterValues`） | E12 | 中 | 未 |
+| 2-6 | （欠番） | 表紙用のサイズ計算 `CoverFit` は作らない。CoverCropper だけの計算なので、CoverCropper の `ImageResizer.CalculateSize` に今のまま残す。webDeza の書き出しの大きさは 2-12 の `OutputPixelSize` で決まり、リサイズそのものは 2-4 の `Resize` で行う | — | — | — |
+| 2-7 | パラメーターの記述と値 | `Parameters/`（`ParameterKind`・`ParameterDescriptor`・`ChoiceItem`・`ParameterValues`） | E12 | 中 | 済 |
 | 2-8 | フィルターの仕組みと基本補正 | `Filters/`（`IImageFilter`・`FilterContext`・`FilterRegistry`・`BasicAdjustFilter`） | E10・E11。追加: `FilterRegistry`（登録順に並ぶ / 同じ Id は例外） | 中 | 未 |
 | 2-9 | 形式の仕組み | `Formats/`（`FormatCapabilities`・`IImageFormat`・`IImageDecoder`・`IImageEncoder`・`SizeTuning`・`DecodedImage`・`ImageMetadata`・`UnsupportedImageFormatException`・`FormatRegistry`） | E13。追加: `FormatRegistry.Decode` が元ファイルを読み取り専用で開き、読み終えたら閉じている / 登録の無い拡張子は `UnsupportedImageFormatException` | 中 | 未 |
 | 2-10 | 安全な書き込み | `IO/SafeFileWriter` | E14 | 小 | 未 |
@@ -150,7 +151,7 @@
 | No | 機能 | 作るもの・変えるもの | 確かめること | 規模 | 状態 |
 |---|---|---|---|---|---|
 | 4-1 | 読み込みの載せ替え | `CoverCropper.csproj` に `WebDeza.Imaging` と `WebDeza.Imaging.Wic` への参照を足す。CoverCropper の中に、WIC の形式を登録した既定の形式レジストリを 1 つ持つ。`ImageLoader.Load` と `ApplyOrientation` の中身を置き換える | `ImageLoaderTests`（14 件）・基準との比較（読み込み） | 中 | 未 |
-| 4-2 | リサイズの載せ替え | `ImageResizer.CalculateSize` を `CoverFit.CalculateSize` に、`Resize` を `Resize.Apply` に | `ImageResizerTests`（15 件）・基準との比較（リサイズ） | 小 | 未 |
+| 4-2 | リサイズの載せ替え | `ImageResizer.Resize` を `Resize.Apply` に（`CalculateSize` は CoverCropper だけの計算なので、今のまま） | `ImageResizerTests`（15 件）・基準との比較（リサイズ） | 小 | 未 |
 | 4-3 | 切り抜きの載せ替え | `ImageCropper.Crop` を `Crop.Apply` に（`Clamp` と `Center` は今のまま） | `ImageCropperTests`（14 件）・基準との比較（切り抜き） | 小 | 未 |
 | 4-4 | JPEG 保存の載せ替え | `JpegSaver.Save` を、WIC プラグインの JPEG エンコーダーと `SafeFileWriter` に | `JpegSaverTests`（3 件）・基準との比較（JPEG のバイト列） | 小 | 未 |
 | 4-5 | Core とログ | `WebDeza.Core`（net10.0）を作り、`CoverCropper.slnx` と `CoverCropper.csproj` の参照に足す。`AppPaths`・`AppLog`。CoverCropper の `AppPaths`・`AppLog` の中身を置き換える | テスト全件。手動: ログが今までと同じ場所に、同じ書式で書かれる（R03） | 小 | 未 |
