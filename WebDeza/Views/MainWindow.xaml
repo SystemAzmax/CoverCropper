@@ -56,9 +56,14 @@
         <Grid x:Name="CanvasArea" Background="{StaticResource CanvasBackgroundBrush}">
             <canvas:EditorCanvas x:Name="ImageCanvas"
                                  Image="{Binding Display}"
+                                 Session="{Binding}"
                                  ResetViewRequest="{Binding ResetViewRequest}"
                                  CheckerLightColor="{StaticResource CheckerLightColor}"
-                                 CheckerDarkColor="{StaticResource CheckerDarkColor}" />
+                                 CheckerDarkColor="{StaticResource CheckerDarkColor}"
+                                 OutsideFrameBrush="{StaticResource OutsideFrameBrush}"
+                                 FrameLineBrush="{StaticResource FrameLineBrush}"
+                                 FrameShadowBrush="{StaticResource FrameShadowBrush}"
+                                 GuideLineBrush="{StaticResource GuideLineBrush}" />
 
             <!-- 案内文は、画像があるときは隠す -->
             <TextBlock x:Name="PlaceholderText"

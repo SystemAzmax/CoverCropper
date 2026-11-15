@@ -85,7 +85,7 @@ public sealed class MainViewModelLoadTests : IDisposable
         Assert.True(_vm.HasImage);
         Assert.Same(_fake.Image, _vm.SourceImage);
         Assert.Equal("photo.fake - webDeza", _vm.WindowTitle);
-        Assert.Equal("画像: 6000×2000", _vm.StatusText);
+        Assert.StartsWith("画像: 6000×2000 ／ ", _vm.StatusText);
         Assert.Empty(_dialogs.Errors);
 
         var item = Assert.Single(_vm.Items);
@@ -129,7 +129,8 @@ public sealed class MainViewModelLoadTests : IDisposable
         Assert.Equal("b.fake", item.FileName);
         Assert.Same(second, vm.SourceImage);
         Assert.Equal("b.fake - webDeza", vm.WindowTitle);
-        Assert.Equal("画像: 8×4", vm.StatusText); // 起動時の M20 は消える
+        Assert.StartsWith("画像: 8×4 ／ ", vm.StatusText);
+        Assert.DoesNotContain(Messages.M20_SettingsLoadFailed, vm.StatusText); // 起動時の M20 は消える
     }
 
     [Fact]

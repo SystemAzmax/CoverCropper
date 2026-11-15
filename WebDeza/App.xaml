@@ -16,6 +16,12 @@
         <Color x:Key="CheckerLightColor">#FFFFFFFF</Color>
         <Color x:Key="CheckerDarkColor">#FFCCCCCC</Color>
 
+        <!-- 切り抜きの表示: 枠外の暗さ（設計書 F-03）・枠線と、その下に敷く暗い線・三分割のガイド -->
+        <SolidColorBrush x:Key="OutsideFrameBrush" Color="#80000000" />
+        <SolidColorBrush x:Key="FrameLineBrush" Color="#FFFFFFFF" />
+        <SolidColorBrush x:Key="FrameShadowBrush" Color="#C0000000" />
+        <SolidColorBrush x:Key="GuideLineBrush" Color="#80FFFFFF" />
+
         <!-- 領域（ツールバー・画像一覧・道具・編集パネル）の枠 -->
         <Style x:Key="AreaBorderStyle" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorBaseBrush}" />

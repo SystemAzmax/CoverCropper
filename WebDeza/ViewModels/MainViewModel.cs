@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -10,6 +11,7 @@ using WebDeza.Imaging.Formats;
 using WebDeza.Imaging.Wic;
 using WebDeza.Models;
 using WebDeza.Services;
+using WebDeza.Views.Canvas;
 
 namespace WebDeza.ViewModels;
 
@@ -20,7 +22,7 @@ namespace WebDeza.ViewModels;
 /// 一覧は最初から「複数の画像と、選んでいる画像」の形にしてある。今は［開く］で 1 枚ずつ読み、一覧は 1 件まで
 /// （開くと一覧を入れ替える）。複数の画像を扱うのは実装計画書 9-2 から。
 /// </remarks>
-public sealed partial class MainViewModel : ObservableObject
+public sealed partial class MainViewModel : ObservableObject, IEditorSession
 {
     /// <summary>表示用画像の長辺の上限（設計書 F-03）。これより大きい画像は縮小して表示する（書き出しには使わない）</summary>
     public const int PreviewMaxSide = 4096;
@@ -74,6 +76,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>キャンバスに描く表示用画像。読み込めていなければ null</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusText), nameof(CropFrame))]
     private DisplayImage? _display;
 
     /// <summary>
@@ -101,19 +104,97 @@ public sealed partial class MainViewModel : ObservableObject
         : AppInfo.ProductName;
 
     /// <summary>
-    /// ステータスバー: 「画像: {編集画像の幅}×{高さ} ／ {メッセージ}」（設計書 4.2）。
-    /// 枠・書き出しの項目は、それぞれの機能を作るステップで足す
+    /// ステータスバー（設計書 4.2）:
+    /// 「画像: {編集画像の幅}×{高さ} ／ 枠: ({X}, {Y}) {幅}×{高さ} ／ 書き出し: {幅}×{高さ} {形式}（{書き出し倍率} 倍）／ {メッセージ}」。
+    /// 書き出し倍率が 1 を超えるときは M03 を出す。書き出しサイズ（バイト数）は、計算を作るステップで足す
     /// </summary>
     public string StatusText
     {
         get
         {
             var parts = new List<string>();
-            // 回転・反転（7-1）ができるまでは、編集画像の大きさ = 向きを直した元画像の大きさ
-            if (SourceImage is { } image) parts.Add($"画像: {image.Width}×{image.Height}");
+            if (Display is { } display && CropFrame is { } frame)
+            {
+                parts.Add($"画像: {display.EditedWidth}×{display.EditedHeight}");
+                parts.Add($"枠: ({frame.X}, {frame.Y}) {frame.Width}×{frame.Height}");
+
+                var outputSize = OutputSize;
+                var (width, height) = CropFrameCalculator.OutputPixelSize(frame, outputSize);
+                double scale = CropFrameCalculator.OutputScale(frame, outputSize);
+                string format = _formats.FindById(Settings.Export.FormatId)?.DisplayName ?? Settings.Export.FormatId;
+                parts.Add($"書き出し: {width}×{height} {format}（{scale.ToString("0.00", CultureInfo.InvariantCulture)} 倍）");
+                if (scale > 1) parts.Add(Messages.M03_Upscaled);
+            }
             if (!string.IsNullOrEmpty(StatusMessage)) parts.Add(StatusMessage);
             return string.Join(" ／ ", parts);
         }
+    }
+
+    // ---------------------------------------------------------------- 切り抜き（IEditorSession）
+
+    /// <summary>ドラッグ中の途中の状態（Preview で渡されたもの）。確定したら null</summary>
+    private EditRecipe? _previewRecipe;
+
+    /// <inheritdoc />
+    public event EventHandler? Changed;
+
+    /// <inheritdoc />
+    public EditRecipe Recipe => _previewRecipe ?? SelectedItem?.History.Current ?? EditRecipe.Initial;
+
+    /// <inheritdoc />
+    public int EditedWidth => Display?.EditedWidth ?? 0;
+
+    /// <inheritdoc />
+    public int EditedHeight => Display?.EditedHeight ?? 0;
+
+    /// <inheritdoc />
+    public OutputSize OutputSize => Settings.Export.Size.ToOutputSize();
+
+    /// <inheritdoc />
+    /// <exception cref="InvalidOperationException">画像が無い</exception>
+    public FrameRules CropRules => Display is { } display
+        ? CropFrameCalculator.Rules(display.EditedWidth, display.EditedHeight, CurrentCropAspect, OutputSize)
+        : throw new InvalidOperationException("表示している画像がありません。");
+
+    /// <summary>
+    /// 今の枠（編集画像のピクセル座標）。レシピの枠が null なら初期状態の枠、あれば規則に合わせたもの。画像が無ければ null
+    /// </summary>
+    public PixelRect? CropFrame => Display is null ? null : this.GetCropFrame();
+
+    /// <summary>切り抜きの比率の選択（設定は検証済みなので読めるはずだが、読めなければ自由）</summary>
+    private CropAspect CurrentCropAspect => Settings.CropAspect.ToCropAspect() ?? CropAspect.Free;
+
+    /// <inheritdoc />
+    public void Preview(EditRecipe recipe)
+    {
+        ArgumentNullException.ThrowIfNull(recipe);
+        if (SelectedItem is null || Display is null) throw new InvalidOperationException("表示している画像がありません。");
+        _previewRecipe = recipe;
+        OnRecipeChanged();
+    }
+
+    /// <inheritdoc />
+    public void Commit(EditRecipe recipe, string? coalesceKey = null)
+    {
+        ArgumentNullException.ThrowIfNull(recipe);
+        if (SelectedItem is not { } item || Display is null) throw new InvalidOperationException("表示している画像がありません。");
+        _previewRecipe = null;
+        item.History.Commit(recipe, coalesceKey);
+        OnRecipeChanged();
+    }
+
+    /// <summary>レシピが変わった（枠とステータスバーを更新し、キャンバスに描き直させる）</summary>
+    private void OnRecipeChanged()
+    {
+        OnPropertyChanged(nameof(CropFrame));
+        OnPropertyChanged(nameof(StatusText));
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    partial void OnDisplayChanged(DisplayImage? value)
+    {
+        _previewRecipe = null;
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     // ---------------------------------------------------------------- 開く
@@ -159,7 +240,7 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             var recipe = item.History.Current;
-            var aspect = Settings.CropAspect.ToCropAspect() ?? CropAspect.Free;
+            var aspect = CurrentCropAspect;
             var export = Settings.Export.ToExportSettings();
             var (image, display, size) = await Task.Run(() =>
             {
