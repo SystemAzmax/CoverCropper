@@ -48,9 +48,22 @@
             <Setter Property="BorderBrush" Value="{DynamicResource DividerStrokeColorDefaultBrush}" />
         </Style>
 
-        <!-- 子ウィンドウのタイトルバー（アクティブなときの色は 7-3 で足す） -->
+        <!-- 子ウィンドウのタイトルバー。アクティブな子ウィンドウは、上の縁をアクセントの色にし、文字を濃くする（設計書 F-02） -->
         <Style x:Key="DocumentTitleBarStyle" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorSecondaryBrush}" />
+            <Setter Property="BorderThickness" Value="0,3,0,0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style x:Key="DocumentTitleBarActiveStyle" TargetType="Border" BasedOn="{StaticResource DocumentTitleBarStyle}">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorBaseBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+        </Style>
+        <Style x:Key="DocumentTitleTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+        </Style>
+        <Style x:Key="DocumentTitleTextActiveStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
 
         <!-- 子ウィンドウのタイトルバーのボタン（最大化 / 元に戻す・閉じる）。記号は Segoe Fluent Icons -->

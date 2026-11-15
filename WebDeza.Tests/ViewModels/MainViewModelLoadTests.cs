@@ -111,7 +111,7 @@ public sealed class MainViewModelLoadTests : IDisposable
     }
 
     [Fact]
-    public async Task Load_SecondImage_ReplacesDocumentAndClearsStatusMessage()
+    public async Task Load_SecondImage_IsAddedAndBecomesActiveAndClearsStatusMessage()
     {
         File.WriteAllText(SettingsPath, "{ broken");
         var vm = CreateViewModel();
@@ -121,8 +121,9 @@ public sealed class MainViewModelLoadTests : IDisposable
 
         await vm.LoadAsync(CreateFile("b.fake"));
 
-        // 今は一覧に 1 件まで（複数は 7-3 から）
-        var document = Assert.Single(vm.Documents);
+        // 前の画像は開いたまま、足していく（7-3）
+        Assert.Equal(new[] { "a.fake", "b.fake" }, vm.Documents.Select(d => d.FileName));
+        var document = vm.ActiveDocument!;
         Assert.Equal("b.fake", document.FileName);
         Assert.Same(second, document.Image);
         Assert.Equal("b.fake - webDeza", vm.WindowTitle);
@@ -283,9 +284,10 @@ public sealed class MainViewModelLoadTests : IDisposable
 
         await _vm.LoadAsync(CreateFile("b.fake"));
 
-        // 読めなかったときは何も変えない
+        // 読めなかったときは、開いている画像を何も変えない
         Assert.Same(previous, _vm.ActiveDocument);
         Assert.Equal("a.fake", Assert.Single(_vm.Documents).FileName);
+        Assert.Single(_dialogs.Errors); // 1 件だけを開いたときは M02（M29 にしない）
     }
 
     // ---------------------------------------------------------------- ［開く］

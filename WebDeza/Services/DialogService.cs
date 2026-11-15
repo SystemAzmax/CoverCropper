@@ -11,10 +11,10 @@ public interface IDialogService
     /// <summary>エラーを出す</summary>
     void ShowError(string message);
 
-    /// <summary>「開く」のダイアログ。選んだファイルのパス、やめたときは null</summary>
+    /// <summary>「開く」のダイアログ（複数選択可）。選んだファイルのパス、やめたときは null</summary>
     /// <param name="initialDirectory">最初に開くフォルダ（無ければ既定）</param>
     /// <param name="filter">種類の一覧（OpenFileDialog.Filter の書き方）</param>
-    string? ShowOpenImageDialog(string? initialDirectory, string filter);
+    IReadOnlyList<string>? ShowOpenImageDialog(string? initialDirectory, string filter);
 }
 
 public sealed class DialogService : IDialogService
@@ -24,19 +24,19 @@ public sealed class DialogService : IDialogService
     public void ShowError(string message)
         => Show(message, MessageBoxButton.OK, MessageBoxImage.Error);
 
-    public string? ShowOpenImageDialog(string? initialDirectory, string filter)
+    public IReadOnlyList<string>? ShowOpenImageDialog(string? initialDirectory, string filter)
     {
         var dialog = new OpenFileDialog
         {
             Title = "画像を開く",
             Filter = filter,
-            Multiselect = false,
+            Multiselect = true,
             CheckFileExists = true,
         };
         if (!string.IsNullOrEmpty(initialDirectory) && Directory.Exists(initialDirectory))
             dialog.InitialDirectory = initialDirectory;
 
-        return dialog.ShowDialog(Owner) == true ? dialog.FileName : null;
+        return dialog.ShowDialog(Owner) == true ? dialog.FileNames : null;
     }
 
     private static MessageBoxResult Show(string message, MessageBoxButton button, MessageBoxImage image)

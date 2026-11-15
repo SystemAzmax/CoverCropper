@@ -23,7 +23,7 @@ public enum ResizeEdges
 /// </summary>
 /// <remarks>
 /// 子ウィンドウは、タイトルバーがワークスペースの外に出ないようにする（タイトルバーは子ウィンドウの上端にあり、幅いっぱい）。
-/// 新しく開く位置（少しずつずらす）は 7-3、重ねて表示・並べて表示は 7-4 で足す。
+/// 重ねて表示・並べて表示は 7-4 で足す。
 /// </remarks>
 public static class WindowLayout
 {
@@ -58,6 +58,25 @@ public static class WindowLayout
         return new Size(
             Math.Max(MinWidth, CeilingDip(imageWidth * scale + chrome.Width)),
             Math.Max(MinHeight, CeilingDip(imageHeight * scale + chrome.Height)));
+    }
+
+    /// <summary>新しく開いた子ウィンドウを、前の子ウィンドウからずらす量（DIP。前のタイトルバーが見えるように、その高さと同じ）</summary>
+    public const double CascadeStep = 30;
+
+    /// <summary>
+    /// 新しく開いた子ウィンドウの位置（設計書 F-02）: 前に開いた子ウィンドウから右下へ CascadeStep ずらす。
+    /// 子ウィンドウがワークスペースに収まらなくなったら（端まで来たら）、左上に戻る
+    /// </summary>
+    /// <param name="previous">前に開いた子ウィンドウ（無ければ null。左上に置く）</param>
+    /// <param name="size">新しい子ウィンドウの大きさ</param>
+    /// <param name="workspace">ワークスペースの大きさ</param>
+    public static Point NewWindowPosition(Rect? previous, Size size, Size workspace)
+    {
+        if (previous is not { } rect) return new Point(0, 0);
+
+        var position = new Point(rect.X + CascadeStep, rect.Y + CascadeStep);
+        bool fits = position.X + size.Width <= workspace.Width && position.Y + size.Height <= workspace.Height;
+        return fits ? position : new Point(0, 0);
     }
 
     /// <summary>DIP に切り上げる（計算の誤差でわずかに超えただけのときは切り上げない）</summary>

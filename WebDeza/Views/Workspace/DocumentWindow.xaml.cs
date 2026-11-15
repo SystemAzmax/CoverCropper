@@ -12,7 +12,7 @@ namespace WebDeza.Views.Workspace;
 /// 置くのは DocumentWorkspace が行う。
 /// </summary>
 /// <remarks>
-/// クリックでアクティブにすること・アクティブなときのタイトルバーの色は 7-3、書き出していない編集の印「*」は 9-1 で足す。
+/// どこをクリックしても、その画像がアクティブになる。書き出していない編集の印「*」は 9-1 で足す。
 /// </remarks>
 public partial class DocumentWindow : UserControl
 {
@@ -44,6 +44,10 @@ public partial class DocumentWindow : UserControl
         nameof(IsMaximized), typeof(bool), typeof(DocumentWindow),
         new FrameworkPropertyMetadata(false, (d, _) => ((DocumentWindow)d).UpdateMaximizedState()));
 
+    public static readonly DependencyProperty IsActiveProperty = DependencyProperty.Register(
+        nameof(IsActive), typeof(bool), typeof(DocumentWindow),
+        new FrameworkPropertyMetadata(false, (d, _) => ((DocumentWindow)d).UpdateActiveState()));
+
     private enum DragKind { None, Move, Resize }
 
     private DragKind _drag;
@@ -57,6 +61,7 @@ public partial class DocumentWindow : UserControl
         Frame.BorderThickness = new Thickness(FrameThickness);
         TitleBar.Height = TitleBarHeight;
         UpdateMaximizedState();
+        UpdateActiveState();
     }
 
     /// <summary>この子ウィンドウを置いているワークスペース（移動と大きさの計算に、その大きさを使う）</summary>
@@ -69,7 +74,26 @@ public partial class DocumentWindow : UserControl
         set => SetValue(IsMaximizedProperty, value);
     }
 
+    /// <summary>アクティブな画像の子ウィンドウか（ワークスペースが入れる）。タイトルバーの見た目が変わる</summary>
+    public bool IsActive
+    {
+        get => (bool)GetValue(IsActiveProperty);
+        set => SetValue(IsActiveProperty, value);
+    }
+
     private DocumentViewModel? Document => DataContext as DocumentViewModel;
+
+    private void UpdateActiveState()
+    {
+        TitleBar.Style = (Style)FindResource(IsActive ? "DocumentTitleBarActiveStyle" : "DocumentTitleBarStyle");
+        TitleText.Style = (Style)FindResource(IsActive ? "DocumentTitleTextActiveStyle" : "DocumentTitleTextStyle");
+    }
+
+    /// <summary>子ウィンドウのどこかが押されたら、その画像をアクティブにする（押したものの処理はそのまま続ける）</summary>
+    private void OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (Document is { } document) Workspace?.Activate(document);
+    }
 
     private void UpdateMaximizedState()
     {

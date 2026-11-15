@@ -15,11 +15,13 @@ namespace WebDeza.ViewModels;
 /// メインウィンドウの ViewModel（設計書 5.6）。開いている画像の一覧（Documents）とアクティブな画像を持つ。
 /// </summary>
 /// <remarks>
-/// 一覧は最初から「複数の画像と、アクティブな画像」の形にしてある。今は［開く］で 1 枚ずつ開き、一覧は 1 件まで
-/// （開くと入れ替える）。複数の画像を開けるようにするのは実装計画書 7-3 から。
+/// 開いた画像は Documents に足していき、画像ごとに子ウィンドウが 1 つできる（設計書 F-01・F-02）。
 /// </remarks>
 public sealed partial class MainViewModel : ObservableObject
 {
+    /// <summary>同時に開ける画像の数（設計書 F-01）</summary>
+    public const int MaxDocuments = 50;
+
     private readonly FormatRegistry _formats;
     private readonly SettingsService _settingsService;
     private readonly IDialogService _dialogs;
@@ -43,6 +45,12 @@ public sealed partial class MainViewModel : ObservableObject
             StatusMessage = string.Join(" ／ ", loaded.Messages);
             _log.Write($"Settings: {string.Join(" / ", loaded.Messages)} ({settingsService.FilePath})");
         }
+
+        Documents.CollectionChanged += (_, _) =>
+        {
+            NextDocumentCommand.NotifyCanExecuteChanged();
+            PreviousDocumentCommand.NotifyCanExecuteChanged();
+        };
     }
 
     /// <summary>検証済みの設定（変えたら SaveSettingsQuietly で保存する）</summary>
@@ -59,7 +67,8 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>読み込み中・編集の確定中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(OpenCommand), nameof(CloseCommand), nameof(ExitCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenCommand), nameof(CloseCommand), nameof(ExitCommand),
+        nameof(NextDocumentCommand), nameof(PreviousDocumentCommand))]
     private bool _isBusy;
 
     /// <summary>ステータスバーの末尾に出すメッセージ</summary>
@@ -114,37 +123,104 @@ public sealed partial class MainViewModel : ObservableObject
 
     private bool CanOpen => !IsBusy;
 
-    /// <summary>［開く］ / Ctrl+O</summary>
+    /// <summary>［開く］ / Ctrl+O（複数を選べる）</summary>
     [RelayCommand(CanExecute = nameof(CanOpen))]
     private async Task OpenAsync()
     {
-        var path = _dialogs.ShowOpenImageDialog(Settings.LastOpenFolder, OpenFileFilter.Build(_formats));
-        if (path is null) return;
-        await LoadAsync(path);
+        var paths = _dialogs.ShowOpenImageDialog(Settings.LastOpenFolder, OpenFileFilter.Build(_formats));
+        if (paths is not { Count: > 0 }) return;
+        await OpenFilesAsync(paths);
+    }
+
+    /// <summary>画像を 1 枚開く（OpenFilesAsync の 1 件の場合）</summary>
+    public Task LoadAsync(string path)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        return OpenFilesAsync([path]);
     }
 
     /// <summary>
-    /// 画像を 1 枚開く。読み込みと表示用画像の作成はバックグラウンドで行う。
-    /// 読めない形式は M01（要るものがあれば M21 を続ける）、そのほかの失敗は M02。読めなかったときは何も変えない。
+    /// 画像を開く（設計書 F-01）。渡された順に 1 枚ずつ、読み込みと表示用画像の作成をバックグラウンドで行い、Documents に足していく。
+    /// 終わったら、今回開いたうちの最後の画像をアクティブにする。
     /// </summary>
-    /// <remarks>今は一覧を 1 件までにしているので、開けたら前の画像と入れ替える（7-3 で、足していく形にする）</remarks>
-    public async Task LoadAsync(string path)
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item>既に開いている画像（フルパスが同じ。大文字小文字は区別しない）は開き直さず、その画像を選ぶ。今回の中の重複は 1 つにする</item>
+    /// <item>同時に開けるのは MaxDocuments 枚まで。超えた分は開かず、ステータスバーに M15</item>
+    /// <item>読めなかったものは開かない。1 件だけを開いたときは M01（要るものがあれば M21 を続ける）/ M02、
+    /// 複数を開いたときは、読めなかったものを M29 でまとめて 1 回で知らせる</item>
+    /// </list>
+    /// 開く順番（フルパスの自然順）と、フォルダ・非対応のファイルの扱いは、7-5 の FileCollector で決める。
+    /// </remarks>
+    public async Task OpenFilesAsync(IReadOnlyList<string> paths)
     {
-        ArgumentException.ThrowIfNullOrEmpty(path);
-        if (IsBusy) return;
+        ArgumentNullException.ThrowIfNull(paths);
+        if (IsBusy || paths.Count == 0) return;
 
-        if (!_formats.CanDecode(path))
+        var fullPaths = paths.Select(p => Path.GetFullPath(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var failures = new List<(string FileName, string Reason)>();
+        DocumentViewModel? select = null;
+        int overLimit = 0;
+
+        StatusMessage = null;
+        IsBusy = true;
+        try
         {
-            _dialogs.ShowError(Messages.M01_UnsupportedFormat);
-            return;
+            foreach (var fullPath in fullPaths)
+            {
+                if (FindDocument(fullPath) is { } existing)
+                {
+                    select = existing;
+                    continue;
+                }
+                if (Documents.Count >= MaxDocuments)
+                {
+                    overLimit++;
+                    continue;
+                }
+
+                var (document, error) = await LoadDocumentAsync(fullPath);
+                if (document is not null)
+                {
+                    Documents.Add(document);
+                    select = document;
+                }
+                else
+                {
+                    failures.Add((Path.GetFileName(fullPath), error!));
+                }
+            }
+        }
+        finally
+        {
+            IsBusy = false;
         }
 
-        var fullPath = Path.GetFullPath(path);
-        StatusMessage = null;
+        Settings.LastOpenFolder = Path.GetDirectoryName(fullPaths[^1]);
+        SaveSettingsQuietly();
 
-        DocumentViewModel? document = null;
-        string? error = null;
-        IsBusy = true;
+        if (select is not null) ActiveDocument = select;
+        if (overLimit > 0) StatusMessage = Messages.M15_OverLimit(MaxDocuments, overLimit);
+        if (failures.Count > 0)
+        {
+            _dialogs.ShowError(fullPaths.Count == 1
+                ? failures[0].Reason
+                : Messages.M29_OpenFailed(failures.Select(f => (f.FileName, f.Reason.Replace("\n", " "))).ToList()));
+        }
+    }
+
+    /// <summary>開いている画像を、フルパスで探す（大文字小文字は区別しない）</summary>
+    private DocumentViewModel? FindDocument(string fullPath)
+        => Documents.FirstOrDefault(d => string.Equals(d.Path, fullPath, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// 画像を 1 枚読み込む。読めない形式は M01（要るものがあれば M21 を続ける）、そのほかの失敗は M02 の文を返す。
+    /// 例外はアプリを落とさず、ログに書く（設計書 5.10-6）
+    /// </summary>
+    private async Task<(DocumentViewModel? Document, string? Error)> LoadDocumentAsync(string fullPath)
+    {
+        if (!_formats.CanDecode(fullPath)) return (null, Messages.M01_UnsupportedFormat);
+
         try
         {
             var (image, display, size) = await Task.Run(() =>
@@ -153,52 +229,52 @@ public sealed partial class MainViewModel : ObservableObject
                 var display = DisplayImage.Create(decoded.Image);
                 return (decoded.Image, display, DocumentViewModel.GetFileSize(fullPath));
             });
-            document = new DocumentViewModel(fullPath, image, display, size, SelectionAspect);
+            return (new DocumentViewModel(fullPath, image, display, size, SelectionAspect), null);
         }
         catch (UnsupportedImageFormatException ex)
         {
             // 拡張子は対応していても、中身が読めない・OS のコーデック（拡張機能）が無い
             _log.Error($"Load not supported: {fullPath}", ex);
-            error = ex.Requirement is { } requirement
+            return (null, ex.Requirement is { } requirement
                 ? $"{Messages.M01_UnsupportedFormat}\n{Messages.M21_Requirement(requirement)}"
-                : Messages.M01_UnsupportedFormat;
+                : Messages.M01_UnsupportedFormat);
         }
         catch (NotSupportedException ex)
         {
             _log.Error($"Load not supported: {fullPath}", ex);
-            error = Messages.M01_UnsupportedFormat;
+            return (null, Messages.M01_UnsupportedFormat);
         }
         catch (OutOfMemoryException ex)
         {
             _log.Error($"Load OOM: {fullPath}", ex);
-            error = Messages.M02_LoadFailed(Messages.OutOfMemory);
+            return (null, Messages.M02_LoadFailed(Messages.OutOfMemory));
         }
         catch (Exception ex)
         {
-            // 壊れたファイル・大きすぎる画像・形式プラグインの例外など（アプリは落とさない。設計書 5.10-6）
+            // 壊れたファイル・大きすぎる画像・形式プラグインの例外など
             _log.Error($"Load failed: {fullPath}", ex);
-            error = Messages.M02_LoadFailed(ex.Message);
+            return (null, Messages.M02_LoadFailed(ex.Message));
         }
-        finally
-        {
-            IsBusy = false;
-        }
+    }
 
-        Settings.LastOpenFolder = Path.GetDirectoryName(fullPath);
-        SaveSettingsQuietly();
+    // ---------------------------------------------------------------- 切り替え
 
-        if (document is not null)
-        {
-            // 前の画像への参照を外してから、新しい画像にする（一覧は 1 件まで）
-            ActiveDocument = null;
-            Documents.Clear();
-            Documents.Add(document);
-            ActiveDocument = document;
-        }
-        else if (error is not null)
-        {
-            _dialogs.ShowError(error);
-        }
+    private bool CanSwitchDocument => !IsBusy && Documents.Count > 1;
+
+    /// <summary>Ctrl+Tab: 次の画像をアクティブにする（開いた順。最後の次は最初）</summary>
+    [RelayCommand(CanExecute = nameof(CanSwitchDocument))]
+    private void NextDocument() => SwitchDocument(+1);
+
+    /// <summary>Ctrl+Shift+Tab: 前の画像をアクティブにする（最初の前は最後）</summary>
+    [RelayCommand(CanExecute = nameof(CanSwitchDocument))]
+    private void PreviousDocument() => SwitchDocument(-1);
+
+    private void SwitchDocument(int step)
+    {
+        if (Documents.Count == 0) return;
+        int index = ActiveDocument is null ? -1 : Documents.IndexOf(ActiveDocument);
+        int next = index < 0 ? 0 : ((index + step) % Documents.Count + Documents.Count) % Documents.Count;
+        ActiveDocument = Documents[next];
     }
 
     // ---------------------------------------------------------------- 閉じる

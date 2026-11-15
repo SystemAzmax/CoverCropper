@@ -9,7 +9,8 @@
              xmlns:local="clr-namespace:WebDeza.Views.Workspace"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:DocumentViewModel}"
-             d:DesignWidth="480" d:DesignHeight="320">
+             d:DesignWidth="480" d:DesignHeight="320"
+             PreviewMouseDown="OnPreviewMouseDown">
 
     <UserControl.Resources>
         <!-- 大きさを変えるためにつかむ縁と角（透明。見た目は枠の Border が持つ） -->
@@ -26,7 +27,7 @@
         <Border x:Name="Frame" Style="{StaticResource DocumentWindowFrameStyle}">
             <DockPanel>
                 <!-- タイトルバー: ドラッグで移動、ダブルクリックで最大化 ⇔ 元に戻す -->
-                <Border x:Name="TitleBar" DockPanel.Dock="Top" Style="{StaticResource DocumentTitleBarStyle}"
+                <Border x:Name="TitleBar" DockPanel.Dock="Top"
                         MouseLeftButtonDown="OnTitleBarMouseLeftButtonDown"
                         MouseMove="OnDragMouseMove"
                         MouseLeftButtonUp="OnDragMouseLeftButtonUp"
@@ -38,7 +39,7 @@
                                 Command="{Binding CloseCommand, RelativeSource={RelativeSource AncestorType=local:DocumentWorkspace}}" />
                         <Button x:Name="MaximizeButton" DockPanel.Dock="Right" Style="{StaticResource TitleBarButtonStyle}"
                                 Click="OnMaximizeButtonClick" />
-                        <TextBlock Text="{Binding FileName}" ToolTip="{Binding Path}"
+                        <TextBlock x:Name="TitleText" Text="{Binding FileName}" ToolTip="{Binding Path}"
                                    VerticalAlignment="Center" Margin="10,0,8,0" TextTrimming="CharacterEllipsis" />
                     </DockPanel>
                 </Border>

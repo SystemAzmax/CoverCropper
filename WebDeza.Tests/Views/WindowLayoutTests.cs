@@ -131,6 +131,43 @@ public class WindowLayoutTests
         Assert.Equal(new Rect(100, 100, 900, 500), bottomRight);
     }
 
+    // ---------------------------------------------------------------- V40: 新しく開く位置
+
+    [Fact]
+    public void NewWindowPosition_FiveTimes_ShiftsAndReturnsToTopLeftAtEdge()
+    {
+        // ワークスペース 500×400 に 400×300 の子ウィンドウ: 0, 30, 60, 90 と右下へずれ、120 では下にはみ出すので左上に戻る
+        var workspace = new Size(500, 400);
+        var size = new Size(400, 300);
+        Rect? previous = null;
+        var positions = new List<Point>();
+        for (int i = 0; i < 5; i++)
+        {
+            var position = WindowLayout.NewWindowPosition(previous, size, workspace);
+            positions.Add(position);
+            previous = new Rect(position, size);
+        }
+
+        Assert.Equal(new[] { new Point(0, 0), new Point(30, 30), new Point(60, 60), new Point(90, 90), new Point(0, 0) }, positions);
+    }
+
+    [Fact]
+    public void NewWindowPosition_FollowsMovedPreviousWindow()
+    {
+        // 前の子ウィンドウを利用者が動かしていたら、そこからずらす
+        var position = WindowLayout.NewWindowPosition(new Rect(200, 100, 300, 200), new Size(300, 200), Workspace);
+
+        Assert.Equal(new Point(230, 130), position);
+    }
+
+    [Fact]
+    public void NewWindowPosition_TooLargeToShift_TopLeft()
+    {
+        var position = WindowLayout.NewWindowPosition(new Rect(0, 0, 990, 590), new Size(990, 590), Workspace);
+
+        Assert.Equal(new Point(0, 0), position);
+    }
+
     // ---------------------------------------------------------------- 新しく開いたときの大きさ
 
     private static readonly Size Chrome = new(26, 56);

@@ -16,6 +16,8 @@
     <Window.InputBindings>
         <KeyBinding Modifiers="Control" Key="O" Command="{Binding OpenCommand}" />
         <KeyBinding Modifiers="Control" Key="W" Command="{Binding CloseCommand}" />
+        <KeyBinding Modifiers="Control" Key="Tab" Command="{Binding NextDocumentCommand}" />
+        <KeyBinding Modifiers="Control+Shift" Key="Tab" Command="{Binding PreviousDocumentCommand}" />
     </Window.InputBindings>
 
     <!-- 設計書 4.1 の領域の枠組み。中身は、それぞれの機能を作るステップで入れる -->
@@ -108,6 +110,7 @@
             <workspace:DocumentWorkspace x:Name="Workspace"
                                          Background="{StaticResource WorkspaceBackgroundBrush}"
                                          Documents="{Binding Documents}"
+                                         ActiveDocument="{Binding ActiveDocument}"
                                          CloseCommand="{Binding CloseCommand}" />
 
             <!-- 案内文はワークスペースの中央に出し、画像があるときは隠す -->
