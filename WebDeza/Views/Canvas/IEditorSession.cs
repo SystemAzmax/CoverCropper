@@ -4,46 +4,25 @@ using WebDeza.Imaging.Editing;
 namespace WebDeza.Views.Canvas;
 
 /// <summary>
-/// キャンバスと道具が、表示中の画像のレシピを読み書きするための窓口（設計書 5.6。MainViewModel が実装）。
-/// 画像があるときだけ使う（EditorCanvas は、描く画像があるときだけ呼ぶ）
+/// キャンバスと道具が、画像 1 枚の選択範囲を読み書きするための窓口（設計書 5.6。DocumentViewModel が実装）
 /// </summary>
 public interface IEditorSession
 {
-    /// <summary>今のレシピ（ドラッグ中は Preview で渡したもの）</summary>
-    EditRecipe Recipe { get; }
+    /// <summary>画像（今の中身。フル解像度）の幅。選択範囲の座標系の幅</summary>
+    int ImageWidth { get; }
 
-    /// <summary>編集画像（向きを適用したフル解像度）の幅。切り抜きの座標系の幅</summary>
-    int EditedWidth { get; }
+    /// <summary>画像の高さ</summary>
+    int ImageHeight { get; }
 
-    /// <summary>編集画像の高さ</summary>
-    int EditedHeight { get; }
-
-    /// <summary>今の画像・比率の選択・書き出しサイズでの、切り抜きの枠の規則</summary>
-    FrameRules CropRules { get; }
-
-    /// <summary>書き出しサイズ（矢印キーの移動量に使う）</summary>
-    OutputSize OutputSize { get; }
-
-    /// <summary>ドラッグ中の途中の状態を表示する（履歴に積まない）</summary>
-    void Preview(EditRecipe recipe);
-
-    /// <summary>変更を確定する（履歴に 1 段積む。直前と同じ coalesceKey で 1 秒以内なら、直前の段を置き換える）</summary>
-    void Commit(EditRecipe recipe, string? coalesceKey = null);
-
-    /// <summary>レシピ・画像・規則のどれかが変わった（キャンバスは描き直す）</summary>
-    event EventHandler? Changed;
-}
-
-public static class EditorSessionExtensions
-{
     /// <summary>
-    /// 今の枠（編集画像のピクセル座標）。レシピの枠が null なら初期状態の枠、あれば規則に合わせたもの
-    /// （書き出しの RenderPipeline と同じ決め方なので、表示と書き出しの範囲がずれない）
+    /// 選択範囲（画像のピクセル座標）。null なら無し。入れた値は SelectionRules に合わせて画像の内側に収める。
+    /// 選択範囲の操作は履歴に積まない（設計書 F-04）
     /// </summary>
-    public static PixelRect GetCropFrame(this IEditorSession session)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        var rules = session.CropRules;
-        return session.Recipe.Crop is { } crop ? CropFrameCalculator.Clamp(crop, rules) : CropFrameCalculator.Initial(rules);
-    }
+    PixelRect? Selection { get; set; }
+
+    /// <summary>今の画像の大きさと、選択範囲の比率から作った規則</summary>
+    FrameRules SelectionRules { get; }
+
+    /// <summary>画像・選択範囲・比率のどれかが変わった（キャンバスは描き直す）</summary>
+    event EventHandler? Changed;
 }

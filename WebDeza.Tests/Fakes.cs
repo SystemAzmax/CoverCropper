@@ -29,12 +29,16 @@ internal sealed class FakeFormat : IImageFormat, IImageDecoder
     /// <summary>読み込んだときに投げる例外（null なら Image を返す）</summary>
     public Func<Exception>? Throw { get; set; }
 
+    /// <summary>読み込みの最初に呼ぶ処理（読み込み中の状態を確かめるために、止めておくのに使う）</summary>
+    public Action? OnDecode { get; set; }
+
     /// <summary>読み込みを呼ばれた回数</summary>
     public int DecodeCount { get; private set; }
 
     public DecodedImage Decode(Stream stream, CancellationToken cancellationToken)
     {
         DecodeCount++;
+        OnDecode?.Invoke();
         if (Throw is not null) throw Throw();
         return new DecodedImage(Image, Id, new ImageMetadata(1, 1));
     }

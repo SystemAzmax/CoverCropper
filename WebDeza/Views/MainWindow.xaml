@@ -54,16 +54,15 @@
 
         <!-- 中央（キャンバス） -->
         <Grid x:Name="CanvasArea" Background="{StaticResource CanvasBackgroundBrush}">
+            <!-- アクティブな画像のキャンバス（子ウィンドウに分けるのは 7-2） -->
             <canvas:EditorCanvas x:Name="ImageCanvas"
-                                 Image="{Binding Display}"
-                                 Session="{Binding}"
-                                 ResetViewRequest="{Binding ResetViewRequest}"
+                                 Image="{Binding ActiveDocument.Display}"
+                                 Session="{Binding ActiveDocument}"
+                                 ResetViewRequest="{Binding ActiveDocument.ResetViewRequest}"
                                  CheckerLightColor="{StaticResource CheckerLightColor}"
                                  CheckerDarkColor="{StaticResource CheckerDarkColor}"
-                                 OutsideFrameBrush="{StaticResource OutsideFrameBrush}"
-                                 FrameLineBrush="{StaticResource FrameLineBrush}"
-                                 FrameShadowBrush="{StaticResource FrameShadowBrush}"
-                                 GuideLineBrush="{StaticResource GuideLineBrush}" />
+                                 SelectionLightBrush="{StaticResource SelectionLightBrush}"
+                                 SelectionDarkBrush="{StaticResource SelectionDarkBrush}" />
 
             <!-- 案内文は、画像があるときは隠す -->
             <TextBlock x:Name="PlaceholderText"

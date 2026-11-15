@@ -35,7 +35,7 @@ public class SettingsServiceTests
     // ---------------------------------------------------------------- 既定値・M20
 
     [Fact]
-    public void Load_MissingFile_ReturnsCoverImageDefaultsWithoutMessages()
+    public void Load_MissingFile_ReturnsDefaultsWithoutMessages()
     {
         using var temp = new TempFolder();
 
@@ -43,14 +43,13 @@ public class SettingsServiceTests
 
         Assert.Empty(result.Messages);
         var export = result.Settings.Export.ToExportSettings();
-        // 初回は組み込みのプリセット「表紙画像」と同じ: JPEG・品質 85・1024×768・背景は白
+        // 初回は JPEG・品質 85・背景は白（大きさは指定しない）
         Assert.Equal("jpeg", export.FormatId);
         Assert.Equal(85, export.GetOptions("jpeg").Get<int>("quality"));
         Assert.Null(export.SizeLimitBytes);
-        Assert.Equal(OutputSize.ExactSize(1024, 768), export.Size);
         Assert.Equal(new RgbColor(255, 255, 255), export.Background);
-        Assert.Equal(CropAspect.Free, result.Settings.CropAspect.ToCropAspect());
-        Assert.Empty(result.Settings.UserPresets);
+        Assert.Equal(SelectionAspectData.FreeKind, result.Settings.SelectionAspect.Kind);
+        Assert.Null(result.Settings.SelectionAspect.ToAspectRatio(600, 400));
         Assert.Null(result.Settings.OutputFolder);
         Assert.Null(result.Settings.WindowWidth);
         // 書き出せる形式はすべて、オプションの既定値を持つ
@@ -89,25 +88,6 @@ public class SettingsServiceTests
         Assert.Equal(new[] { Messages.M25_FormatNotFound(formatId) }, result.Messages);
     }
 
-    [Fact]
-    public void Load_UnknownFormatIdInSeveralPlaces_ReportsM25OncePerId()
-    {
-        using var temp = new TempFolder();
-
-        var result = LoadJson(temp, """
-            {
-              "Export": { "FormatId": "heic-writer" },
-              "UserPresets": [
-                { "Name": "A", "Export": { "FormatId": "heic-writer" } },
-                { "Name": "B", "Export": { "FormatId": "png" } },
-                { "Name": "C", "Export": { "FormatId": "jxl" } }
-              ]
-            }
-            """);
-
-        Assert.Equal(new[] { Messages.M25_FormatNotFound("heic-writer"), Messages.M25_FormatNotFound("jxl") }, result.Messages);
-        Assert.Equal(new[] { "jpeg", "png", "jpeg" }, result.Settings.UserPresets.Select(p => p.Export.FormatId));
-    }
 
     [Theory]
     [InlineData("""{ "quality": 500 }""")]     // 範囲外
@@ -173,25 +153,6 @@ public class SettingsServiceTests
     }
 
     [Theory]
-    [InlineData("""{ "Mode": "exact", "Width": 15, "Height": 768, "LongSide": 1920 }""", "exact", 1024, 768, 1920)]
-    [InlineData("""{ "Mode": "exact", "Width": 1200, "Height": 9000, "LongSide": 1920 }""", "exact", 1024, 768, 1920)]
-    [InlineData("""{ "Mode": "exact", "Width": 1200, "Height": 630, "LongSide": 0 }""", "exact", 1200, 630, 1920)]
-    [InlineData("""{ "Mode": "longSide", "Width": 16, "Height": 8192, "LongSide": 8193 }""", "longSide", 16, 8192, 1920)]
-    [InlineData("""{ "Mode": "original", "Width": 1080, "Height": 1080, "LongSide": 2400 }""", "original", 1080, 1080, 2400)]
-    [InlineData("""{ "Mode": "huge", "Width": 1080, "Height": 1080, "LongSide": 2400 }""", "exact", 1080, 1080, 2400)]
-    [InlineData("""null""", "exact", 1024, 768, 1920)]
-    public void Load_SizeOutOfRange_BecomesDefault(string size, string mode, int width, int height, int longSide)
-    {
-        using var temp = new TempFolder();
-
-        var result = LoadJson(temp, $$"""{ "Export": { "Size": {{size}} } }""");
-
-        var actual = result.Settings.Export.Size;
-        Assert.Equal((mode, width, height, longSide), (actual.Mode, actual.Width, actual.Height, actual.LongSide));
-        Assert.True(actual.ToOutputSize().IsValid);
-    }
-
-    [Theory]
     [InlineData("#336699", "#336699")]
     [InlineData("#abcdef", "#ABCDEF")]
     [InlineData("336699", "#FFFFFF")]
@@ -208,40 +169,44 @@ public class SettingsServiceTests
 
     [Theory]
     [InlineData("""{ "Kind": "fixed", "Width": 16, "Height": 9 }""", "fixed", 16, 9)]
-    [InlineData("""{ "Kind": "fixed", "Width": 8, "Height": 6 }""", "fixed", 4, 3)] // 約分して持つ
-    [InlineData("""{ "Kind": "original" }""", "original", 0, 0)]
-    [InlineData("""{ "Kind": "fixed", "Width": 0, "Height": 9 }""", "free", 0, 0)]
+    [InlineData("""{ "Kind": "fixed", "Width": 1200, "Height": 630 }""", "fixed", 1200, 630)] // カスタム（約分はしない。縦横の入れ替えで元に戻せるように）
+    [InlineData("""{ "Kind": "fixed", "Width": 10000, "Height": 1 }""", "fixed", 10000, 1)]
+    [InlineData("""{ "Kind": "original", "Width": 5, "Height": 5 }""", "original", 0, 0)]
+    [InlineData("""{ "Kind": "free" }""", "free", 0, 0)]
+    [InlineData("""{ "Kind": "fixed", "Width": 0, "Height": 9 }""", "free", 0, 0)]   // 範囲外は自由
+    [InlineData("""{ "Kind": "fixed", "Width": 10001, "Height": 9 }""", "free", 0, 0)]
     [InlineData("""{ "Kind": "diagonal" }""", "free", 0, 0)]
-    public void Load_CropAspect_IsValidated(string aspect, string kind, int width, int height)
+    [InlineData("""null""", "free", 0, 0)]
+    public void Load_SelectionAspect_IsValidated(string aspect, string kind, int width, int height)
     {
         using var temp = new TempFolder();
 
-        var result = LoadJson(temp, $$"""{ "CropAspect": {{aspect}} }""");
+        var result = LoadJson(temp, $$"""{ "SelectionAspect": {{aspect}} }""");
 
-        var actual = result.Settings.CropAspect;
+        var actual = result.Settings.SelectionAspect;
         Assert.Equal((kind, width, height), (actual.Kind, actual.Width, actual.Height));
+        Assert.Empty(result.Messages);
     }
 
     [Fact]
-    public void Load_UserPresetsWithoutNameOrDuplicated_AreDropped()
+    public void Load_OldSettingsFile_IgnoresRemovedItems()
     {
+        // 設計書 2.3 までの項目（切り抜きの比率・プリセット・書き出しのサイズ）が入った設定ファイル
         using var temp = new TempFolder();
 
         var result = LoadJson(temp, """
             {
-              "UserPresets": [
-                { "Name": "  ブログ用  ", "Export": { "FormatId": "png" } },
-                { "Name": "", "Export": {} },
-                { "Name": "ブログ用", "Export": { "FormatId": "bmp" } },
-                null,
-                { "Name": "サムネイル", "Export": null }
-              ]
+              "OutputFolder": "D:\\web",
+              "Export": { "FormatId": "png", "Size": { "Mode": "exact", "Width": 1024, "Height": 768 } },
+              "CropAspect": { "Kind": "fixed", "Width": 4, "Height": 3 },
+              "UserPresets": [ { "Name": "ブログ用", "Export": { "FormatId": "bmp" } } ]
             }
             """);
 
-        Assert.Equal(new[] { "ブログ用", "サムネイル" }, result.Settings.UserPresets.Select(p => p.Name));
-        Assert.Equal("png", result.Settings.UserPresets[0].Export.FormatId);
-        Assert.Equal("jpeg", result.Settings.UserPresets[1].Export.FormatId);
+        Assert.Empty(result.Messages); // 読めない設定ではないので、M20 は出さない
+        Assert.Equal(@"D:\web", result.Settings.OutputFolder);
+        Assert.Equal("png", result.Settings.Export.FormatId);
+        Assert.Equal(SelectionAspectData.FreeKind, result.Settings.SelectionAspect.Kind);
     }
 
     [Fact]
@@ -261,7 +226,7 @@ public class SettingsServiceTests
     // ---------------------------------------------------------------- V18: 保存して読み直す
 
     [Fact]
-    public void SaveThenLoad_ExportSettingsCropAspectAndUserPresets_RoundTrip()
+    public void SaveThenLoad_ExportSettingsAndSelectionAspect_RoundTrip()
     {
         using var temp = new TempFolder();
         var path = temp.Combine("sub", "settings.json");
@@ -277,28 +242,15 @@ public class SettingsServiceTests
                 ["tiff"] = ParameterValues.Empty.With("compression", "zip"),
             },
             SizeLimitBytes: null,
-            OutputSize.LongSideOf(2400),
+            OutputSize.OriginalSize,
             new RgbColor(0x33, 0x66, 0x99));
-        var preset = new ExportPreset("Web 300KB", new ExportSettings(
-            "jpeg",
-            new Dictionary<string, ParameterValues>
-            {
-                ["jpeg"] = Quality(90),
-                ["png"] = ParameterValues.Empty.With("interlace", false),
-                ["bmp"] = ParameterValues.Empty,
-                ["tiff"] = ParameterValues.Empty.With("compression", "lzw"),
-            },
-            SizeLimitBytes: 300 * 1024,
-            OutputSize.ExactSize(1200, 630),
-            new RgbColor(0, 0, 0)), IsBuiltIn: false);
 
         service.Save(new AppSettings
         {
             OutputFolder = @"D:\web\表紙",
             LastOpenFolder = @"C:\写真",
             Export = ExportSettingsData.From(export, rememberedSizeLimitKB: 512),
-            CropAspect = CropAspectData.From(CropAspect.Fixed(16, 9)),
-            UserPresets = { PresetData.From(preset) },
+            SelectionAspect = SelectionAspectData.Fixed(9, 16),
             WindowLeft = 100, WindowTop = 50, WindowWidth = 1500, WindowHeight = 950, WindowMaximized = true,
         });
         var result = new SettingsService(_formats, path).Load();
@@ -307,8 +259,7 @@ public class SettingsServiceTests
         var s = result.Settings;
         Assert.Equal(export, s.Export.ToExportSettings());
         Assert.Equal(512, s.Export.SizeLimitKB); // 「品質を指定」のときも上限の値を覚えている
-        Assert.Equal(CropAspect.Fixed(16, 9), s.CropAspect.ToCropAspect());
-        Assert.Equal(new[] { preset }, s.UserPresets.Select(p => p.ToPreset()));
+        Assert.Equal((SelectionAspectData.FixedKind, 9, 16), (s.SelectionAspect.Kind, s.SelectionAspect.Width, s.SelectionAspect.Height));
         Assert.Equal((@"D:\web\表紙", @"C:\写真"), (s.OutputFolder, s.LastOpenFolder));
         Assert.Equal((100.0, 50.0, 1500.0, 950.0, true), (s.WindowLeft, s.WindowTop, s.WindowWidth, s.WindowHeight, s.WindowMaximized));
     }
@@ -329,20 +280,23 @@ public class SettingsServiceTests
         Assert.Equal(85, options["jpeg"]!["quality"]!.GetValue<long>());
         Assert.False(options["png"]!["interlace"]!.GetValue<bool>());
         Assert.Equal("lzw", options["tiff"]!["compression"]!.GetValue<string>());
-        Assert.Equal("exact", json["Export"]!["Size"]!["Mode"]!.GetValue<string>());
+        Assert.Null(json["Export"]!["Size"]); // 書き出しの大きさは持たない
         Assert.Equal("#FFFFFF", json["Export"]!["Background"]!.GetValue<string>());
-        Assert.Equal("free", json["CropAspect"]!["Kind"]!.GetValue<string>());
+        Assert.Equal("free", json["SelectionAspect"]!["Kind"]!.GetValue<string>());
+        Assert.Null(json["SelectionAspect"]!["IsValid"]); // 計算で求める値は書かない
+        Assert.Null(json["CropAspect"]);
+        Assert.Null(json["UserPresets"]);
     }
 
     [Fact]
-    public void CreateDefaultExport_IsCoverImageSettings()
+    public void CreateDefaultExport_IsJpegQuality85()
     {
         var export = new SettingsService(_formats, "unused.json").CreateDefaultExport().ToExportSettings();
 
         Assert.Equal("jpeg", export.FormatId);
         Assert.Equal(Quality(85), export.GetOptions("jpeg"));
-        Assert.Equal(OutputSize.ExactSize(1024, 768), export.Size);
         Assert.Null(export.SizeLimitBytes);
+        Assert.Equal(new RgbColor(255, 255, 255), export.Background);
     }
 
     [Fact]

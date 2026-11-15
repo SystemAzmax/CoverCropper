@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using WebDeza.Imaging;
 using WebDeza.Imaging.Editing;
 using WebDeza.Imaging.Parameters;
@@ -8,6 +9,10 @@ namespace WebDeza.Models;
 /// %APPDATA%\webDeza\settings.json に保存する設定（設計書 F-12）。
 /// JSON にそのまま書く形なので、値は検証していない。読み込んだ値は SettingsService が検証してから使う。
 /// </summary>
+/// <remarks>
+/// 設計書 2.3 までの項目（切り抜きの比率 CropAspect・利用者のプリセット UserPresets・書き出しのサイズ Export.Size）は持たない。
+/// 古い設定ファイルにあっても、知らない項目として読み飛ばす。
+/// </remarks>
 public sealed class AppSettings
 {
     /// <summary>書き出し先のフォルダ</summary>
@@ -16,14 +21,11 @@ public sealed class AppSettings
     /// <summary>前回「開く」で使ったフォルダ</summary>
     public string? LastOpenFolder { get; set; }
 
-    /// <summary>今の書き出し設定</summary>
+    /// <summary>書き出しの設定（書き出しのダイアログで、前回［書き出し］を押したときのもの）</summary>
     public ExportSettingsData Export { get; set; } = new();
 
-    /// <summary>切り抜きの比率の選択（全画像共通）</summary>
-    public CropAspectData CropAspect { get; set; } = new();
-
-    /// <summary>利用者のプリセット（組み込みのプリセットは保存しない）</summary>
-    public List<PresetData> UserPresets { get; set; } = new();
+    /// <summary>選択範囲の比率（全画像共通）</summary>
+    public SelectionAspectData SelectionAspect { get; set; } = new();
 
     public double? WindowLeft { get; set; }
     public double? WindowTop { get; set; }
@@ -32,7 +34,7 @@ public sealed class AppSettings
     public bool WindowMaximized { get; set; }
 }
 
-/// <summary>書き出し設定の保存する形</summary>
+/// <summary>書き出しの設定の保存する形。大きさは持たない（今の画像の大きさのまま書き出す。設計書 F-08）</summary>
 public sealed class ExportSettingsData
 {
     /// <summary>ファイルサイズの上限の既定値（KB）。「上限を指定」に切り替えたときに最初に入っている値</summary>
@@ -56,22 +58,20 @@ public sealed class ExportSettingsData
     /// <summary>ファイルサイズの上限（KB。1 KB = 1024 バイト）。「品質を指定」のときも値は覚えておく</summary>
     public long SizeLimitKB { get; set; } = DefaultSizeLimitKB;
 
-    /// <summary>書き出す大きさ</summary>
-    public OutputSizeData Size { get; set; } = new();
-
     /// <summary>背景色（#RRGGBB）</summary>
     public string Background { get; set; } = "#FFFFFF";
 
-    /// <summary>エンジンの書き出し設定にする（値は検証済みであること）</summary>
+    /// <summary>エンジンの書き出しの設定にする（値は検証済みであること）</summary>
+    /// <remarks>エンジンの ExportSettings の大きさ（Size）は、実装計画書 6-6 で消す。それまでは「変えない」を渡す</remarks>
     public ExportSettings ToExportSettings() => new(
         FormatId,
         FormatOptions.Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value!, StringComparer.Ordinal),
         UseSizeLimit ? SizeLimitKB * 1024 : null,
-        Size.ToOutputSize(),
+        OutputSize.OriginalSize,
         ColorText.Parse(Background));
 
     /// <summary>
-    /// エンジンの書き出し設定から作る。上限は「品質を指定」のときも覚えておくので、そのときの値を rememberedSizeLimitKB で渡す
+    /// エンジンの書き出しの設定から作る。上限は「品質を指定」のときも覚えておくので、そのときの値を rememberedSizeLimitKB で渡す
     /// </summary>
     public static ExportSettingsData From(ExportSettings settings, long rememberedSizeLimitKB = DefaultSizeLimitKB)
     {
@@ -82,59 +82,23 @@ public sealed class ExportSettingsData
             FormatOptions = settings.FormatOptions.ToDictionary(p => p.Key, p => (ParameterValues?)p.Value, StringComparer.Ordinal),
             UseSizeLimit = settings.SizeLimitBytes is not null,
             SizeLimitKB = settings.SizeLimitBytes is { } bytes ? bytes / 1024 : rememberedSizeLimitKB,
-            Size = OutputSizeData.From(settings.Size),
             Background = ColorText.Format(settings.Background),
         };
     }
 }
 
-/// <summary>書き出す大きさの保存する形</summary>
-public sealed class OutputSizeData
-{
-    public const string ExactMode = "exact";
-    public const string LongSideMode = "longSide";
-    public const string OriginalMode = "original";
-
-    /// <summary>方式（"exact"・"longSide"・"original"）</summary>
-    public string Mode { get; set; } = ExactMode;
-
-    public int Width { get; set; } = 1024;
-    public int Height { get; set; } = 768;
-    public int LongSide { get; set; } = OutputSize.DefaultLongSide;
-
-    /// <summary>エンジンの書き出す大きさにする（値は検証済みであること）</summary>
-    public OutputSize ToOutputSize() => new(ParseMode(Mode) ?? OutputSizeMode.Exact, Width, Height, LongSide);
-
-    public static OutputSizeData From(OutputSize size)
-    {
-        ArgumentNullException.ThrowIfNull(size);
-        return new OutputSizeData { Mode = FormatMode(size.Mode), Width = size.Width, Height = size.Height, LongSide = size.LongSide };
-    }
-
-    /// <summary>方式の文字列を読む。知らない文字列なら null</summary>
-    public static OutputSizeMode? ParseMode(string? mode) => mode switch
-    {
-        ExactMode => OutputSizeMode.Exact,
-        LongSideMode => OutputSizeMode.LongSide,
-        OriginalMode => OutputSizeMode.Original,
-        _ => null,
-    };
-
-    public static string FormatMode(OutputSizeMode mode) => mode switch
-    {
-        OutputSizeMode.Exact => ExactMode,
-        OutputSizeMode.LongSide => LongSideMode,
-        OutputSizeMode.Original => OriginalMode,
-        _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, null),
-    };
-}
-
-/// <summary>切り抜きの比率の保存する形</summary>
-public sealed class CropAspectData
+/// <summary>
+/// 選択範囲の比率の保存する形（設計書 F-04）。
+/// 1:1・4:3・3:2・16:9 とカスタムは、どれも "fixed" と幅・高さで持つ（縦横を入れ替えたものは、幅と高さが入れ替わる）
+/// </summary>
+public sealed class SelectionAspectData
 {
     public const string FreeKind = "free";
     public const string OriginalKind = "original";
     public const string FixedKind = "fixed";
+
+    /// <summary>カスタムの比率に入れられる最大（幅・高さとも 1〜これ）</summary>
+    public const int MaxRatioLength = 10000;
 
     /// <summary>選び方（"free"・"original"・"fixed"）</summary>
     public string Kind { get; set; } = FreeKind;
@@ -145,43 +109,34 @@ public sealed class CropAspectData
     /// <summary>比率の高さ（fixed のとき）</summary>
     public int Height { get; set; }
 
-    /// <summary>エンジンの比率の選択にする。読めないときは null</summary>
-    public CropAspect? ToCropAspect() => Kind switch
+    /// <summary>値として使えるか（知らない選び方や、範囲外の比率でないか）。設定ファイルには書かない</summary>
+    [JsonIgnore]
+    public bool IsValid => Kind switch
     {
-        FreeKind => CropAspect.Free,
-        OriginalKind => CropAspect.Original,
-        FixedKind when Width > 0 && Height > 0 => CropAspect.Fixed(Width, Height),
-        _ => null,
+        FreeKind or OriginalKind => true,
+        FixedKind => Width is >= 1 and <= MaxRatioLength && Height is >= 1 and <= MaxRatioLength,
+        _ => false,
     };
 
-    public static CropAspectData From(CropAspect aspect)
+    /// <summary>
+    /// 画像に当てはめた比率。自由（と、使えない値）なら null、元画像と同じなら画像の幅:高さ
+    /// </summary>
+    public AspectRatio? ToAspectRatio(int imageWidth, int imageHeight)
     {
-        ArgumentNullException.ThrowIfNull(aspect);
-        return aspect.Kind switch
+        if (!IsValid) return null;
+        return Kind switch
         {
-            CropAspectKind.Free => new CropAspectData { Kind = FreeKind },
-            CropAspectKind.Original => new CropAspectData { Kind = OriginalKind },
-            CropAspectKind.Fixed => new CropAspectData { Kind = FixedKind, Width = aspect.Ratio.Width, Height = aspect.Ratio.Height },
-            _ => throw new ArgumentOutOfRangeException(nameof(aspect), aspect.Kind, null),
+            OriginalKind => new AspectRatio(imageWidth, imageHeight),
+            FixedKind => new AspectRatio(Width, Height),
+            _ => null,
         };
     }
-}
 
-/// <summary>利用者のプリセットの保存する形</summary>
-public sealed class PresetData
-{
-    public string Name { get; set; } = "";
+    public static SelectionAspectData Free() => new() { Kind = FreeKind };
 
-    public ExportSettingsData Export { get; set; } = new();
+    public static SelectionAspectData Original() => new() { Kind = OriginalKind };
 
-    /// <summary>エンジンのプリセットにする（値は検証済みであること）</summary>
-    public ExportPreset ToPreset() => new(Name, Export.ToExportSettings(), IsBuiltIn: false);
-
-    public static PresetData From(ExportPreset preset, long rememberedSizeLimitKB = ExportSettingsData.DefaultSizeLimitKB)
-    {
-        ArgumentNullException.ThrowIfNull(preset);
-        return new PresetData { Name = preset.Name, Export = ExportSettingsData.From(preset.Settings, rememberedSizeLimitKB) };
-    }
+    public static SelectionAspectData Fixed(int width, int height) => new() { Kind = FixedKind, Width = width, Height = height };
 }
 
 /// <summary>色と "#RRGGBB" の変換</summary>

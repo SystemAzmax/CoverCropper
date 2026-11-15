@@ -1,6 +1,5 @@
 using System.Text.Json;
 using WebDeza.Core;
-using WebDeza.Imaging.Editing;
 using WebDeza.Imaging.Formats;
 using WebDeza.Imaging.Parameters;
 using WebDeza.Models;
@@ -66,7 +65,7 @@ public sealed class SettingsService
     /// <summary>設定を書く（一時ファイルに書いてから置き換える）</summary>
     public void Save(AppSettings settings) => _file.Save(settings);
 
-    /// <summary>初回起動時の書き出し設定（組み込みのプリセット「表紙画像」と同じ: JPEG・品質 85・1024×768・背景は白）</summary>
+    /// <summary>初回起動時の書き出しの設定（JPEG・品質 85・背景は白）</summary>
     public ExportSettingsData CreateDefaultExport()
     {
         var export = new ExportSettingsData();
@@ -78,7 +77,7 @@ public sealed class SettingsService
 
     /// <summary>
     /// 設定の値を検証して直す。登録されていない形式 Id は JPEG にして M25 を messages に足す。
-    /// オプション・サイズ・上限・背景色・比率が範囲外か読めないときは、その項目を既定値にする
+    /// オプション・上限・背景色・比率が範囲外か読めないときは、その項目を既定値にする
     /// </summary>
     public void Validate(AppSettings settings, IList<string> messages)
     {
@@ -93,24 +92,12 @@ public sealed class SettingsService
         settings.Export ??= new ExportSettingsData();
         ValidateExport(settings.Export, reported, messages);
 
-        settings.CropAspect = settings.CropAspect?.ToCropAspect() is { } aspect
-            ? CropAspectData.From(aspect)
-            : new CropAspectData();
-
-        // 利用者のプリセット: 名前の無いもの・同じ名前の 2 つ目以降は捨てる
-        var names = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
-        var presets = new List<PresetData>();
-        foreach (var preset in settings.UserPresets ?? new List<PresetData>())
-        {
-            if (preset is null) continue;
-            var name = preset.Name?.Trim();
-            if (string.IsNullOrEmpty(name) || !names.Add(name)) continue;
-            preset.Name = name;
-            preset.Export ??= new ExportSettingsData();
-            ValidateExport(preset.Export, reported, messages);
-            presets.Add(preset);
-        }
-        settings.UserPresets = presets;
+        // 選択範囲の比率: 知らない選び方・範囲外の比率は「自由」
+        settings.SelectionAspect = settings.SelectionAspect is { IsValid: true } aspect
+            ? aspect.Kind == SelectionAspectData.FixedKind
+                ? SelectionAspectData.Fixed(aspect.Width, aspect.Height)
+                : new SelectionAspectData { Kind = aspect.Kind }
+            : SelectionAspectData.Free();
 
         // ウィンドウの位置・大きさ: 数値として使えないものは無かったことにする（画面の中に収まるかはウィンドウが確かめる）
         settings.WindowLeft = FiniteOrNull(settings.WindowLeft);
@@ -149,7 +136,6 @@ public sealed class SettingsService
         if (export.SizeLimitKB is < ExportSettingsData.MinSizeLimitKB or > ExportSettingsData.MaxSizeLimitKB)
             export.SizeLimitKB = ExportSettingsData.DefaultSizeLimitKB;
 
-        export.Size = ValidateSize(export.Size);
 
         export.Background = ColorText.TryParse(export.Background, out var color)
             ? ColorText.Format(color)
@@ -184,23 +170,6 @@ public sealed class SettingsService
         return ParameterValues.Empty.With(descriptor.Key, raw) == ParameterValues.Empty.With(descriptor.Key, coerced);
     }
 
-    private static OutputSizeData ValidateSize(OutputSizeData? size)
-    {
-        var defaults = new OutputSizeData();
-        if (size is null) return defaults;
-
-        bool widthAndHeightValid = InRange(size.Width) && InRange(size.Height);
-        return new OutputSizeData
-        {
-            Mode = OutputSizeData.ParseMode(size.Mode) is { } mode ? OutputSizeData.FormatMode(mode) : defaults.Mode,
-            // 幅と高さは組で 1 つの項目（縦横比を作るため）。どちらかが範囲外なら両方を既定値にする
-            Width = widthAndHeightValid ? size.Width : defaults.Width,
-            Height = widthAndHeightValid ? size.Height : defaults.Height,
-            LongSide = InRange(size.LongSide) ? size.LongSide : defaults.LongSide,
-        };
-
-        static bool InRange(int length) => length is >= OutputSize.MinLength and <= OutputSize.MaxLength;
-    }
 
     private IImageFormat? FindEncodable(string? id)
     {

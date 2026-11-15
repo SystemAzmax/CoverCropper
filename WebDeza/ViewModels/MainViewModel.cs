@@ -1,53 +1,40 @@
 using System.Collections.ObjectModel;
-using System.Globalization;
+using System.ComponentModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WebDeza.Core;
 using WebDeza.Imaging;
-using WebDeza.Imaging.Editing;
-using WebDeza.Imaging.Filters;
 using WebDeza.Imaging.Formats;
-using WebDeza.Imaging.Wic;
 using WebDeza.Models;
 using WebDeza.Services;
-using WebDeza.Views.Canvas;
 
 namespace WebDeza.ViewModels;
 
 /// <summary>
-/// メインウィンドウの ViewModel（設計書 5.6）。画像の一覧と、選んでいる画像、表示中の画像（フル解像度）を持つ。
+/// メインウィンドウの ViewModel（設計書 5.6）。開いている画像の一覧（Documents）とアクティブな画像を持つ。
 /// </summary>
 /// <remarks>
-/// 一覧は最初から「複数の画像と、選んでいる画像」の形にしてある。今は［開く］で 1 枚ずつ読み、一覧は 1 件まで
-/// （開くと一覧を入れ替える）。複数の画像を扱うのは実装計画書 9-2 から。
+/// 一覧は最初から「複数の画像と、アクティブな画像」の形にしてある。今は［開く］で 1 枚ずつ開き、一覧は 1 件まで
+/// （開くと入れ替える）。複数の画像を開けるようにするのは実装計画書 7-3 から。
 /// </remarks>
-public sealed partial class MainViewModel : ObservableObject, IEditorSession
+public sealed partial class MainViewModel : ObservableObject
 {
-    /// <summary>表示用画像の長辺の上限（設計書 F-03）。これより大きい画像は縮小して表示する（書き出しには使わない）</summary>
-    public const int PreviewMaxSide = 4096;
-
     private readonly FormatRegistry _formats;
-    private readonly RenderPipeline _pipeline;
     private readonly SettingsService _settingsService;
     private readonly IDialogService _dialogs;
     private readonly AppLog _log;
-    private readonly TimeProvider _time;
 
-    public MainViewModel(FormatRegistry formats, FilterRegistry filters, SettingsService settingsService,
-        IDialogService dialogs, AppLog log, TimeProvider? time = null)
+    public MainViewModel(FormatRegistry formats, SettingsService settingsService, IDialogService dialogs, AppLog log)
     {
         ArgumentNullException.ThrowIfNull(formats);
-        ArgumentNullException.ThrowIfNull(filters);
         ArgumentNullException.ThrowIfNull(settingsService);
         ArgumentNullException.ThrowIfNull(dialogs);
         ArgumentNullException.ThrowIfNull(log);
         _formats = formats;
-        _pipeline = new RenderPipeline(filters);
         _settingsService = settingsService;
         _dialogs = dialogs;
         _log = log;
-        _time = time ?? TimeProvider.System;
 
         var loaded = settingsService.Load();
         Settings = loaded.Settings;
@@ -61,32 +48,15 @@ public sealed partial class MainViewModel : ObservableObject, IEditorSession
     /// <summary>検証済みの設定（変えたら SaveSettingsQuietly で保存する）</summary>
     public AppSettings Settings { get; }
 
-    /// <summary>画像の一覧</summary>
-    public ObservableCollection<ImageItemViewModel> Items { get; } = new();
+    /// <summary>開いている画像（開いた順）</summary>
+    public ObservableCollection<DocumentViewModel> Documents { get; } = new();
 
-    /// <summary>選んでいる画像</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(WindowTitle))]
-    private ImageItemViewModel? _selectedItem;
-
-    /// <summary>表示中の画像（向きを直した元画像。フル解像度）。読み込めていなければ null</summary>
+    /// <summary>アクティブな画像（メニュー・道具・編集パネル・ステータスバーの対象）。画像が無ければ null</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasImage), nameof(WindowTitle), nameof(StatusText))]
-    private ImageBuffer? _sourceImage;
+    private DocumentViewModel? _activeDocument;
 
-    /// <summary>キャンバスに描く表示用画像。読み込めていなければ null</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusText), nameof(CropFrame))]
-    private DisplayImage? _display;
-
-    /// <summary>
-    /// キャンバスを全体表示に戻す合図。画像を切り替えたとき（7-1 からは 90° 回転したときも）に 1 増やす。
-    /// ズームの状態は表示だけの関心事なので ViewModel には持たせない（設計書 5.6）
-    /// </summary>
-    [ObservableProperty]
-    private int _resetViewRequest;
-
-    /// <summary>読み込み中・書き出し中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
+    /// <summary>読み込み中・編集の確定中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(OpenCommand))]
     private bool _isBusy;
@@ -96,106 +66,47 @@ public sealed partial class MainViewModel : ObservableObject, IEditorSession
     [NotifyPropertyChangedFor(nameof(StatusText))]
     private string? _statusMessage;
 
-    public bool HasImage => SourceImage is not null;
+    public bool HasImage => ActiveDocument is not null;
 
-    /// <summary>ウィンドウのタイトル: 「{ファイル名} - webDeza」（画像が無いときは「webDeza」）</summary>
-    public string WindowTitle => HasImage && SelectedItem is { } item
-        ? $"{item.FileName} - {AppInfo.ProductName}"
+    /// <summary>ウィンドウのタイトル: 「{アクティブな画像のファイル名} - webDeza」（画像が無いときは「webDeza」）</summary>
+    public string WindowTitle => ActiveDocument is { } document
+        ? $"{document.FileName} - {AppInfo.ProductName}"
         : AppInfo.ProductName;
 
     /// <summary>
-    /// ステータスバー（設計書 4.2）:
-    /// 「画像: {編集画像の幅}×{高さ} ／ 枠: ({X}, {Y}) {幅}×{高さ} ／ 書き出し: {幅}×{高さ} {形式}（{書き出し倍率} 倍）／ {メッセージ}」。
-    /// 書き出し倍率が 1 を超えるときは M03 を出す。書き出しサイズ（バイト数）は、計算を作るステップで足す
+    /// ステータスバー（設計書 4.2）: 「画像: {幅}×{高さ} ／ 選択範囲: ({X}, {Y}) {幅}×{高さ} ／ {メッセージ}」。
+    /// 選択範囲が無いときは、その項目を出さない。倍率は、ズームを作るステップ（8-2）で足す
     /// </summary>
     public string StatusText
     {
         get
         {
             var parts = new List<string>();
-            if (Display is { } display && CropFrame is { } frame)
+            if (ActiveDocument is { } document)
             {
-                parts.Add($"画像: {display.EditedWidth}×{display.EditedHeight}");
-                parts.Add($"枠: ({frame.X}, {frame.Y}) {frame.Width}×{frame.Height}");
-
-                var outputSize = OutputSize;
-                var (width, height) = CropFrameCalculator.OutputPixelSize(frame, outputSize);
-                double scale = CropFrameCalculator.OutputScale(frame, outputSize);
-                string format = _formats.FindById(Settings.Export.FormatId)?.DisplayName ?? Settings.Export.FormatId;
-                parts.Add($"書き出し: {width}×{height} {format}（{scale.ToString("0.00", CultureInfo.InvariantCulture)} 倍）");
-                if (scale > 1) parts.Add(Messages.M03_Upscaled);
+                parts.Add($"画像: {document.ImageWidth}×{document.ImageHeight}");
+                if (document.Selection is { } s) parts.Add($"選択範囲: ({s.X}, {s.Y}) {s.Width}×{s.Height}");
             }
             if (!string.IsNullOrEmpty(StatusMessage)) parts.Add(StatusMessage);
             return string.Join(" ／ ", parts);
         }
     }
 
-    // ---------------------------------------------------------------- 切り抜き（IEditorSession）
-
-    /// <summary>ドラッグ中の途中の状態（Preview で渡されたもの）。確定したら null</summary>
-    private EditRecipe? _previewRecipe;
-
-    /// <inheritdoc />
-    public event EventHandler? Changed;
-
-    /// <inheritdoc />
-    public EditRecipe Recipe => _previewRecipe ?? SelectedItem?.History.Current ?? EditRecipe.Initial;
-
-    /// <inheritdoc />
-    public int EditedWidth => Display?.EditedWidth ?? 0;
-
-    /// <inheritdoc />
-    public int EditedHeight => Display?.EditedHeight ?? 0;
-
-    /// <inheritdoc />
-    public OutputSize OutputSize => Settings.Export.Size.ToOutputSize();
-
-    /// <inheritdoc />
-    /// <exception cref="InvalidOperationException">画像が無い</exception>
-    public FrameRules CropRules => Display is { } display
-        ? CropFrameCalculator.Rules(display.EditedWidth, display.EditedHeight, CurrentCropAspect, OutputSize)
-        : throw new InvalidOperationException("表示している画像がありません。");
-
-    /// <summary>
-    /// 今の枠（編集画像のピクセル座標）。レシピの枠が null なら初期状態の枠、あれば規則に合わせたもの。画像が無ければ null
-    /// </summary>
-    public PixelRect? CropFrame => Display is null ? null : this.GetCropFrame();
-
-    /// <summary>切り抜きの比率の選択（設定は検証済みなので読めるはずだが、読めなければ自由）</summary>
-    private CropAspect CurrentCropAspect => Settings.CropAspect.ToCropAspect() ?? CropAspect.Free;
-
-    /// <inheritdoc />
-    public void Preview(EditRecipe recipe)
+    partial void OnActiveDocumentChanged(DocumentViewModel? oldValue, DocumentViewModel? newValue)
     {
-        ArgumentNullException.ThrowIfNull(recipe);
-        if (SelectedItem is null || Display is null) throw new InvalidOperationException("表示している画像がありません。");
-        _previewRecipe = recipe;
-        OnRecipeChanged();
+        if (oldValue is not null) oldValue.PropertyChanged -= OnActiveDocumentPropertyChanged;
+        if (newValue is not null) newValue.PropertyChanged += OnActiveDocumentPropertyChanged;
     }
 
-    /// <inheritdoc />
-    public void Commit(EditRecipe recipe, string? coalesceKey = null)
+    private void OnActiveDocumentPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        ArgumentNullException.ThrowIfNull(recipe);
-        if (SelectedItem is not { } item || Display is null) throw new InvalidOperationException("表示している画像がありません。");
-        _previewRecipe = null;
-        item.History.Commit(recipe, coalesceKey);
-        OnRecipeChanged();
-    }
-
-    /// <summary>レシピが変わった（枠とステータスバーを更新し、キャンバスに描き直させる）</summary>
-    private void OnRecipeChanged()
-    {
-        OnPropertyChanged(nameof(CropFrame));
+        // 選択範囲・画像が変わったら、ステータスバーを更新する
         OnPropertyChanged(nameof(StatusText));
-        Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    partial void OnDisplayChanged(DisplayImage? value)
-    {
-        _previewRecipe = null;
-        Changed?.Invoke(this, EventArgs.Empty);
-    }
+    /// <summary>選択範囲の比率（全画像共通の設定）を、画像の大きさに当てはめたもの</summary>
+    private AspectRatio? SelectionAspect(int imageWidth, int imageHeight)
+        => Settings.SelectionAspect.ToAspectRatio(imageWidth, imageHeight);
 
     // ---------------------------------------------------------------- 開く
 
@@ -211,9 +122,10 @@ public sealed partial class MainViewModel : ObservableObject, IEditorSession
     }
 
     /// <summary>
-    /// 画像を 1 枚読み込んで表示する。読み込みはバックグラウンドで行う。
-    /// 読めない形式は M01（要るものがあれば M21 を続ける）、そのほかの失敗は M02。失敗した画像も一覧に残し、状態をエラーにする
+    /// 画像を 1 枚開く。読み込みと表示用画像の作成はバックグラウンドで行う。
+    /// 読めない形式は M01（要るものがあれば M21 を続ける）、そのほかの失敗は M02。読めなかったときは何も変えない。
     /// </summary>
+    /// <remarks>今は一覧を 1 件までにしているので、開けたら前の画像と入れ替える（7-3 で、足していく形にする）</remarks>
     public async Task LoadAsync(string path)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
@@ -225,56 +137,44 @@ public sealed partial class MainViewModel : ObservableObject, IEditorSession
             return;
         }
 
-        var item = new ImageItemViewModel(Path.GetFullPath(path), _time);
-
-        // 次の画像を読む前に、前の画像への参照を外す（大きな画像を 2 枚同時に持たないため。設計書 5.10-3）
-        SourceImage = null;
-        Display = null;
-        Items.Clear();
-        Items.Add(item);
-        SelectedItem = item;
+        var fullPath = Path.GetFullPath(path);
         StatusMessage = null;
 
+        DocumentViewModel? document = null;
         string? error = null;
         IsBusy = true;
         try
         {
-            var recipe = item.History.Current;
-            var aspect = CurrentCropAspect;
-            var export = Settings.Export.ToExportSettings();
             var (image, display, size) = await Task.Run(() =>
             {
-                var decoded = _formats.Decode(item.Path);
-                var display = CreateDisplay(decoded.Image, recipe, aspect, export);
-                return (decoded.Image, display, ImageItemViewModel.GetFileSize(item.Path));
+                var decoded = _formats.Decode(fullPath);
+                var display = DisplayImage.Create(decoded.Image);
+                return (decoded.Image, display, DocumentViewModel.GetFileSize(fullPath));
             });
-            item.SetLoaded(size);
-            SourceImage = image;
-            Display = display;
-            ResetViewRequest++;
+            document = new DocumentViewModel(fullPath, image, display, size, SelectionAspect);
         }
         catch (UnsupportedImageFormatException ex)
         {
             // 拡張子は対応していても、中身が読めない・OS のコーデック（拡張機能）が無い
-            _log.Error($"Load not supported: {item.Path}", ex);
+            _log.Error($"Load not supported: {fullPath}", ex);
             error = ex.Requirement is { } requirement
                 ? $"{Messages.M01_UnsupportedFormat}\n{Messages.M21_Requirement(requirement)}"
                 : Messages.M01_UnsupportedFormat;
         }
         catch (NotSupportedException ex)
         {
-            _log.Error($"Load not supported: {item.Path}", ex);
+            _log.Error($"Load not supported: {fullPath}", ex);
             error = Messages.M01_UnsupportedFormat;
         }
         catch (OutOfMemoryException ex)
         {
-            _log.Error($"Load OOM: {item.Path}", ex);
+            _log.Error($"Load OOM: {fullPath}", ex);
             error = Messages.M02_LoadFailed(Messages.OutOfMemory);
         }
         catch (Exception ex)
         {
             // 壊れたファイル・大きすぎる画像・形式プラグインの例外など（アプリは落とさない。設計書 5.10-6）
-            _log.Error($"Load failed: {item.Path}", ex);
+            _log.Error($"Load failed: {fullPath}", ex);
             error = Messages.M02_LoadFailed(ex.Message);
         }
         finally
@@ -282,24 +182,21 @@ public sealed partial class MainViewModel : ObservableObject, IEditorSession
             IsBusy = false;
         }
 
-        Settings.LastOpenFolder = Path.GetDirectoryName(item.Path);
+        Settings.LastOpenFolder = Path.GetDirectoryName(fullPath);
         SaveSettingsQuietly();
 
-        if (error is not null)
+        if (document is not null)
         {
-            item.SetError(error);
+            // 前の画像への参照を外してから、新しい画像にする（一覧は 1 件まで）
+            ActiveDocument = null;
+            Documents.Clear();
+            Documents.Add(document);
+            ActiveDocument = document;
+        }
+        else if (error is not null)
+        {
             _dialogs.ShowError(error);
         }
-    }
-
-    /// <summary>
-    /// 表示用画像を作る: 向き → 長辺 4096 px 以下に縮小 → フィルター → 描画用の BitmapSource（設計書 5.8「表示」）。
-    /// バックグラウンドで呼んでよい
-    /// </summary>
-    private DisplayImage CreateDisplay(ImageBuffer source, EditRecipe recipe, CropAspect aspect, ExportSettings export)
-    {
-        var preview = _pipeline.RenderPreview(source, recipe, aspect, export, PreviewMaxSide);
-        return new DisplayImage(preview, BitmapSourceConverter.ToBitmapSource(preview.Image));
     }
 
     // ---------------------------------------------------------------- 設定

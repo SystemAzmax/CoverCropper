@@ -39,8 +39,13 @@ public class AppModulesTests
         Assert.Equal("対応していないファイル形式です。", Messages.M01_UnsupportedFormat);
         Assert.Equal("画像を読み込めませんでした。（壊れています）", Messages.M02_LoadFailed("壊れています"));
         Assert.Equal("書き出しました: a.jpg（182.4 KB）", Messages.M04_Exported("a.jpg", "182.4 KB"));
-        Assert.Equal("3 件を一覧に追加しました。", Messages.M09_Added(3, 0, 0));
-        Assert.Equal("3 件を一覧に追加しました。重複 1 件・非対応 2 件を除きました。", Messages.M09_Added(3, 1, 2));
+        Assert.Equal("3 件を開きました。", Messages.M09_Opened(3, 0));
+        Assert.Equal("3 件を開きました。非対応 2 件を除きました。", Messages.M09_Opened(3, 2));
+        Assert.Equal("同時に開けるのは 50 枚までです。2 件は開きませんでした。", Messages.M15_OverLimit(50, 2));
+        Assert.Equal("「a.jpg」には書き出していない編集があります。閉じますか？", Messages.M16_ConfirmClose("a.jpg"));
+        Assert.Equal("編集できませんでした。（メモリが不足しています）", Messages.M28_EditFailed(Messages.OutOfMemory));
+        Assert.Equal("2 件を開けませんでした。\na.jpg: 壊れています\nb.png: 対応していないファイル形式です。",
+            Messages.M29_OpenFailed(new[] { ("a.jpg", "壊れています"), ("b.png", Messages.M01_UnsupportedFormat) }));
         Assert.Equal("この形式を読むには Microsoft Store の「HEIF 画像拡張機能」 が必要です。",
             Messages.M21_Requirement("Microsoft Store の「HEIF 画像拡張機能」"));
         Assert.Equal("ここに画像やフォルダをドラッグ＆ドロップ、または［開く］", Messages.Placeholder);

@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
 using WebDeza.Imaging;
-using WebDeza.Imaging.Editing;
 using WebDeza.Views.Canvas;
 
 namespace WebDeza.Tests.Views;
@@ -71,16 +70,13 @@ public class EditorCanvasTests
         Assert.True(rect.Width > 0);
     }
 
-    // ---------------------------------------------------------------- 枠（5-6）
-
-    private static readonly FrameRules Rules4x3 =
-        CropFrameCalculator.Rules(6000, 2000, CropAspect.Free, new OutputSize(OutputSizeMode.Exact, 1024, 768, OutputSize.DefaultLongSide));
+    // ---------------------------------------------------------------- 選択範囲の位置（6-5）
 
     [Fact]
-    public void FrameToView_ScalesFromImageRect()
+    public void ImageRectToView_ScalesFromImageRect()
     {
         // 6000×2000 を 0.1 倍で (12, 56) に描いているとき
-        var rect = EditorCanvas.FrameToView(new PixelRect(1666, 0, 2667, 2000), new Rect(12, 56, 600, 200), 0.1, dpiScale: 1);
+        var rect = EditorCanvas.ImageRectToView(new PixelRect(1666, 0, 2667, 2000), new Rect(12, 56, 600, 200), 0.1, dpiScale: 1);
 
         Assert.Equal(new Rect(179, 56, 266, 200), rect); // 左 178.6 → 179、右 445.3 → 445
     }
@@ -88,42 +84,12 @@ public class EditorCanvasTests
     [Theory]
     [InlineData(1.25)]
     [InlineData(1.5)]
-    public void FrameToView_EdgesAreAlignedToPhysicalPixels(double dpiScale)
+    public void ImageRectToView_EdgesAreAlignedToPhysicalPixels(double dpiScale)
     {
-        var rect = EditorCanvas.FrameToView(new PixelRect(333, 77, 1111, 555), new Rect(12.4, 30.8, 600, 300), 0.137, dpiScale);
+        var rect = EditorCanvas.ImageRectToView(new PixelRect(333, 77, 1111, 555), new Rect(12.4, 30.8, 600, 300), 0.137, dpiScale);
 
         foreach (var value in new[] { rect.Left, rect.Top, rect.Right, rect.Bottom })
             Assert.Equal(Math.Round(value * dpiScale), value * dpiScale, 9);
-    }
-
-    [Fact]
-    public void DragFrame_ConvertsDipsToImagePixels()
-    {
-        var start = new PixelRect(1666, 0, 2667, 2000);
-
-        // 0.1 倍の表示で 10.04 DIP 左へ → 100.4 px → 100 px
-        var moved = EditorCanvas.DragFrame(start, new Vector(-10.04, 0), 0.1, Rules4x3);
-
-        Assert.Equal(start with { X = 1566 }, moved);
-    }
-
-    [Fact]
-    public void DragFrame_StaysInsideImage()
-    {
-        var start = new PixelRect(1666, 0, 2667, 2000);
-
-        Assert.Equal(start with { X = 0 }, EditorCanvas.DragFrame(start, new Vector(-1000, -50), 0.1, Rules4x3));
-        Assert.Equal(start with { X = 6000 - 2667 }, EditorCanvas.DragFrame(start, new Vector(1000, 50), 0.1, Rules4x3));
-    }
-
-    [Fact]
-    public void DragFrame_KeepsSize()
-    {
-        var start = new PixelRect(100, 100, 500, 300);
-
-        var moved = EditorCanvas.DragFrame(start, new Vector(3, 4), 1, Rules4x3 with { Aspect = null, MinWidth = 16, MinHeight = 16 });
-
-        Assert.Equal(new PixelRect(103, 104, 500, 300), moved);
     }
 
     [Theory]
