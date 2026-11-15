@@ -54,6 +54,9 @@ public readonly record struct ViewTransform(double Scale, double OffsetX, double
         return new ViewTransform(scale, viewPoint.X - image.X * scale, viewPoint.Y - image.Y * scale);
     }
 
+    /// <summary>表示位置を delta（DIP）だけ動かす（パン）。範囲に収めるのは ClampPan</summary>
+    public ViewTransform Pan(Vector delta) => this with { OffsetX = OffsetX + delta.X, OffsetY = OffsetY + delta.Y };
+
     /// <summary>
     /// パンの範囲に収める（設計書 F-03）。画像が領域より小さい向きは中央に固定し、
     /// 大きい向きは、画像の端が領域の内側に入り込まない範囲にする

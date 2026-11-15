@@ -13,7 +13,7 @@ namespace WebDeza.Views.Canvas;
 /// 表示用画像は、画像（フル解像度）の大きさとして描く。選択範囲は画像のピクセル座標で、IEditorSession から読む。
 /// 倍率と位置は ViewTransform で計算する。ズームの状態はキャンバスが持つ（ViewModel には持たせない。設計書 5.6）。
 /// 全体表示のときは、大きさが変わるたびに全体表示し直す。ズーム中は、倍率と表示の中心を保つ（設計書 F-03）。
-/// パン（8-3）はこれから足す。
+/// パンは、中ボタンのドラッグと Space+ドラッグ（道具にかかわらず。設計書 4.5）。手のひらの道具でのパンは 8-4 で足す。
 /// マウスで選択範囲を作る・動かすのは、道具の仕組み（8-4）と「選択」の道具（8-5・8-6）で作る。
 /// </remarks>
 public sealed class EditorCanvas : FrameworkElement
@@ -66,6 +66,9 @@ public sealed class EditorCanvas : FrameworkElement
 
     /// <summary>ズーム中の倍率と位置。null なら全体表示（大きさが変わるたびに全体表示し直す）</summary>
     private ViewTransform? _zoomed;
+
+    /// <summary>パン中なら、始めたときのマウスの位置と表示（始めたときからの移動量で計算し、ずれをためない）</summary>
+    private (Point Start, ViewTransform View, MouseButton Button)? _pan;
 
     public EditorCanvas()
     {
@@ -203,6 +206,8 @@ public sealed class EditorCanvas : FrameworkElement
         var (min, max) = ViewTransform.ScaleRange(FitView(image).Scale, DpiScale);
         _zoomed = CurrentView(image).ZoomAt(viewPoint, factor, min, max)
             .ClampPan(RenderSize, image.ImageWidth, image.ImageHeight);
+        // パン中にズームしたら、パンの起点を今の位置と表示にし直す（次に動かしたときにズームを打ち消さないため）
+        if (_pan is { } pan) _pan = (Mouse.GetPosition(this), _zoomed.Value, pan.Button);
         InvalidateVisual();
     }
 
@@ -213,6 +218,76 @@ public sealed class EditorCanvas : FrameworkElement
         if (Image is null || e.Delta == 0) return;
         ZoomAt(e.GetPosition(this), Math.Pow(ViewTransform.ZoomStep, e.Delta / (double)Mouse.MouseWheelDeltaForOneLine));
         e.Handled = true;
+    }
+
+    // ---------------------------------------------------------------- パン（設計書 F-03・4.5）
+
+    /// <summary>パン中か</summary>
+    public bool IsPanning => _pan is not null;
+
+    /// <summary>中ボタンのドラッグと、Space を押しながらの左ドラッグでパンする（道具にかかわらず）</summary>
+    protected override void OnMouseDown(MouseButtonEventArgs e)
+    {
+        base.OnMouseDown(e);
+        if (e.Handled || Image is null || _pan is not null) return;
+
+        bool middle = e.ChangedButton == MouseButton.Middle;
+        bool spaceDrag = e.ChangedButton == MouseButton.Left && Keyboard.IsKeyDown(Key.Space);
+        if (!middle && !spaceDrag) return;
+
+        e.Handled = true; // 道具（8-4）には渡さない
+        // 全体表示のときは、画像が領域に収まっているので何もしない（設計書 4.5）
+        if (_zoomed is not { } view) return;
+
+        _pan = (e.GetPosition(this), view, e.ChangedButton);
+        CaptureMouse();
+        Cursor = Cursors.SizeAll;
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (_pan is not { } pan || Image is not { } image) return;
+        e.Handled = true;
+        if (_zoomed is null) return; // パン中に全体表示に戻った（Ctrl+0 など）
+
+        var delta = e.GetPosition(this) - pan.Start;
+        _zoomed = pan.View.Pan(delta).ClampPan(RenderSize, image.ImageWidth, image.ImageHeight);
+        InvalidateVisual();
+    }
+
+    protected override void OnMouseUp(MouseButtonEventArgs e)
+    {
+        base.OnMouseUp(e);
+        if (_pan is { } pan && e.ChangedButton == pan.Button)
+        {
+            ReleaseMouseCapture();
+            e.Handled = true;
+        }
+    }
+
+    protected override void OnLostMouseCapture(MouseEventArgs e)
+    {
+        base.OnLostMouseCapture(e);
+        EndPan();
+    }
+
+    private void EndPan()
+    {
+        if (_pan is null) return;
+        _pan = null;
+        ClearValue(CursorProperty);
+    }
+
+    /// <summary>ズーム中に Space を押していれば、パンできることを移動のカーソルで示す</summary>
+    protected override void OnQueryCursor(QueryCursorEventArgs e)
+    {
+        base.OnQueryCursor(e);
+        if (_pan is null && _zoomed is not null && Keyboard.IsKeyDown(Key.Space))
+        {
+            e.Cursor = Cursors.SizeAll;
+            e.Handled = true;
+        }
     }
 
     protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)

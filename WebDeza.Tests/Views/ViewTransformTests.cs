@@ -265,4 +265,57 @@ public class ViewTransformTests
         var bounds = view.ImageBounds(3800, 2200);
         Assert.True(bounds.Left <= 0 && bounds.Right >= 1000 && bounds.Top <= 0 && bounds.Bottom >= 600);
     }
+
+    // ---------------------------------------------------------------- 8-3: パン
+
+    [Fact]
+    public void Pan_MovesOffsetByDelta()
+    {
+        var view = new ViewTransform(2, -100, -50);
+
+        var panned = view.Pan(new Vector(30, -20));
+
+        Assert.Equal(new ViewTransform(2, -70, -70), panned);
+    }
+
+    [Fact]
+    public void Pan_ThenClamp_StopsAtImageEdges()
+    {
+        // 2000×1500 DIP の画像を 1000×600 の領域で見ている。右下へ大きくドラッグすると、画像の左上の端で止まる
+        var viewport = new Size(1000, 600);
+        var start = new ViewTransform(0.5, -500, -400);
+
+        var toTopLeft = start.Pan(new Vector(10000, 10000)).ClampPan(viewport, 4000, 3000);
+        var toBottomRight = start.Pan(new Vector(-10000, -10000)).ClampPan(viewport, 4000, 3000);
+
+        Assert.Equal((0.0, 0.0), (toTopLeft.OffsetX, toTopLeft.OffsetY));
+        Assert.Equal((1000.0 - 2000, 600.0 - 1500), (toBottomRight.OffsetX, toBottomRight.OffsetY));
+    }
+
+    [Fact]
+    public void Pan_ThenClamp_SmallerDirectionStaysCentered()
+    {
+        // 横は領域より大きく、縦は小さい → 縦にドラッグしても中央のまま、横だけ動く
+        var viewport = new Size(1000, 600);
+        var start = new ViewTransform(0.5, -400, 150);
+
+        var panned = start.Pan(new Vector(-100, 250)).ClampPan(viewport, 4000, 600);
+
+        Assert.Equal(-500, panned.OffsetX);
+        Assert.Equal(150, panned.OffsetY);
+    }
+
+    [Fact]
+    public void Pan_FromStartWithTotalDelta_DoesNotAccumulateClampError()
+    {
+        // 端を越えてドラッグしてから戻すと、始めたときからの移動量で計算するので、マウスと画像の位置がずれない
+        var viewport = new Size(1000, 600);
+        var start = new ViewTransform(0.5, -500, -400);
+
+        var beyond = start.Pan(new Vector(800, 0)).ClampPan(viewport, 4000, 3000);   // 端で止まる
+        var back = start.Pan(new Vector(100, 0)).ClampPan(viewport, 4000, 3000);     // 少し戻した
+
+        Assert.Equal(0, beyond.OffsetX);
+        Assert.Equal(-400, back.OffsetX);
+    }
 }
