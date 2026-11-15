@@ -148,9 +148,10 @@ public sealed class DocumentViewModelTests : IDisposable
 
         document.Selection = new PixelRect(120, 80, 64, 48);
 
-        Assert.Equal("画像: 600×400 ／ 選択範囲: (120, 80) 64×48", vm.StatusText);
+        // 末尾は、開いたときの M09
+        Assert.Equal("画像: 600×400 ／ 選択範囲: (120, 80) 64×48 ／ " + Messages.M09_Opened(1, 0), vm.StatusText);
         document.Selection = null;
-        Assert.Equal("画像: 600×400", vm.StatusText);
+        Assert.Equal("画像: 600×400 ／ " + Messages.M09_Opened(1, 0), vm.StatusText);
     }
 
     [Fact]

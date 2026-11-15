@@ -26,6 +26,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly SettingsService _settingsService;
     private readonly IDialogService _dialogs;
     private readonly AppLog _log;
+    private readonly FileCollector _collector;
 
     public MainViewModel(FormatRegistry formats, SettingsService settingsService, IDialogService dialogs, AppLog log)
     {
@@ -37,6 +38,7 @@ public sealed partial class MainViewModel : ObservableObject
         _settingsService = settingsService;
         _dialogs = dialogs;
         _log = log;
+        _collector = new FileCollector(formats);
 
         var loaded = settingsService.Load();
         Settings = loaded.Settings;
@@ -139,67 +141,66 @@ public sealed partial class MainViewModel : ObservableObject
 
     private bool CanOpen => !IsBusy;
 
-    /// <summary>［開く］ / Ctrl+O（複数を選べる）</summary>
+    /// <summary>［開く］ / Ctrl+O（複数を選べる）。選んだフォルダを、次に「開く」で最初に出すフォルダとして覚える</summary>
     [RelayCommand(CanExecute = nameof(CanOpen))]
     private async Task OpenAsync()
     {
         var paths = _dialogs.ShowOpenImageDialog(Settings.LastOpenFolder, OpenFileFilter.Build(_formats));
         if (paths is not { Count: > 0 }) return;
-        await OpenFilesAsync(paths);
+
+        Settings.LastOpenFolder = Path.GetDirectoryName(Path.GetFullPath(paths[0]));
+        SaveSettingsQuietly();
+        await OpenPathsAsync(paths);
     }
 
-    /// <summary>画像を 1 枚開く（OpenFilesAsync の 1 件の場合）</summary>
+    /// <summary>画像を 1 枚開く（OpenPathsAsync の 1 件の場合）</summary>
     public Task LoadAsync(string path)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
-        return OpenFilesAsync([path]);
+        return OpenPathsAsync([path]);
     }
 
     /// <summary>
-    /// 画像を開く（設計書 F-01）。渡された順に 1 枚ずつ、読み込みと表示用画像の作成をバックグラウンドで行い、Documents に足していく。
-    /// 終わったら、今回開いたうちの最後の画像をアクティブにする。
+    /// 画像を開く（設計書 F-01）。「開く」・D&amp;D・コマンドライン引数の共通の入り口で、ファイルとフォルダを受け取る。
+    /// 開くファイルは FileCollector で決め（フォルダ直下の対応ファイル・重複は 1 つ・フルパスの自然順・上限まで）、
+    /// その順に 1 枚ずつ、読み込みと表示用画像の作成をバックグラウンドで行い、Documents に足していく。
+    /// 終わったら、今回の中で（自然順の）最後の画像をアクティブにする。既に開いている画像は開き直さず、選ぶだけにする。
     /// </summary>
     /// <remarks>
+    /// 知らせ方:
     /// <list type="bullet">
-    /// <item>既に開いている画像（フルパスが同じ。大文字小文字は区別しない）は開き直さず、その画像を選ぶ。今回の中の重複は 1 つにする</item>
-    /// <item>同時に開けるのは MaxDocuments 枚まで。超えた分は開かず、ステータスバーに M15</item>
-    /// <item>読めなかったものは開かない。1 件だけを開いたときは M01（要るものがあれば M21 を続ける）/ M02、
-    /// 複数を開いたときは、読めなかったものを M29 でまとめて 1 回で知らせる</item>
+    /// <item>新しく開いた（または非対応を除いた）ときは、ステータスバーに M09（「{n} 件を開きました。」。除いたものがあれば件数を続ける）</item>
+    /// <item>同時に開ける数を超えた分は開かず、ステータスバーに M15</item>
+    /// <item>開くものが無いとき: 指定したファイルが非対応なら M01、フォルダに対応する画像が無ければステータスバーに M14</item>
+    /// <item>読めなかったものは開かない。読もうとしたのが 1 件なら M01（要るものがあれば M21 を続ける）/ M02、
+    /// 2 件以上なら、読めなかったものを M29 でまとめて 1 回で知らせる</item>
     /// </list>
-    /// 開く順番（フルパスの自然順）と、フォルダ・非対応のファイルの扱いは、7-5 の FileCollector で決める。
     /// </remarks>
-    public async Task OpenFilesAsync(IReadOnlyList<string> paths)
+    public async Task OpenPathsAsync(IReadOnlyList<string> paths)
     {
         ArgumentNullException.ThrowIfNull(paths);
         if (IsBusy || paths.Count == 0) return;
 
-        var fullPaths = paths.Select(p => Path.GetFullPath(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var failures = new List<(string FileName, string Reason)>();
-        DocumentViewModel? select = null;
-        int overLimit = 0;
+        var opened = new List<DocumentViewModel>();
+        CollectResult collected;
 
         StatusMessage = null;
         IsBusy = true;
         try
         {
-            foreach (var fullPath in fullPaths)
-            {
-                if (FindDocument(fullPath) is { } existing)
-                {
-                    select = existing;
-                    continue;
-                }
-                if (Documents.Count >= MaxDocuments)
-                {
-                    overLimit++;
-                    continue;
-                }
+            // フォルダの中を見るので、バックグラウンドで行う（ネットワークのフォルダなどで画面を止めない）
+            var openPaths = Documents.Select(d => d.Path).ToList();
+            int capacity = MaxDocuments - Documents.Count;
+            collected = await Task.Run(() => _collector.Collect(paths, openPaths, capacity));
 
+            foreach (var fullPath in collected.Files)
+            {
                 var (document, error) = await LoadDocumentAsync(fullPath);
                 if (document is not null)
                 {
                     Documents.Add(document);
-                    select = document;
+                    opened.Add(document);
                 }
                 else
                 {
@@ -212,14 +213,29 @@ public sealed partial class MainViewModel : ObservableObject
             IsBusy = false;
         }
 
-        Settings.LastOpenFolder = Path.GetDirectoryName(fullPaths[^1]);
-        SaveSettingsQuietly();
-
+        // 今回の中で（自然順の）最後にあって、開いている画像をアクティブにする
+        var select = collected.Files.Concat(collected.AlreadyOpen)
+            .Order(NaturalStringComparer.Instance)
+            .Select(FindDocument)
+            .LastOrDefault(d => d is not null);
         if (select is not null) ActiveDocument = select;
-        if (overLimit > 0) StatusMessage = Messages.M15_OverLimit(MaxDocuments, overLimit);
+
+        var messages = new List<string>();
+        if (collected.Files.Count == 0 && collected.AlreadyOpen.Count == 0 && collected.OverLimit == 0)
+        {
+            if (collected.Unsupported > 0) _dialogs.ShowError(Messages.M01_UnsupportedFormat);
+            else if (collected.FolderHadNoImages) messages.Add(Messages.M14_FolderHasNoImages);
+        }
+        else if (opened.Count > 0 || collected.Unsupported > 0)
+        {
+            messages.Add(Messages.M09_Opened(opened.Count, collected.Unsupported));
+        }
+        if (collected.OverLimit > 0) messages.Add(Messages.M15_OverLimit(MaxDocuments, collected.OverLimit));
+        if (messages.Count > 0) StatusMessage = string.Join(" ", messages);
+
         if (failures.Count > 0)
         {
-            _dialogs.ShowError(fullPaths.Count == 1
+            _dialogs.ShowError(collected.Files.Count == 1
                 ? failures[0].Reason
                 : Messages.M29_OpenFailed(failures.Select(f => (f.FileName, f.Reason.Replace("\n", " "))).ToList()));
         }
@@ -338,6 +354,7 @@ public sealed partial class MainViewModel : ObservableObject
         int index = Documents.IndexOf(document);
         if (index < 0) return;
 
+        StatusMessage = null; // 前の操作の知らせ（M09 など）を残さない
         Documents.RemoveAt(index);
         if (ActiveDocument == document)
         {
@@ -354,6 +371,7 @@ public sealed partial class MainViewModel : ObservableObject
     private void CloseAll()
     {
         if (!HasDocumentsAndIdle) return;
+        StatusMessage = null;
         ActiveDocument = null;
         Documents.Clear();
     }

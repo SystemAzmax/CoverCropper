@@ -89,7 +89,7 @@ public sealed class MainViewModelLoadTests : IDisposable
         Assert.False(document.History.CanUndo);
         Assert.False(document.HasUnexportedEdits);
         Assert.Equal("photo.fake - webDeza", _vm.WindowTitle);
-        Assert.Equal("画像: 6000×2000", _vm.StatusText);
+        Assert.Equal("画像: 6000×2000 ／ 1 件を開きました。", _vm.StatusText); // M09
         Assert.Empty(_dialogs.Errors);
         Assert.False(_vm.IsBusy);
     }
@@ -127,15 +127,15 @@ public sealed class MainViewModelLoadTests : IDisposable
         Assert.Equal("b.fake", document.FileName);
         Assert.Same(second, document.Image);
         Assert.Equal("b.fake - webDeza", vm.WindowTitle);
-        Assert.Equal("画像: 8×4", vm.StatusText); // 起動時の M20 は消える
+        Assert.Equal("画像: 8×4 ／ 1 件を開きました。", vm.StatusText); // 起動時の M20 は消え、M09 になる
     }
 
     [Fact]
-    public async Task Load_RemembersFolderInSettings()
+    public async Task Open_RemembersFolderInSettings()
     {
-        var path = CreateFile("a.fake");
+        _dialogs.PathToOpen = CreateFile("a.fake");
 
-        await _vm.LoadAsync(path);
+        await _vm.OpenCommand.ExecuteAsync(null);
 
         Assert.Equal(_temp.Path, _vm.Settings.LastOpenFolder);
         // 設定ファイルにも保存されている
@@ -295,12 +295,14 @@ public sealed class MainViewModelLoadTests : IDisposable
     [Fact]
     public async Task Open_UsesFilterFromRegistryAndLastFolder()
     {
-        await _vm.LoadAsync(CreateFile("a.fake"));
+        _dialogs.PathToOpen = CreateFile("a.fake");
+        await _vm.OpenCommand.ExecuteAsync(null);
         _dialogs.PathToOpen = CreateFile("b.fake");
 
         await _vm.OpenCommand.ExecuteAsync(null);
 
-        var (folder, filter) = _dialogs.OpenRequests.Single();
+        var (folder, filter) = _dialogs.OpenRequests[1];
+        Assert.Null(_dialogs.OpenRequests[0].InitialDirectory); // 最初は、覚えているフォルダが無い
         Assert.Equal(_temp.Path, folder);
         Assert.Equal(OpenFileFilter.Build(_formats), filter);
         Assert.Equal("b.fake - webDeza", _vm.WindowTitle);

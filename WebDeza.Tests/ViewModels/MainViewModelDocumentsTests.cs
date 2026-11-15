@@ -63,7 +63,7 @@ public sealed class MainViewModelDocumentsTests : IDisposable
     {
         await _vm.LoadAsync(CreateFile("a.fake"));
 
-        await _vm.OpenFilesAsync(CreateFiles("b.fake", "c.fake"));
+        await _vm.OpenPathsAsync(CreateFiles("b.fake", "c.fake"));
 
         Assert.Equal(new[] { "a.fake", "b.fake", "c.fake" }, FileNames);
         Assert.Equal("c.fake", _vm.ActiveDocument!.FileName);
@@ -75,7 +75,7 @@ public sealed class MainViewModelDocumentsTests : IDisposable
     public async Task Open_AlreadyOpen_IsNotReopenedAndBecomesActive()
     {
         var paths = CreateFiles("a.fake", "b.fake");
-        await _vm.OpenFilesAsync(paths);
+        await _vm.OpenPathsAsync(paths);
         var first = _vm.Documents[0];
 
         // 大文字小文字だけが違うパスも、同じ画像とみなす
@@ -92,23 +92,35 @@ public sealed class MainViewModelDocumentsTests : IDisposable
     {
         var a = CreateFile("a.fake");
 
-        await _vm.OpenFilesAsync([a, a.ToUpperInvariant(), Path.Combine(_temp.Path, ".", "a.fake")]);
+        await _vm.OpenPathsAsync([a, a.ToUpperInvariant(), Path.Combine(_temp.Path, ".", "a.fake")]);
 
         Assert.Equal(new[] { "a.fake" }, FileNames);
         Assert.Equal(1, _fake.DecodeCount);
     }
 
     [Fact]
-    public async Task Open_LastRequestedIsAlreadyOpen_ThatOneBecomesActive()
+    public async Task Open_LastInNaturalOrderIsAlreadyOpen_ThatOneBecomesActive()
     {
-        var a = CreateFile("a.fake");
-        await _vm.LoadAsync(a);
+        var c = CreateFile("c.fake");
+        await _vm.LoadAsync(c);
         var first = _vm.ActiveDocument;
 
-        await _vm.OpenFilesAsync([CreateFile("b.fake"), a]);
+        // 渡した順ではなく、フルパスの自然順で最後のもの（開いている c）を選ぶ
+        await _vm.OpenPathsAsync([c, CreateFile("b.fake")]);
 
-        Assert.Equal(new[] { "a.fake", "b.fake" }, FileNames);
+        Assert.Equal(new[] { "c.fake", "b.fake" }, FileNames);
         Assert.Same(first, _vm.ActiveDocument);
+        Assert.EndsWith(Messages.M09_Opened(1, 0), _vm.StatusText);
+    }
+
+    [Fact]
+    public async Task Open_OpensInNaturalOrderOfFullPath()
+    {
+        await _vm.OpenPathsAsync(CreateFiles("a10.fake", "a2.fake", "a1.fake"));
+
+        Assert.Equal(new[] { "a1.fake", "a2.fake", "a10.fake" }, FileNames);
+        Assert.Equal("a10.fake", _vm.ActiveDocument!.FileName);
+        Assert.EndsWith(Messages.M09_Opened(3, 0), _vm.StatusText);
     }
 
     // ---------------------------------------------------------------- V38: 上限を超える
@@ -117,9 +129,9 @@ public sealed class MainViewModelDocumentsTests : IDisposable
     public async Task Open_OverLimit_RestAreNotOpenedAndM15()
     {
         var names = Enumerable.Range(1, MainViewModel.MaxDocuments - 1).Select(i => $"{i:D2}.fake").ToArray();
-        await _vm.OpenFilesAsync(CreateFiles(names));
+        await _vm.OpenPathsAsync(CreateFiles(names));
 
-        await _vm.OpenFilesAsync(CreateFiles("x.fake", "y.fake", "z.fake"));
+        await _vm.OpenPathsAsync(CreateFiles("x.fake", "y.fake", "z.fake"));
 
         // 1 枚だけ開け、2 件は開かない
         Assert.Equal(MainViewModel.MaxDocuments, _vm.Documents.Count);
@@ -134,7 +146,7 @@ public sealed class MainViewModelDocumentsTests : IDisposable
     {
         var names = Enumerable.Range(1, MainViewModel.MaxDocuments).Select(i => $"{i:D2}.fake").ToArray();
         var paths = CreateFiles(names);
-        await _vm.OpenFilesAsync(paths);
+        await _vm.OpenPathsAsync(paths);
 
         await _vm.LoadAsync(paths[0]);
 
@@ -147,16 +159,66 @@ public sealed class MainViewModelDocumentsTests : IDisposable
     [Fact]
     public async Task Open_SomeFail_OpensReadableOnesAndReportsFailuresOnce()
     {
-        await _vm.OpenFilesAsync(CreateFiles("a.fake", "b.broken", "c.txt", "d.fake"));
+        await _vm.OpenPathsAsync(CreateFiles("a.fake", "b.broken", "c.txt", "d.fake"));
 
         Assert.Equal(new[] { "a.fake", "d.fake" }, FileNames);
         Assert.Equal("d.fake", _vm.ActiveDocument!.FileName);
+        // 読めなかったものは M29 でまとめて。非対応のもの（c.txt）は読まずに除き、M09 で件数を示す
         var error = Assert.Single(_dialogs.Errors);
-        Assert.Equal(Messages.M29_OpenFailed(
-        [
-            ("b.broken", Messages.M02_LoadFailed("壊れています")),
-            ("c.txt", Messages.M01_UnsupportedFormat),
-        ]), error);
+        Assert.Equal(Messages.M29_OpenFailed([("b.broken", Messages.M02_LoadFailed("壊れています"))]), error);
+        Assert.EndsWith(Messages.M09_Opened(2, 1), _vm.StatusText);
+    }
+
+    // ---------------------------------------------------------------- 非対応・フォルダ（7-5）
+
+    [Fact]
+    public async Task Open_OnlyUnsupportedFiles_M01()
+    {
+        await _vm.OpenPathsAsync(CreateFiles("a.txt", "b.txt"));
+
+        Assert.Empty(_vm.Documents);
+        Assert.Equal(new[] { Messages.M01_UnsupportedFormat }, _dialogs.Errors);
+        Assert.Equal("", _vm.StatusText);
+        Assert.Equal(0, _fake.DecodeCount);
+    }
+
+    [Fact]
+    public async Task Open_Folder_OpensSupportedFilesDirectlyInside()
+    {
+        var folder = Directory.CreateDirectory(_temp.Combine("photos")).FullName;
+        foreach (var name in new[] { "b.fake", "a.fake", "memo.txt" }) File.WriteAllBytes(Path.Combine(folder, name), new byte[16]);
+        Directory.CreateDirectory(Path.Combine(folder, "sub"));
+        File.WriteAllBytes(Path.Combine(folder, "sub", "c.fake"), new byte[16]);
+
+        await _vm.OpenPathsAsync([folder]);
+
+        Assert.Equal(new[] { "a.fake", "b.fake" }, FileNames);
+        Assert.Equal("b.fake", _vm.ActiveDocument!.FileName);
+        Assert.EndsWith(Messages.M09_Opened(2, 0), _vm.StatusText); // フォルダの中の非対応のファイルは数えない
+        Assert.Empty(_dialogs.Errors);
+    }
+
+    [Fact]
+    public async Task Open_FolderWithoutImages_M14()
+    {
+        var folder = Directory.CreateDirectory(_temp.Combine("empty")).FullName;
+        File.WriteAllBytes(Path.Combine(folder, "memo.txt"), new byte[16]);
+
+        await _vm.OpenPathsAsync([folder]);
+
+        Assert.Empty(_vm.Documents);
+        Assert.Equal(Messages.M14_FolderHasNoImages, _vm.StatusText);
+        Assert.Empty(_dialogs.Errors);
+    }
+
+    [Fact]
+    public async Task Open_FolderWithoutImagesAndUnsupportedFile_M01()
+    {
+        var folder = Directory.CreateDirectory(_temp.Combine("empty")).FullName;
+
+        await _vm.OpenPathsAsync([folder, CreateFile("a.txt")]);
+
+        Assert.Equal(new[] { Messages.M01_UnsupportedFormat }, _dialogs.Errors);
     }
 
     [Fact]
@@ -165,7 +227,7 @@ public sealed class MainViewModelDocumentsTests : IDisposable
         await _vm.LoadAsync(CreateFile("a.fake"));
         var active = _vm.ActiveDocument;
 
-        await _vm.OpenFilesAsync(CreateFiles("b.broken", "c.broken"));
+        await _vm.OpenPathsAsync(CreateFiles("b.broken", "c.broken"));
 
         Assert.Same(active, _vm.ActiveDocument);
         Assert.Single(_vm.Documents);
@@ -173,17 +235,17 @@ public sealed class MainViewModelDocumentsTests : IDisposable
     }
 
     [Fact]
-    public async Task Open_SeveralFiles_IsBusyOnlyOnceAndRemembersLastFolder()
+    public async Task Open_SeveralFiles_IsBusyOnlyOnce()
     {
         var sub = Directory.CreateDirectory(_temp.Combine("sub")).FullName;
         File.WriteAllBytes(Path.Combine(sub, "b.fake"), new byte[16]);
         var busyChanges = 0;
         _vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(MainViewModel.IsBusy)) busyChanges++; };
 
-        await _vm.OpenFilesAsync([CreateFile("a.fake"), Path.Combine(sub, "b.fake")]);
+        await _vm.OpenPathsAsync([CreateFile("a.fake"), Path.Combine(sub, "b.fake")]);
 
         Assert.Equal(2, busyChanges); // 開き始めと終わりだけ（メニューなどが 1 枚ごとにちらつかない）
-        Assert.Equal(sub, _vm.Settings.LastOpenFolder);
+        Assert.Null(_vm.Settings.LastOpenFolder); // 前回のフォルダは、［開く］のダイアログで選んだときだけ覚える
     }
 
     // ---------------------------------------------------------------- 切り替え（Ctrl+Tab / Ctrl+Shift+Tab）
@@ -191,7 +253,7 @@ public sealed class MainViewModelDocumentsTests : IDisposable
     [Fact]
     public async Task NextAndPrevious_CycleInOpenedOrder()
     {
-        await _vm.OpenFilesAsync(CreateFiles("a.fake", "b.fake", "c.fake"));
+        await _vm.OpenPathsAsync(CreateFiles("a.fake", "b.fake", "c.fake"));
         Assert.Equal("c.fake", _vm.ActiveDocument!.FileName);
 
         _vm.NextDocumentCommand.Execute(null);
@@ -231,14 +293,14 @@ public sealed class MainViewModelDocumentsTests : IDisposable
         var second = _vm.Documents[1];
 
         _vm.ActiveDocument = first;
-        Assert.Equal("画像: 10×5", _vm.StatusText);
+        Assert.Equal("画像: 10×5 ／ " + Messages.M09_Opened(1, 0), _vm.StatusText);
 
         // アクティブでない画像の選択範囲が変わっても、ステータスバーは変わらない
         second.Selection = new WebDeza.Imaging.PixelRect(0, 0, 2, 2);
-        Assert.Equal("画像: 10×5", _vm.StatusText);
+        Assert.Equal("画像: 10×5 ／ " + Messages.M09_Opened(1, 0), _vm.StatusText);
 
         _vm.ActiveDocument = second;
-        Assert.Equal("画像: 7×3 ／ 選択範囲: (0, 0) 2×2", _vm.StatusText);
+        Assert.Equal("画像: 7×3 ／ 選択範囲: (0, 0) 2×2 ／ " + Messages.M09_Opened(1, 0), _vm.StatusText);
     }
 
     // ---------------------------------------------------------------- V39 の一部: アクティブな画像を閉じる
@@ -246,7 +308,7 @@ public sealed class MainViewModelDocumentsTests : IDisposable
     [Fact]
     public async Task CloseActive_NextBecomesActive()
     {
-        await _vm.OpenFilesAsync(CreateFiles("a.fake", "b.fake", "c.fake"));
+        await _vm.OpenPathsAsync(CreateFiles("a.fake", "b.fake", "c.fake"));
         _vm.ActiveDocument = _vm.Documents[1];
 
         _vm.CloseCommand.Execute(null);
@@ -258,7 +320,7 @@ public sealed class MainViewModelDocumentsTests : IDisposable
     [Fact]
     public async Task CloseActive_LastOne_PreviousBecomesActive()
     {
-        await _vm.OpenFilesAsync(CreateFiles("a.fake", "b.fake", "c.fake"));
+        await _vm.OpenPathsAsync(CreateFiles("a.fake", "b.fake", "c.fake"));
 
         _vm.CloseCommand.Execute(null); // c（最後）を閉じる
 
@@ -269,7 +331,7 @@ public sealed class MainViewModelDocumentsTests : IDisposable
     [Fact]
     public async Task CloseInactive_ActiveDoesNotChange()
     {
-        await _vm.OpenFilesAsync(CreateFiles("a.fake", "b.fake", "c.fake"));
+        await _vm.OpenPathsAsync(CreateFiles("a.fake", "b.fake", "c.fake"));
         var active = _vm.ActiveDocument;
 
         _vm.CloseCommand.Execute(_vm.Documents[0]); // 子ウィンドウの［閉じる］は、アクティブでない画像も閉じられる
@@ -283,7 +345,7 @@ public sealed class MainViewModelDocumentsTests : IDisposable
     [Fact]
     public async Task IsActive_FollowsActiveDocument()
     {
-        await _vm.OpenFilesAsync(CreateFiles("a.fake", "b.fake"));
+        await _vm.OpenPathsAsync(CreateFiles("a.fake", "b.fake"));
         var (a, b) = (_vm.Documents[0], _vm.Documents[1]);
         Assert.Equal((false, true), (a.IsActive, b.IsActive));
 
@@ -300,7 +362,7 @@ public sealed class MainViewModelDocumentsTests : IDisposable
     [Fact]
     public async Task ActivateDocument_MakesThatDocumentActive()
     {
-        await _vm.OpenFilesAsync(CreateFiles("a.fake", "b.fake"));
+        await _vm.OpenPathsAsync(CreateFiles("a.fake", "b.fake"));
         var first = _vm.Documents[0];
 
         Assert.True(_vm.ActivateDocumentCommand.CanExecute(first));
@@ -313,7 +375,7 @@ public sealed class MainViewModelDocumentsTests : IDisposable
     [Fact]
     public async Task ActivateDocument_ClosedDocument_IsIgnored()
     {
-        await _vm.OpenFilesAsync(CreateFiles("a.fake", "b.fake"));
+        await _vm.OpenPathsAsync(CreateFiles("a.fake", "b.fake"));
         var closed = _vm.Documents[0];
         _vm.CloseCommand.Execute(closed);
 
@@ -357,7 +419,7 @@ public sealed class MainViewModelDocumentsTests : IDisposable
     public async Task CloseAll_ClosesEveryDocumentButKeepsFiles()
     {
         var paths = CreateFiles("a.fake", "b.fake", "c.fake");
-        await _vm.OpenFilesAsync(paths);
+        await _vm.OpenPathsAsync(paths);
         var documents = _vm.Documents.ToList();
 
         Assert.True(_vm.CloseAllCommand.CanExecute(null));
