@@ -24,6 +24,49 @@ public partial class MainWindow : Window
         RestorePlacement();
     }
 
+    // ---------------------------------------------------------------- ドラッグ＆ドロップ（設計書 F-01）
+
+    /// <summary>今のドラッグを受け入れるか（入ってきたときに 1 回だけ判定する。ドラッグ中にファイルを見に行かないため）</summary>
+    private bool _dropAccepted;
+
+    private static string[]? GetDroppedPaths(DragEventArgs e)
+        => e.Data.GetDataPresent(DataFormats.FileDrop) ? e.Data.GetData(DataFormats.FileDrop) as string[] : null;
+
+    private void OnPreviewDragEnter(object sender, DragEventArgs e)
+    {
+        _dropAccepted = _vm.CanAcceptDrop(GetDroppedPaths(e));
+        UpdateDrag(e);
+    }
+
+    private void OnPreviewDragOver(object sender, DragEventArgs e) => UpdateDrag(e);
+
+    /// <summary>受け入れるものを含むときはハイライトして Copy、それ以外は None（読み込み中は受け入れない）</summary>
+    private void UpdateDrag(DragEventArgs e)
+    {
+        bool accept = _dropAccepted && !_vm.IsBusy;
+        e.Effects = accept ? DragDropEffects.Copy : DragDropEffects.None;
+        DropHighlight.Visibility = accept ? Visibility.Visible : Visibility.Collapsed;
+        e.Handled = true;
+    }
+
+    private void OnPreviewDragLeave(object sender, DragEventArgs e)
+    {
+        DropHighlight.Visibility = Visibility.Collapsed;
+        e.Handled = true;
+    }
+
+    private async void OnPreviewDrop(object sender, DragEventArgs e)
+    {
+        DropHighlight.Visibility = Visibility.Collapsed;
+        e.Handled = true;
+
+        var paths = GetDroppedPaths(e);
+        if (!_vm.CanAcceptDrop(paths)) return;
+
+        Activate();
+        await _vm.OpenPathsAsync(paths!);
+    }
+
     // ---------------------------------------------------------------- メニュー［ウィンドウ］
 
     private void OnArrangeWindowsRequested(object? sender, WindowArrangement arrangement)

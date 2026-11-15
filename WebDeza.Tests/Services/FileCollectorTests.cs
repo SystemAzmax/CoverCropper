@@ -187,6 +187,31 @@ public sealed class FileCollectorTests : IDisposable
         Assert.Equal(expectedSign, Math.Sign(NaturalStringComparer.Instance.Compare(x, y)));
     }
 
+    // ---------------------------------------------------------------- D&D で受け入れるか（7-6）
+
+    [Fact]
+    public void ContainsOpenable_SupportedFileOrFolder()
+    {
+        var image = CreateFile("a.jpg");
+        var text = CreateFile("memo.txt");
+        var emptyFolder = CreateFolder("empty");
+
+        Assert.True(_collector.ContainsOpenable([image]));
+        Assert.True(_collector.ContainsOpenable([text, image])); // 1 つでも含めばよい
+        Assert.True(_collector.ContainsOpenable([emptyFolder])); // フォルダの中は見ない（画像が無ければ M14）
+        Assert.True(_collector.ContainsOpenable([text, emptyFolder]));
+    }
+
+    [Fact]
+    public void ContainsOpenable_NothingToOpen()
+    {
+        Assert.False(_collector.ContainsOpenable([CreateFile("memo.txt"), CreateFile("data.bin")]));
+        Assert.False(_collector.ContainsOpenable([_temp.Combine("missing.jpg")])); // 無いファイル
+        Assert.False(_collector.ContainsOpenable([]));
+        Assert.False(_collector.ContainsOpenable(["", "  "]));
+        Assert.False(_collector.ContainsOpenable(null));
+    }
+
     // ---------------------------------------------------------------- V15: 上限
 
     [Fact]

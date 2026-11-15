@@ -248,6 +248,46 @@ public sealed class MainViewModelDocumentsTests : IDisposable
         Assert.Null(_vm.Settings.LastOpenFolder); // 前回のフォルダは、［開く］のダイアログで選んだときだけ覚える
     }
 
+    // ---------------------------------------------------------------- ドラッグ＆ドロップ（7-6）
+
+    [Fact]
+    public void CanAcceptDrop_SupportedFileOrFolder()
+    {
+        Assert.True(_vm.CanAcceptDrop([CreateFile("memo.txt"), CreateFile("a.fake")]));
+        Assert.True(_vm.CanAcceptDrop([Directory.CreateDirectory(_temp.Combine("photos")).FullName]));
+        Assert.False(_vm.CanAcceptDrop([CreateFile("memo.txt")]));
+        Assert.False(_vm.CanAcceptDrop([]));
+        Assert.False(_vm.CanAcceptDrop(null));
+    }
+
+    [Fact]
+    public async Task CanAcceptDrop_NotWhileLoading()
+    {
+        var gate = new ManualResetEventSlim();
+        _fake.OnDecode = () => gate.Wait(TimeSpan.FromSeconds(10));
+        var loading = _vm.LoadAsync(CreateFile("a.fake"));
+
+        Assert.False(_vm.CanAcceptDrop([CreateFile("b.fake")]));
+        gate.Set();
+        await loading;
+
+        Assert.True(_vm.CanAcceptDrop([CreateFile("b.fake")]));
+    }
+
+    [Fact]
+    public async Task Drop_FilesAndFolderTogether_OpensAllInNaturalOrder()
+    {
+        // D&D とコマンドライン引数は、落とされたパスをそのまま OpenPathsAsync に渡す
+        var folder = Directory.CreateDirectory(_temp.Combine("photos")).FullName;
+        File.WriteAllBytes(Path.Combine(folder, "b.fake"), new byte[16]);
+        var a = CreateFile("a.fake");
+
+        await _vm.OpenPathsAsync([folder, a, CreateFile("memo.txt")]);
+
+        Assert.Equal(new[] { "a.fake", "b.fake" }, FileNames);
+        Assert.EndsWith(Messages.M09_Opened(2, 1), _vm.StatusText);
+    }
+
     // ---------------------------------------------------------------- 切り替え（Ctrl+Tab / Ctrl+Shift+Tab）
 
     [Fact]

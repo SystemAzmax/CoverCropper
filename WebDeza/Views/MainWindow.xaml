@@ -11,7 +11,12 @@
         Title="{Binding WindowTitle}"
         Width="1440" Height="900" MinWidth="1024" MinHeight="640"
         WindowStartupLocation="CenterScreen"
-        UseLayoutRounding="True">
+        UseLayoutRounding="True"
+        AllowDrop="True"
+        PreviewDragEnter="OnPreviewDragEnter"
+        PreviewDragOver="OnPreviewDragOver"
+        PreviewDragLeave="OnPreviewDragLeave"
+        PreviewDrop="OnPreviewDrop">
 
     <Window.InputBindings>
         <KeyBinding Modifiers="Control" Key="O" Command="{Binding OpenCommand}" />
@@ -131,6 +136,9 @@
                     </Style>
                 </TextBlock.Style>
             </TextBlock>
+
+            <!-- D&D 中のハイライト（受け入れるものを含むときだけ。設計書 F-01）。子ウィンドウより手前に重ねる -->
+            <Border x:Name="DropHighlight" Style="{StaticResource DropHighlightStyle}" />
         </Grid>
     </DockPanel>
 </Window>

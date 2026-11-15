@@ -153,6 +153,13 @@ public sealed partial class MainViewModel : ObservableObject
         await OpenPathsAsync(paths);
     }
 
+    /// <summary>
+    /// ドラッグ＆ドロップで受け入れるか（設計書 F-01）: 対応ファイルかフォルダを 1 つでも含む。読み込み中は受け入れない（設計書 4.2）。
+    /// 受け入れたら、落とされたパスを OpenPathsAsync に渡す
+    /// </summary>
+    public bool CanAcceptDrop(IReadOnlyList<string>? paths)
+        => !IsBusy && paths is { Count: > 0 } && _collector.ContainsOpenable(paths);
+
     /// <summary>画像を 1 枚開く（OpenPathsAsync の 1 件の場合）</summary>
     public Task LoadAsync(string path)
     {

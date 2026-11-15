@@ -45,6 +45,10 @@ public partial class App : Application
         var window = new MainWindow(viewModel);
         MainWindow = window;
         window.Show();
+
+        // コマンドライン引数で渡されたファイル・フォルダを開く（「送る」や、アイコンへのドロップ。設計書 F-01）
+        if (e.Args.Length > 0)
+            _ = viewModel.OpenPathsAsync(e.Args);
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

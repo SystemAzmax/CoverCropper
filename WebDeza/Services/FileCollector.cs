@@ -94,6 +94,15 @@ public sealed class FileCollector
         return new CollectResult(files, alreadyOpen, unsupported, overLimit, hadFolder && !folderHadImages);
     }
 
+    /// <summary>
+    /// D&amp;D で受け入れるかどうか（設計書 F-01）: 対応ファイル（あるもの）かフォルダを 1 つでも含む。
+    /// フォルダの中は見ない（画像が無ければ、落としたときに M14 で知らせる）
+    /// </summary>
+    public bool ContainsOpenable(IEnumerable<string>? paths)
+        => paths is not null && paths.Any(path =>
+            !string.IsNullOrWhiteSpace(path)
+            && (Directory.Exists(path) || (_formats.CanDecode(path) && File.Exists(path))));
+
     /// <summary>フォルダ直下の対応ファイル（読めないフォルダは、画像が無いものとする）</summary>
     private IEnumerable<string> EnumerateSupportedFiles(string folder)
     {
