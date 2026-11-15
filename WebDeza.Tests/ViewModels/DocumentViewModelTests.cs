@@ -53,6 +53,28 @@ public sealed class DocumentViewModelTests : IDisposable
     // ---------------------------------------------------------------- 選択範囲
 
     [Fact]
+    public void RefitSelection_FitsToCurrentAspect_AndRaisesChanged()
+    {
+        // 比率（全画像共通の設定）が変わったときに MainViewModel が呼ぶ（実装計画書 8-8）
+        AspectRatio? aspect = null;
+        var image = Blank(600, 400);
+        var document = new DocumentViewModel("a.png", image, DisplayImage.Create(image), 0, (_, _) => aspect);
+        document.Selection = new PixelRect(100, 100, 200, 50);
+        int changed = 0;
+        document.Changed += (_, _) => changed++;
+
+        aspect = new AspectRatio(1, 1);
+        document.RefitSelection();
+        Assert.Equal(new PixelRect(150, 75, 100, 100), document.Selection); // 中心と面積を保って正方形に
+        Assert.True(changed > 0);
+
+        document.Selection = null;
+        changed = 0;
+        document.RefitSelection();
+        Assert.Equal(1, changed); // 選択範囲が無くても描き直しを知らせる（辺のハンドルの有無が変わるため）
+    }
+
+    [Fact]
     public void Selection_RaisesChangedAndPropertyChanged()
     {
         var document = Create();

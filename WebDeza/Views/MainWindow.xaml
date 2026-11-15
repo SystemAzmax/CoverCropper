@@ -155,25 +155,27 @@
         <Border DockPanel.Dock="Right" Width="300" BorderThickness="1,0,0,0" Style="{StaticResource AreaBorderStyle}">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
                 <StackPanel x:Name="EditPanelArea" Margin="8" IsEnabled="{Binding IsEditPanelEnabled}">
-                    <!-- 「選択範囲」（設計書 4.1・F-04）。比率は 8-8、［切り抜き］は 9-1 で足す -->
+                    <!-- 「選択範囲」（設計書 4.1・F-04）。［切り抜き］は 9-1 で足す -->
                     <Expander x:Name="SelectionSection" Header="選択範囲" IsExpanded="True">
                         <StackPanel Margin="0,4,0,0">
-                            <!-- X・Y・幅・高さ。Enter かフォーカスが外れたときに選択範囲を変える（Esc で元の値に戻す）。選択範囲が無いときは空欄で入力できない -->
+                            <!-- 数値の入力欄: Enter かフォーカスが外れたときに当てはめる（Esc で元の値に戻す） -->
+                            <StackPanel.Resources>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                    <Setter Property="Margin" Value="0,0,6,0" />
+                                </Style>
+                                <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                    <Setter Property="TextAlignment" Value="Right" />
+                                    <Setter Property="Margin" Value="0,2,12,2" />
+                                    <Setter Property="MaxLength" Value="11" />
+                                    <Setter Property="InputMethod.IsInputMethodEnabled" Value="False" />
+                                    <EventSetter Event="KeyDown" Handler="OnNumberInputKeyDown" />
+                                    <EventSetter Event="GotKeyboardFocus" Handler="OnNumberInputGotKeyboardFocus" />
+                                </Style>
+                                <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+                            </StackPanel.Resources>
+                            <!-- X・Y・幅・高さ。選択範囲が無いときは空欄で入力できない -->
                             <Grid DataContext="{Binding SelectionPanel}" IsEnabled="{Binding HasSelection}">
-                                <Grid.Resources>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="VerticalAlignment" Value="Center" />
-                                        <Setter Property="Margin" Value="0,0,6,0" />
-                                    </Style>
-                                    <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
-                                        <Setter Property="TextAlignment" Value="Right" />
-                                        <Setter Property="Margin" Value="0,2,12,2" />
-                                        <Setter Property="MaxLength" Value="11" />
-                                        <Setter Property="InputMethod.IsInputMethodEnabled" Value="False" />
-                                        <EventSetter Event="KeyDown" Handler="OnNumberInputKeyDown" />
-                                        <EventSetter Event="GotKeyboardFocus" Handler="OnNumberInputGotKeyboardFocus" />
-                                    </Style>
-                                </Grid.Resources>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -192,6 +194,42 @@
                                 <TextBox x:Name="SelectionWidthInput" Grid.Row="1" Grid.Column="1" Text="{Binding WidthText}" ToolTip="幅 (px)" />
                                 <TextBlock Grid.Row="1" Grid.Column="2" Text="高さ" />
                                 <TextBox x:Name="SelectionHeightInput" Grid.Row="1" Grid.Column="3" Text="{Binding HeightText}" ToolTip="高さ (px)" Margin="0,2,0,2" />
+                            </Grid>
+                            <!-- 比率（全画像で共通。設定に保存する）。変えると、今の選択範囲を中心を保って新しい比率に合わせる -->
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="比率" />
+                                <!-- 項目の文字は［縦横を入れ替え］で 4:3 ↔ 3:4 と変わるので、DisplayMemberPath ではなくバインドで出す（選んでいる項目の表示も変わるように） -->
+                                <ComboBox x:Name="SelectionAspectCombo" Grid.Column="1" ItemsSource="{Binding AspectOptions}"
+                                          SelectedItem="{Binding SelectedAspect}" TextSearch.TextPath="Label" ToolTip="選択範囲の比率">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:AspectOptionViewModel}">
+                                            <TextBlock Text="{Binding Label}" Margin="0" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <Button x:Name="SwapAspectButton" Grid.Column="2" Content="⇄" Command="{Binding SwapAspectCommand}"
+                                        ToolTip="縦横を入れ替え" Margin="6,0,0,0" MinWidth="36" />
+                            </Grid>
+                            <!-- カスタムの比率（幅:高さ。1〜10000） -->
+                            <Grid x:Name="CustomAspectArea" Margin="0,4,0,0"
+                                  Visibility="{Binding IsCustomAspect, Converter={StaticResource BoolToVisibility}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="幅:高さ" />
+                                <TextBox x:Name="CustomAspectWidthInput" Grid.Column="1" Text="{Binding CustomAspectWidthText}"
+                                         ToolTip="比率の幅 (1〜10000)" Margin="0,2,0,2" MaxLength="6" />
+                                <TextBlock Grid.Column="2" Text=":" Margin="6,0,6,0" />
+                                <TextBox x:Name="CustomAspectHeightInput" Grid.Column="3" Text="{Binding CustomAspectHeightText}"
+                                         ToolTip="比率の高さ (1〜10000)" Margin="0,2,0,2" MaxLength="6" />
                             </Grid>
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                 <Button Content="すべて選択" Command="{Binding SelectAllCommand}" ToolTip="すべて選択 (Ctrl+A)" />

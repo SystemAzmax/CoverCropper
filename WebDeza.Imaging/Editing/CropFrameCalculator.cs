@@ -156,6 +156,30 @@ public static class CropFrameCalculator
     }
 
     /// <summary>
+    /// 比率を変えたときの合わせ直し。中心と面積をなるべく保って、規則の比率に合わせる
+    /// （面積を保つので、縦横を入れ替えたときは幅と高さが入れ替わり、何度入れ替えても縮まない）。
+    /// 大きさは最小〜最大に収め（収まらなければ小さくする）、画像からはみ出す場合は内側へずらす。
+    /// 比率が自由なら Clamp と同じ（今の枠のまま）
+    /// </summary>
+    /// <param name="rect">今の枠</param>
+    /// <param name="rules">新しい比率の規則</param>
+    public static PixelRect FitToAspect(PixelRect rect, FrameRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        if (rules.Aspect is not { } a) return Clamp(rect, rules);
+
+        double area = (double)Math.Max(1, rect.Width) * Math.Max(1, rect.Height);
+        int width = Math.Clamp(RoundToInt(Math.Sqrt(area * a.Width / a.Height)), rules.MinWidth, rules.MaxWidth);
+        int height = rules.HeightForWidth(width);
+
+        // 中心を保つ（端数は左上へ寄せる）。はみ出した分は Clamp が内側へずらす
+        long x = rect.X + (((long)rect.Width - width) >> 1);
+        long y = rect.Y + (((long)rect.Height - height) >> 1);
+        return Clamp(new PixelRect(
+            (int)Math.Clamp(x, int.MinValue, int.MaxValue), (int)Math.Clamp(y, int.MinValue, int.MaxValue), width, height), rules);
+    }
+
+    /// <summary>
     /// ハンドルのドラッグで枠の大きさを変える。反対側の角（辺）を固定し、ポインターの位置に合わせる。
     /// 反対側を越えても裏返らず最小で止まり、画像の端でも止まる。
     /// 比率が決まっているときは、角のハンドルでは幅と高さのうち大きくなる方に合わせ、

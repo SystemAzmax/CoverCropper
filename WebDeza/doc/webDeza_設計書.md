@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| 文書バージョン | 3.4 |
+| 文書バージョン | 3.5 |
 | 作成日 | 2026-10-24 |
 | 対象 | Claude Code による実装 |
 | 対象OS | Windows 10 / 11（64bit）のみ |
@@ -22,6 +22,7 @@
 | 3.2 | 2026-11-16 | 道具の名前とキー（`Id`・`DisplayName`・`Shortcut`）を、道具の実体（`ICanvasTool`）ではなく `ICanvasToolFactory` に持たせた（道具のボタンを、画像が無くても登録内容から作るため）。`ICanvasHost` の中身を書いた（5.6） |
 | 3.3 | 2026-11-16 | `ICanvasHost` に `DpiScale` を足した（「選択」の道具のハンドルを、選択範囲の縁と同じく物理ピクセルにそろえて描くため。5.6） |
 | 3.4 | 2026-11-16 | 編集パネルの「選択範囲」の入力欄を `SelectionPanelViewModel` にした（5.6）。入力欄は Enter かフォーカスが外れたときに当てはめ、選択範囲が無いときは空欄で入力できないことにした（F-04・4.2） |
+| 3.5 | 2026-11-16 | 比率を変えたときの合わせ直しを、中心と面積をなるべく保つ `CropFrameCalculator.FitToAspect` にした（`ResizeAroundCenter` は先に新しい比率で `Clamp` するので、縦の中心がずれるため）。比率を続けて変えている間は、変え始める前の選択範囲から合わせ直すこと、［縦横を入れ替え］が無効になる比率、比率の選択欄の項目（`AspectOptionViewModel`）を書いた（F-04・5.3・5.6） |
 
 ---
 
@@ -169,8 +170,8 @@ webDeza での登録は `WebDeza/Composition/AppModules.cs` の 1 か所にま�
 | 移動（キー） | 矢印で 1 px、`Shift`+矢印で 10 px（「選択」の道具のとき） |
 | 大きさ（マウス） | 比率が固定なら四隅のハンドル、自由なら四隅と四辺のハンドル。反対側の角（辺）を固定する。反対側を越えても裏返らず、最小（1 px）で止まる |
 | 数値で指定 | 編集パネルの「選択範囲」に X・Y・幅・高さの入力欄。入力すると（Enter か、フォーカスが外れたとき）選択範囲が変わる（画像の内側に収める。大きさを保てるなら保ち、はみ出す分は位置をずらす。比率が決まっていれば、幅から高さを、高さから幅を求める）。整数でなければ元の値に戻す。`Esc` で入力をやめる。選択範囲が無いときは空欄で、入力できない |
-| 比率 | 自由（既定） / 元画像と同じ / 1:1 / 4:3 / 3:2 / 16:9 / カスタム（幅:高さを 1〜10000 の整数で入力）。［縦横を入れ替え］で 4:3 ↔ 3:4 などにする。全画像で共通で、設定に保存する |
-| 比率を変えたとき | 今の選択範囲は、中心を保って新しい比率に合わせる（画像からはみ出す場合は内側へずらし、収まらなければ小さくする） |
+| 比率 | 自由（既定） / 元画像と同じ / 1:1 / 4:3 / 3:2 / 16:9 / カスタム（幅:高さを 1〜10000 の整数で入力）。［縦横を入れ替え］で 4:3 ↔ 3:4 などにする（選択欄の文字も 3:4 になる。縦長にしたまま別の比率を選ぶと、それも縦長になる。カスタムは幅と高さを入れ替える。自由・元画像と同じ・幅と高さが同じ比率では無効）。全画像で共通で、設定に保存する（カスタムの比率は 4:3 などと同じ形で保存するので、カスタムで 4:3 を入れたものは、次に起動したときは 4:3 になる） |
+| 比率を変えたとき | 開いているすべての画像の選択範囲を、中心と面積をなるべく保って新しい比率に合わせる（画像からはみ出す場合は内側へずらし、収まらなければ小さくする。面積を保つので、縦横を入れ替えると幅と高さが入れ替わる）。比率を続けて変えている間は、比率を変え始める前の選択範囲から合わせ直す（カスタムの比率を打つ途中の比率で、選択範囲が小さくなったままにならないように）。自由にしたときは、今の選択範囲のまま |
 | 履歴 | 選択範囲の操作は履歴（F-07）に積まない。元に戻す・やり直しの後は、選択範囲を画像の内側に収め直す（収まらなければ解除） |
 
 **切り抜き**
@@ -599,7 +600,7 @@ WebDeza/                                … webDeza（画像編集ソフト）�
 ├─ Models/                              … AppSettings など
 ├─ Services/                            … ExportService / ExportPreviewService / BatchExporter / FileCollector /
 │                                         NaturalStringComparer / SettingsService / DialogService
-├─ ViewModels/                          … MainViewModel / DocumentViewModel / SelectionPanelViewModel / FilterPanelViewModel /
+├─ ViewModels/                          … MainViewModel / DocumentViewModel / SelectionPanelViewModel / AspectOptionViewModel / FilterPanelViewModel /
 │                                         ParameterViewModel（種類ごと） / ExportDialogViewModel / ImageSizeDialogViewModel
 └─ Views/
    ├─ MainWindow.xaml(.cs)              … メニューバー・ツールバー・道具・ワークスペース・編集パネル・ステータスバー
@@ -811,7 +812,8 @@ public sealed record ExportSettings(
 | `Initial(rules)` / `Clamp(rect, rules)` / `Center(rect, rules)` | 最大の矩形を中央に / 大きさを最小〜最大・位置を画像の内側に / 大きさを保って中央へ |
 | `FromDrag(startX, startY, endX, endY, rules)` | ドラッグの始点と終点を対角にする矩形（選択範囲を作る）。画像の内側に収め、比率があるときは比率に合わせる（始点を固定する） |
 | `Move(rect, dx, dy, rules)` | px 単位で移動（画像の外には出ない） |
-| `ResizeAroundCenter(rect, newWidth, rules)` | 中心を保って大きさを変える（比率を変えたときの合わせ直しに使う） |
+| `ResizeAroundCenter(rect, newWidth, rules)` | 中心を保って大きさを変える |
+| `FitToAspect(rect, rules)` | 中心と面積をなるべく保って、規則の比率に合わせる（比率を変えたときの合わせ直し）。比率が自由なら `Clamp` と同じ |
 | `ResizeFromHandle(rect, FrameHandle, pointerX, pointerY, rules)` | ハンドルのドラッグ。反対側を固定する |
 | `Mirror(rect, horizontal, rules)` | 反転に合わせて位置を移す |
 
@@ -974,6 +976,7 @@ public static class AppModules
 |---|---|
 | `MainViewModel` | 開いている画像の一覧（`Documents`）とアクティブな画像（`ActiveDocument`）。開く・閉じる・終了。メニューとツールバーのコマンド（アクティブな画像に取り次ぐ）。今の道具。選択範囲の比率。ステータスバー |
 | `DocumentViewModel` | 開いている画像 1 枚。下の表。`IEditorSession` を実装する |
+| `AspectOptionViewModel` | 編集パネルの「選択範囲」の比率の選択欄の項目 1 つ（自由 / 元画像と同じ / 決まった比率 / カスタム）。決まった比率は、縦長にしているときは表示を「3:4」のように入れ替える。選んでいる比率と［縦横を入れ替え］は `MainViewModel` が持つ |
 | `SelectionPanelViewModel` | 編集パネルの「選択範囲」の X・Y・幅・高さの入力欄（アクティブな画像の選択範囲を出し、入力で変える）。［すべて選択］［解除］は `MainViewModel` のコマンドを使う |
 | `FilterPanelViewModel` | 編集パネルの「フィルター」。フィルターの一覧と選んでいるフィルター、パラメーターの入力欄、プレビューの依頼、［適用］［リセット］ |
 | `ParameterViewModel` | パラメーター 1 つ分。`Kind` ごとの派生（Integer / Number / Boolean / Choice / Color） |

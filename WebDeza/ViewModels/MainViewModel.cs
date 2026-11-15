@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -54,6 +55,11 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         Documents.CollectionChanged += (_, _) => NotifyDocumentCommandsChanged();
+
+        // 選択範囲の比率は、保存してある設定から選択欄の状態を作る（設計書 F-04）
+        AspectOptions = AspectOptionViewModel.CreateAll();
+        _selectedAspect = AspectOptions[0];
+        LoadSelectionAspect(Settings.SelectionAspect);
 
         // 道具のボタンは登録内容から作り、最初に登録した道具を既定にする（設計書 F-03）
         ToolItems = (tools?.All ?? []).Select(t => new ToolItemViewModel(t)).ToList();
@@ -461,6 +467,155 @@ public sealed partial class MainViewModel : ObservableObject
     private ToolItemViewModel? SelectToolItem => ToolItems.FirstOrDefault(t => t.Factory.Id == SelectToolFactory.ToolId);
 
     private bool CanUseSelectTool() => CanSelectTool(SelectToolItem);
+
+    // ---------------------------------------------------------------- 選択範囲の比率（編集パネルの「選択範囲」。設計書 F-04）
+
+    private AspectOptionViewModel _selectedAspect;
+
+    /// <summary>決まった比率を縦長（3:4 など）にしているか（［縦横を入れ替え］。決まった比率を選び直しても保つ）</summary>
+    private bool _aspectPortrait;
+
+    /// <summary>カスタムの比率（幅:高さ。1〜SelectionAspectData.MaxRatioLength）</summary>
+    private int _customAspectWidth = 1, _customAspectHeight = 1;
+
+    /// <summary>比率の選択欄の項目（自由 / 元画像と同じ / 1:1 / 4:3 / 3:2 / 16:9 / カスタム）</summary>
+    public IReadOnlyList<AspectOptionViewModel> AspectOptions { get; }
+
+    /// <summary>
+    /// 選んでいる比率。変えたら、設定に保存し、開いているすべての画像の選択範囲を新しい比率に合わせ直す
+    /// （比率は全画像で共通。中心と面積をなるべく保つ）。決まった比率からカスタムにしたときは、その比率から始める
+    /// </summary>
+    public AspectOptionViewModel SelectedAspect
+    {
+        get => _selectedAspect;
+        set
+        {
+            if (value is null || ReferenceEquals(value, _selectedAspect) || !AspectOptions.Contains(value)) return;
+            if (value.Choice == AspectChoice.Custom && _selectedAspect.Choice == AspectChoice.Preset)
+            {
+                (_customAspectWidth, _customAspectHeight) = _selectedAspect.Oriented(_aspectPortrait);
+                OnPropertyChanged(nameof(CustomAspectWidthText));
+                OnPropertyChanged(nameof(CustomAspectHeightText));
+            }
+            _selectedAspect = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsCustomAspect));
+            ApplySelectionAspect();
+        }
+    }
+
+    /// <summary>カスタムの比率を選んでいるか（幅:高さの入力欄を出す）</summary>
+    public bool IsCustomAspect => _selectedAspect.Choice == AspectChoice.Custom;
+
+    /// <summary>カスタムの比率の幅（Enter かフォーカスが外れたときに当てはめる。1〜10000 に収め、整数でなければ元に戻す）</summary>
+    public string CustomAspectWidthText
+    {
+        get => _customAspectWidth.ToString(CultureInfo.InvariantCulture);
+        set => SetCustomAspect(value, isWidth: true);
+    }
+
+    /// <summary>カスタムの比率の高さ</summary>
+    public string CustomAspectHeightText
+    {
+        get => _customAspectHeight.ToString(CultureInfo.InvariantCulture);
+        set => SetCustomAspect(value, isWidth: false);
+    }
+
+    /// <summary>今の選択を、設定に保存する形にしたもの</summary>
+    public SelectionAspectData CurrentSelectionAspect
+    {
+        get
+        {
+            switch (_selectedAspect.Choice)
+            {
+                case AspectChoice.Original:
+                    return SelectionAspectData.Original();
+                case AspectChoice.Preset:
+                    var (width, height) = _selectedAspect.Oriented(_aspectPortrait);
+                    return SelectionAspectData.Fixed(width, height);
+                case AspectChoice.Custom:
+                    return SelectionAspectData.Fixed(_customAspectWidth, _customAspectHeight);
+                default:
+                    return SelectionAspectData.Free();
+            }
+        }
+    }
+
+    /// <summary>［縦横を入れ替え］できるか: 幅と高さの違う比率（決まった比率かカスタム）を選んでいる</summary>
+    private bool CanSwapAspect() => CurrentSelectionAspect is { Kind: SelectionAspectData.FixedKind } a && a.Width != a.Height;
+
+    /// <summary>［縦横を入れ替え］: 4:3 ↔ 3:4 など。選択範囲も、入れ替えた比率に合わせ直す</summary>
+    [RelayCommand(CanExecute = nameof(CanSwapAspect))]
+    private void SwapAspect()
+    {
+        if (!CanSwapAspect()) return;
+        if (_selectedAspect.Choice == AspectChoice.Custom)
+        {
+            (_customAspectWidth, _customAspectHeight) = (_customAspectHeight, _customAspectWidth);
+            OnPropertyChanged(nameof(CustomAspectWidthText));
+            OnPropertyChanged(nameof(CustomAspectHeightText));
+        }
+        else
+        {
+            _aspectPortrait = !_aspectPortrait;
+            foreach (var option in AspectOptions) option.UpdateLabel(_aspectPortrait);
+        }
+        ApplySelectionAspect();
+    }
+
+    /// <summary>
+    /// 保存してある比率から、選択欄の状態を作る。決まった比率（縦長も）は、その項目にする。
+    /// それ以外の fixed はカスタム（カスタムで 4:3 を入れたものは、次に起動したときは 4:3 の項目になる）
+    /// </summary>
+    private void LoadSelectionAspect(SelectionAspectData data)
+    {
+        var option = AspectOptions[0];
+        if (data.Kind == SelectionAspectData.OriginalKind)
+        {
+            option = AspectOptions.First(o => o.Choice == AspectChoice.Original);
+        }
+        else if (data is { Kind: SelectionAspectData.FixedKind, IsValid: true })
+        {
+            var preset = AspectOptions.FirstOrDefault(o => o.Choice == AspectChoice.Preset
+                && ((o.Width, o.Height) == (data.Width, data.Height) || (o.Height, o.Width) == (data.Width, data.Height)));
+            if (preset is not null)
+            {
+                option = preset;
+                _aspectPortrait = data.Width < data.Height;
+            }
+            else
+            {
+                option = AspectOptions.First(o => o.Choice == AspectChoice.Custom);
+                (_customAspectWidth, _customAspectHeight) = (data.Width, data.Height);
+            }
+        }
+        _selectedAspect = option;
+        foreach (var o in AspectOptions) o.UpdateLabel(_aspectPortrait);
+    }
+
+    private void SetCustomAspect(string? text, bool isWidth)
+    {
+        if (SelectionPanelViewModel.TryParseInput(text, out int value))
+        {
+            value = Math.Clamp(value, 1, SelectionAspectData.MaxRatioLength);
+            int old = isWidth ? _customAspectWidth : _customAspectHeight;
+            if (isWidth) _customAspectWidth = value;
+            else _customAspectHeight = value;
+            if (value != old && IsCustomAspect) ApplySelectionAspect();
+        }
+
+        // 整数でない・収めた値になったときも、今の値を出し直す
+        OnPropertyChanged(isWidth ? nameof(CustomAspectWidthText) : nameof(CustomAspectHeightText));
+    }
+
+    /// <summary>今の比率を設定に保存し、開いているすべての画像の選択範囲を合わせ直す</summary>
+    private void ApplySelectionAspect()
+    {
+        Settings.SelectionAspect = CurrentSelectionAspect;
+        SaveSettingsQuietly();
+        foreach (var document in Documents) document.RefitSelection();
+        SwapAspectCommand.NotifyCanExecuteChanged();
+    }
 
     // ---------------------------------------------------------------- 閉じる
 

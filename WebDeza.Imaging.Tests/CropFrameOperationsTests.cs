@@ -2,7 +2,7 @@ using WebDeza.Imaging.Editing;
 
 namespace WebDeza.Imaging.Tests;
 
-/// <summary>CropFrameCalculator の矩形の操作（Move・ResizeAroundCenter・ResizeFromHandle・Mirror）</summary>
+/// <summary>CropFrameCalculator の矩形の操作（Move・ResizeAroundCenter・FitToAspect・ResizeFromHandle・Mirror）</summary>
 public class CropFrameOperationsTests
 {
     /// <summary>6000×2000 の画像で 4:3・最小の長さ 96（最大 2667×2000、最小 128×96）</summary>
@@ -72,6 +72,49 @@ public class CropFrameOperationsTests
         var rect = new PixelRect(100, 100, 200, 100);
 
         Assert.Equal(new PixelRect(90, 95, 220, 110), CropFrameCalculator.ResizeAroundCenter(rect, 220, FreeRules));
+    }
+
+    // ---------------------------------------------------------------- FitToAspect（比率を変えたときの合わせ直し。webDeza 実装計画書 8-8）
+
+    private static FrameRules Rules600x400(int width, int height) => CropFrameCalculator.Rules(600, 400, new AspectRatio(width, height));
+
+    [Fact]
+    public void FitToAspect_KeepsCenterAndArea()
+    {
+        // 200×50（面積 10000、中心 (200, 125)）を 1:1 に → 100×100
+        Assert.Equal(new PixelRect(150, 75, 100, 100),
+            CropFrameCalculator.FitToAspect(new PixelRect(100, 100, 200, 50), Rules600x400(1, 1)));
+    }
+
+    [Fact]
+    public void FitToAspect_SwapTwice_ReturnsOriginal()
+    {
+        // 縦横を入れ替えると幅と高さが入れ替わり、戻せば元の枠になる（縮まない）
+        var rect = new PixelRect(100, 50, 400, 300);
+
+        var portrait = CropFrameCalculator.FitToAspect(rect, Rules600x400(3, 4));
+        Assert.Equal(new PixelRect(150, 0, 300, 400), portrait);
+        Assert.Equal(rect, CropFrameCalculator.FitToAspect(portrait, Rules600x400(4, 3)));
+    }
+
+    [Fact]
+    public void FitToAspect_TooLarge_Shrinks_AndNearEdge_ShiftsInside()
+    {
+        // 画像全体（600×400）を 1:1 に: 面積どおりなら 490 角だが、画像に収まる 400 角にする
+        Assert.Equal(new PixelRect(100, 0, 400, 400),
+            CropFrameCalculator.FitToAspect(new PixelRect(0, 0, 600, 400), Rules600x400(1, 1)));
+
+        // 左上の 100×100 を 16:9 に: 133×75。左へはみ出す分は内側へずらす
+        Assert.Equal(new PixelRect(0, 12, 133, 75),
+            CropFrameCalculator.FitToAspect(new PixelRect(0, 0, 100, 100), Rules600x400(16, 9)));
+    }
+
+    [Fact]
+    public void FitToAspect_Free_KeepsRect()
+    {
+        var rect = new PixelRect(100, 100, 200, 50);
+
+        Assert.Equal(rect, CropFrameCalculator.FitToAspect(rect, FreeRules));
     }
 
     // ---------------------------------------------------------------- E20: ResizeFromHandle

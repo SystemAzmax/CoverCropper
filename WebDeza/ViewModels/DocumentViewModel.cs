@@ -111,12 +111,37 @@ public sealed partial class DocumentViewModel : ObservableObject, IEditorSession
         get => _selection;
         set
         {
+            _refitBase = null; // 比率の合わせ直しのほかで変えたら、それが次の合わせ直しの元になる
             var clamped = value is { } rect ? CropFrameCalculator.Clamp(rect, SelectionRules) : (PixelRect?)null;
             if (clamped == _selection) return;
             _selection = clamped;
             OnPropertyChanged();
             Changed?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>
+    /// 比率を変え始める前の選択範囲（比率を続けて変えている間、合わせ直しはいつもこれから行う。
+    /// カスタムの比率を打つ途中の 1200:4 などで選択範囲が細くなり、次の比率で小さくなったままにならないように）
+    /// </summary>
+    private PixelRect? _refitBase;
+
+    /// <summary>
+    /// 選択範囲の比率（全画像共通の設定）が変わったときに MainViewModel が呼ぶ。選択範囲を新しい比率に合わせ直し
+    /// （中心と面積をなるべく保つ。CropFrameCalculator.FitToAspect）、描き直しを知らせる（辺のハンドルの有無も変わるため）。
+    /// 比率を続けて変えている間は、比率を変え始める前の選択範囲から合わせ直す。
+    /// 自由にしたときは、今の選択範囲のまま（そのまま使える）にし、それを次の合わせ直しの元にする
+    /// </summary>
+    public void RefitSelection()
+    {
+        if (SelectionRules.Aspect is null)
+            _refitBase = null;
+        else if ((_refitBase ?? _selection) is { } basis)
+        {
+            Selection = CropFrameCalculator.FitToAspect(basis, SelectionRules);
+            _refitBase = basis;
+        }
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     partial void OnDisplayChanged(DisplayImage value) => Changed?.Invoke(this, EventArgs.Empty);
