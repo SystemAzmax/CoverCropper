@@ -39,24 +39,52 @@ public static class CropFrameCalculator
                 _ => aspect.Ratio,
             };
 
-        // 比率が自由: 最大は画像全体、最小は 16×16（画像のほうが小さければ画像の大きさ）
+        // 最小の枠: 幅・高さとも 16 以上。「幅×高さ」のときは、拡大が 8 倍までになるよう幅を広げる
+        long extraMinWidth = exact ? CeilDiv(outputSize.Width, MaxUpscale) : 0;
+        return BuildRules(imageWidth, imageHeight, ratio, MinFrameLength, extraMinWidth);
+    }
+
+    /// <summary>
+    /// 選択範囲の規則を作る（設計書 3.0 の F-04）。
+    /// 最大は、比率が無ければ画像全体、あれば画像に収まる比率どおりのいちばん大きい矩形。
+    /// 最小は、幅・高さとも minLength 以上（比率があるときは、幅を ceil(minLength × 比率の幅 ÷ 比率の高さ) 以上にして、
+    /// 高さも minLength 以上にする）。最小が最大より大きくなる場合は、最大に合わせる。
+    /// </summary>
+    /// <param name="imageWidth">画像の幅</param>
+    /// <param name="imageHeight">画像の高さ</param>
+    /// <param name="aspect">比率。null か default（0:0）なら比率なし（自由）</param>
+    /// <param name="minLength">幅・高さの最小（既定 1）</param>
+    public static FrameRules Rules(int imageWidth, int imageHeight, AspectRatio? aspect, int minLength = 1)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(imageWidth);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(imageHeight);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(minLength);
+
+        AspectRatio? ratio = aspect is { Width: > 0, Height: > 0 } a ? a : null;
+        return BuildRules(imageWidth, imageHeight, ratio, minLength, 0);
+    }
+
+    /// <summary>規則を作る（2 つの Rules の共通部分）</summary>
+    private static FrameRules BuildRules(int imageWidth, int imageHeight, AspectRatio? ratio, int minLength, long extraMinWidth)
+    {
+        // 比率が自由: 最大は画像全体、最小は minLength 角（画像のほうが小さければ画像の大きさ）
         if (ratio is not { } a)
         {
             return new FrameRules(imageWidth, imageHeight, null,
-                Math.Min(MinFrameLength, imageWidth), Math.Min(MinFrameLength, imageHeight),
+                Math.Min(minLength, imageWidth), Math.Min(minLength, imageHeight),
                 imageWidth, imageHeight);
         }
 
-        // 最大の枠: 画像に収まる、比率に合ういちばん大きい枠
+        // 最大: 画像に収まる、比率に合ういちばん大きい矩形
         int maxWidth = (long)imageWidth * a.Height >= (long)imageHeight * a.Width
             ? Math.Clamp(RoundDiv((long)imageHeight * a.Width, a.Height), 1, imageWidth)
             : imageWidth;
         var partial = new FrameRules(imageWidth, imageHeight, a, 0, 0, maxWidth, 0);
         int maxHeight = partial.HeightForWidth(maxWidth);
 
-        // 最小の枠: 幅・高さとも 16 以上。「幅×高さ」のときは、拡大が 8 倍までになるよう幅を広げる
-        long minWidth = Math.Max(MinFrameLength, CeilDiv((long)MinFrameLength * a.Width, a.Height));
-        if (exact) minWidth = Math.Max(minWidth, CeilDiv(outputSize.Width, MaxUpscale));
+        // 最小: 幅・高さとも minLength 以上
+        long minWidth = Math.Max(minLength, CeilDiv((long)minLength * a.Width, a.Height));
+        minWidth = Math.Max(minWidth, extraMinWidth);
         if (minWidth >= maxWidth)
             return partial with { MinWidth = maxWidth, MinHeight = maxHeight, MaxHeight = maxHeight };
 
@@ -158,6 +186,62 @@ public static class CropFrameCalculator
         }
 
         return Clamp(rect with { X = rect.X + ToImagePixels(outputDx), Y = rect.Y + ToImagePixels(outputDy) }, rules);
+    }
+
+    /// <summary>
+    /// 矩形を px 単位で動かす（選択範囲の移動）。大きさは規則に合わせたまま変えず、画像の外には出ない
+    /// </summary>
+    /// <param name="rect">今の矩形</param>
+    /// <param name="dx">横の移動量（px。右が正）</param>
+    /// <param name="dy">縦の移動量（px。下が正）</param>
+    /// <param name="rules">規則</param>
+    public static PixelRect Move(PixelRect rect, int dx, int dy, FrameRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        rect = Clamp(rect, rules);
+        // X + dx は int の範囲を超えうるので、long で計算してから収める
+        return rect with
+        {
+            X = (int)Math.Clamp((long)rect.X + dx, 0, rules.ImageWidth - rect.Width),
+            Y = (int)Math.Clamp((long)rect.Y + dy, 0, rules.ImageHeight - rect.Height),
+        };
+    }
+
+    /// <summary>
+    /// ドラッグの始点と終点を対角にする矩形（選択範囲を作る）。始点の角を固定し、終点の向きへ広げる。
+    /// 画像の外へドラッグしたら端で止まり、比率があるときは比率に合わせる（幅と高さのうち、大きくなる方に合わせる）。
+    /// 大きさは規則の最小〜最大に収める（始点が画像の端に近くて最小の大きさが入らないときは、内側へずらす）
+    /// </summary>
+    /// <param name="startX">始点（画像のピクセル座標。小数でよい。画素の境目の座標で、0〜画像の幅）</param>
+    /// <param name="startY">始点</param>
+    /// <param name="endX">終点（画像の外でもよい）</param>
+    /// <param name="endY">終点</param>
+    /// <param name="rules">規則</param>
+    public static PixelRect FromDrag(double startX, double startY, double endX, double endY, FrameRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        if (!double.IsFinite(startX) || !double.IsFinite(startY) || !double.IsFinite(endX) || !double.IsFinite(endY))
+            throw new ArgumentOutOfRangeException(nameof(startX), "ドラッグの位置が数値ではありません。");
+
+        // 始点は画素の境目に合わせ、画像の内側に収める
+        int sx = (int)Math.Clamp(Math.Round(startX, MidpointRounding.AwayFromZero), 0, rules.ImageWidth);
+        int sy = (int)Math.Clamp(Math.Round(startY, MidpointRounding.AwayFromZero), 0, rules.ImageHeight);
+        bool toRight = endX >= sx;
+        bool toBottom = endY >= sy;
+
+        // 始点の角に、最小の大きさの矩形を置き、反対側の角のハンドルを終点までドラッグしたものとして求める
+        var seed = Clamp(new PixelRect(
+            toRight ? sx : sx - rules.MinWidth,
+            toBottom ? sy : sy - rules.MinHeight,
+            rules.MinWidth, rules.MinHeight), rules);
+        var handle = (toRight, toBottom) switch
+        {
+            (true, true) => FrameHandle.BottomRight,
+            (true, false) => FrameHandle.TopRight,
+            (false, true) => FrameHandle.BottomLeft,
+            _ => FrameHandle.TopLeft,
+        };
+        return ResizeFromHandle(seed, handle, endX, endY, rules);
     }
 
     /// <summary>

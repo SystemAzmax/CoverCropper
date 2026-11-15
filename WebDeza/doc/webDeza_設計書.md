@@ -793,7 +793,7 @@ public sealed record ExportSettings(
     それ以外                    → 幅 = W
     高さ = HeightForWidth(幅) = min(H, round(幅 × a.H / a.W))     … round は AwayFromZero、整数演算で行う
   最小の矩形
-    幅・高さとも「最小の長さ」以上（比率があるときは、比率に合ういちばん小さい矩形）。最大を超える場合は最大に合わせる
+    幅・高さとも「最小の長さ」以上（比率があるときは、幅 = max(最小の長さ, ceil(最小の長さ × a.W / a.H))、高さ = HeightForWidth(幅)）。最大を超える場合は最大に合わせる
 ```
 
 | 関数 | 内容 |
@@ -1275,7 +1275,7 @@ User             ExportDialog/VM                BatchExporter
 | E15 | CropFrameCalculator 最大の矩形 | 6000×2000・3000×4000・4000×3000（比率 4:3）、1920×1080（比率 1:1） | 2667×2000・3000×2250・4000×3000・1080×1080 |
 | E16 | CropFrameCalculator.Initial | 6000×2000（比率 4:3）/ 任意（比率なし） | (1666, 0, 2667, 2000) / 画像全体 |
 | E17 | CropFrameCalculator | 画像・比率・操作とも乱数で 1000 件 | 矩形が画像の内側、最小〜最大、比率の誤差が 0.5 px 以下 |
-| E18 | CropFrameCalculator 最小の矩形 | 比率なし / 最小の長さ 16・比率 4:3 / 画像が最小より小さい | 1×1 / 幅 22（高さが 16 以上になる最小の幅）/ 最大に合わせる |
+| E18 | CropFrameCalculator 最小の矩形 | 比率なし / 最小の長さ 16・比率 4:3 / 画像が最小より小さい | 1×1 / 22×17（幅を ceil(16 × 4 ÷ 3) にし、幅・高さとも 16 以上）/ 最大に合わせる |
 | E19 | CropFrameCalculator.Move | 右へ 10 / 端を越える移動 | X が 10 増え、大きさは同じ / 端で止まる |
 | E20 | CropFrameCalculator.ResizeFromHandle | 比率固定で右下を外へ / 左上を越えて / 比率なしで右の辺 | 左上固定で端で止まる / 最小で止まり裏返らない / 幅だけ変わる |
 | E21 | CropFrameCalculator.ResizeAroundCenter / Mirror | 中ほど・端の近く / 左右・上下反転 | 中心を保つ・内側へずれる / X' = W − X − 幅・Y' = H − Y − 高さ |
