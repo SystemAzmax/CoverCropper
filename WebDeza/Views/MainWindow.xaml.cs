@@ -48,6 +48,7 @@ public partial class MainWindow : Window
                 Header = WindowListHeader(i, document.FileName),
                 IsCheckable = true,
                 IsChecked = document.IsActive,
+                FontWeight = document.IsActive ? FontWeights.Bold : FontWeights.Normal, // 印に加えて、太字でも見分けられるように
                 Command = _vm.ActivateDocumentCommand,
                 CommandParameter = document,
             });
