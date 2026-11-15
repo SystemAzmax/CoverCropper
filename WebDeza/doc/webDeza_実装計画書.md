@@ -93,7 +93,7 @@
 | 3 | WIC プラグイン（`WebDeza.Imaging.Wic`） | 4 | 画像ファイルを読み書きできる | 済 |
 | 4 | Core と CoverCropper の載せ替え | 8 | CoverCropper が共通部品の上で動き、今までと同じ結果を出す | 済 |
 | 5 | webDeza の土台 | 5 | webDeza で画像を 1 枚開き、キャンバスに表示できる（設計書 2.3 の作りで、切り抜きの枠が出る） | 済 |
-| 6 | 編集の作り直し | 6 | 設計書 3.0 の形になる。画像を開いても切り抜きの枠が出ない。履歴・範囲への処理・ぼかしの計算がそろう | 未 |
+| 6 | 編集の作り直し | 6 | 設計書 3.0 の形になる。画像を開いても切り抜きの枠が出ない。履歴・範囲への処理・ぼかしの計算がそろう | 済 |
 | 7 | 画面の骨組み | 6 | メニューバーがあり、複数の画像を子ウィンドウで開いて、並べたり切り替えたりできる | 未 |
 | 8 | キャンバスと道具 | 8 | ズーム・パンをしながら、矩形の選択範囲を作り、動かし、大きさと比率を変えられる | 未 |
 | 9 | 編集 | 8 | 切り抜き・回転・反転・画像サイズの変更・ぼかし・基本補正ができ、元に戻せる | 未 |
@@ -216,7 +216,7 @@
 | 6-3 | ぼかし | `Filters/BlurFilter`（箱形ぼかし 3 回・乗算済みアルファ・半径を `PixelScale` で割る）。`AppModules` に登録する（基本補正の前） | E34〜E36。追加: `AppModules` の登録順が ぼかし・基本補正 | 中 | 済 |
 | 6-4 | 矩形の計算を選択範囲用にする | `CropFrameCalculator` に `Rules(W, H, AspectRatio?, minLength)`・`FromDrag`・px 単位の `Move` を足す（古い形は、使っている所が無くなる 6-6 で消す） | E15〜E21 を新しい形で・E31 | 中 | 済 |
 | 6-5 | webDeza の載せ替え | `DocumentViewModel`（`Image`・`Selection`・`History`・`Display`・`ResetViewRequest`。`IEditorSession` を実装）。`MainViewModel` は `Documents` と `ActiveDocument` を持つ形にする（開けるのは、まだ 1 枚。開くと入れ替える）。`IEditorSession` を選択範囲の窓口にする。`EditorCanvas` は、切り抜きの枠（枠外の暗さ・ガイド・ドラッグでの移動）をやめ、選択範囲の縁の点線を描く。ステータスバーを `画像: … ／ 選択範囲: …` にする。設定から、切り抜きの比率・プリセット・書き出しのサイズを外し、選択範囲の比率を足す。`Messages` を設計書 4.7 に合わせる | 追加: 開くと `Documents` に 1 件入り、選択範囲は無い / `Selection` を入れるとステータスバーに出て、`Changed` が上がる / 画像の外の `Selection` は内側に収まる / 古い設定ファイル（書き出しのサイズやプリセット入り）を読んでも既定値で起動する。V16・V18 を新しい項目で。手動: 画像を開いても枠が出ない | 大 | 済 |
-| 6-6 | 使わなくなったものを消す | エンジンの `EditRecipe`・`RenderPipeline`・`PreviewImage`・`EditHistory`・`CropAspect`・`ExportPreset` ・`OutputSize` と、`CropFrameCalculator` の古い形（`Rules(…, CropAspect, OutputSize)`・`OutputPixelSize`・`OutputScale`）を、テストごと消す。`ExportSettings` から大きさを外す | E24。テスト全件。消したものを参照している所が残っていない | 中 | 未 |
+| 6-6 | 使わなくなったものを消す | エンジンの `EditRecipe`・`RenderPipeline`・`PreviewImage`・`EditHistory`・`CropAspect`・`ExportPreset` ・`OutputSize` と、`CropFrameCalculator` の古い形（`Rules(…, CropAspect, OutputSize)`・`OutputPixelSize`・`OutputScale`）を、テストごと消す。`ExportSettings` から大きさを外す | E24。テスト全件。消したものを参照している所が残っていない | 中 | 済 |
 
 注意:
 

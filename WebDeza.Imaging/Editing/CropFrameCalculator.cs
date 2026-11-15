@@ -1,51 +1,12 @@
 namespace WebDeza.Imaging.Editing;
 
 /// <summary>
-/// 切り抜きの枠の計算。すべて純粋関数で、座標は編集画像（回転・反転を適用したフル解像度の画像）のピクセル座標（整数）。
+/// 矩形（選択範囲）の計算。すべて純粋関数で、座標は画像のピクセル座標（整数）（設計書 5.3）。
 /// </summary>
 public static class CropFrameCalculator
 {
-    /// <summary>枠の幅・高さの最小（画像がこれより小さいときは画像の大きさ）</summary>
-    public const int MinFrameLength = 16;
-
-    /// <summary>書き出しサイズが「幅×高さ」のときの拡大の上限（枠の幅 ≥ ceil(書き出し幅 ÷ これ)）</summary>
-    public const int MaxUpscale = 8;
-
     /// <summary>
-    /// 枠の規則を作る。
-    /// 比率は、書き出しサイズが「幅×高さ」ならその縦横比（比率の選択は無視）、そうでなければ比率の選択に従う。
-    /// </summary>
-    /// <param name="imageWidth">編集画像の幅</param>
-    /// <param name="imageHeight">編集画像の高さ</param>
-    /// <param name="aspect">比率の選択</param>
-    /// <param name="outputSize">書き出しサイズ</param>
-    public static FrameRules Rules(int imageWidth, int imageHeight, CropAspect aspect, OutputSize outputSize)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(imageWidth);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(imageHeight);
-        ArgumentNullException.ThrowIfNull(aspect);
-        ArgumentNullException.ThrowIfNull(outputSize);
-
-        bool exact = outputSize.Mode == OutputSizeMode.Exact;
-        if (exact && (outputSize.Width <= 0 || outputSize.Height <= 0))
-            throw new ArgumentException("書き出しサイズの幅と高さは 1 以上にしてください。", nameof(outputSize));
-
-        AspectRatio? ratio = exact
-            ? new AspectRatio(outputSize.Width, outputSize.Height)
-            : aspect.Kind switch
-            {
-                CropAspectKind.Free => null,
-                CropAspectKind.Original => new AspectRatio(imageWidth, imageHeight),
-                _ => aspect.Ratio,
-            };
-
-        // 最小の枠: 幅・高さとも 16 以上。「幅×高さ」のときは、拡大が 8 倍までになるよう幅を広げる
-        long extraMinWidth = exact ? CeilDiv(outputSize.Width, MaxUpscale) : 0;
-        return BuildRules(imageWidth, imageHeight, ratio, MinFrameLength, extraMinWidth);
-    }
-
-    /// <summary>
-    /// 選択範囲の規則を作る（設計書 3.0 の F-04）。
+    /// 選択範囲の規則を作る（設計書 F-04）。
     /// 最大は、比率が無ければ画像全体、あれば画像に収まる比率どおりのいちばん大きい矩形。
     /// 最小は、幅・高さとも minLength 以上（比率があるときは、幅を ceil(minLength × 比率の幅 ÷ 比率の高さ) 以上にして、
     /// 高さも minLength 以上にする）。最小が最大より大きくなる場合は、最大に合わせる。
@@ -60,15 +21,8 @@ public static class CropFrameCalculator
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(imageHeight);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(minLength);
 
-        AspectRatio? ratio = aspect is { Width: > 0, Height: > 0 } a ? a : null;
-        return BuildRules(imageWidth, imageHeight, ratio, minLength, 0);
-    }
-
-    /// <summary>規則を作る（2 つの Rules の共通部分）</summary>
-    private static FrameRules BuildRules(int imageWidth, int imageHeight, AspectRatio? ratio, int minLength, long extraMinWidth)
-    {
-        // 比率が自由: 最大は画像全体、最小は minLength 角（画像のほうが小さければ画像の大きさ）
-        if (ratio is not { } a)
+        // 比率が自由（null か default）: 最大は画像全体、最小は minLength 角（画像のほうが小さければ画像の大きさ）
+        if (aspect is not { Width: > 0, Height: > 0 } a)
         {
             return new FrameRules(imageWidth, imageHeight, null,
                 Math.Min(minLength, imageWidth), Math.Min(minLength, imageHeight),
@@ -84,7 +38,6 @@ public static class CropFrameCalculator
 
         // 最小: 幅・高さとも minLength 以上
         long minWidth = Math.Max(minLength, CeilDiv((long)minLength * a.Width, a.Height));
-        minWidth = Math.Max(minWidth, extraMinWidth);
         if (minWidth >= maxWidth)
             return partial with { MinWidth = maxWidth, MinHeight = maxHeight, MaxHeight = maxHeight };
 
@@ -96,7 +49,7 @@ public static class CropFrameCalculator
         };
     }
 
-    /// <summary>初期状態の枠: 最大の枠を画像の中央に置く（端数は切り捨て）。自由のときは画像全体</summary>
+    /// <summary>最大の矩形を画像の中央に置く（端数は切り捨て）。比率が自由のときは画像全体（すべて選択・比率を変えたとき）</summary>
     public static PixelRect Initial(FrameRules rules)
     {
         ArgumentNullException.ThrowIfNull(rules);
@@ -125,69 +78,7 @@ public static class CropFrameCalculator
         return Centered(width, height, rules);
     }
 
-    /// <summary>
-    /// 枠から書き出す画像の大きさ。
-    /// 幅×高さ: 指定の大きさ。長辺: 長辺が指定の長さになるよう、縮尺 s = 長辺 ÷ max(枠の幅, 枠の高さ) を掛けて丸める（最低 1）。
-    /// 指定しない: 枠の大きさのまま
-    /// </summary>
-    public static (int Width, int Height) OutputPixelSize(PixelRect rect, OutputSize outputSize)
-    {
-        ArgumentNullException.ThrowIfNull(outputSize);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(rect.Width, nameof(rect));
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(rect.Height, nameof(rect));
-
-        switch (outputSize.Mode)
-        {
-            case OutputSizeMode.Exact:
-                return (outputSize.Width, outputSize.Height);
-
-            case OutputSizeMode.LongSide:
-            {
-                ArgumentOutOfRangeException.ThrowIfNegativeOrZero(outputSize.LongSide, nameof(outputSize));
-                int longest = Math.Max(rect.Width, rect.Height);
-                return (Math.Max(1, RoundDiv((long)rect.Width * outputSize.LongSide, longest)),
-                        Math.Max(1, RoundDiv((long)rect.Height * outputSize.LongSide, longest)));
-            }
-
-            case OutputSizeMode.Original:
-                return (rect.Width, rect.Height);
-
-            default:
-                throw new ArgumentOutOfRangeException(nameof(outputSize), outputSize.Mode, null);
-        }
-    }
-
-    /// <summary>書き出し倍率（書き出し画像の幅 ÷ 枠の幅）。1 を超えると拡大になる（M03）</summary>
-    public static double OutputScale(PixelRect rect, OutputSize outputSize)
-        => (double)OutputPixelSize(rect, outputSize).Width / rect.Width;
-
-    // ---------------------------------------------------------------- 枠の操作
-
-    /// <summary>
-    /// 枠を書き出し画像の px 単位で動かす（矢印キー）。編集画像のピクセルでは、
-    /// 1 回の移動量 n を max(1, round(|n| ÷ 書き出し倍率)) にする（縦も横と同じ倍率を使う）。画像の外には出ない
-    /// </summary>
-    /// <param name="rect">今の枠</param>
-    /// <param name="outputDx">横の移動量（書き出し画像の px。右が正）</param>
-    /// <param name="outputDy">縦の移動量（書き出し画像の px。下が正）</param>
-    /// <param name="rules">枠の規則</param>
-    /// <param name="outputSize">書き出しサイズ（書き出し倍率を求めるのに使う）</param>
-    public static PixelRect Move(PixelRect rect, int outputDx, int outputDy, FrameRules rules, OutputSize outputSize)
-    {
-        ArgumentNullException.ThrowIfNull(rules);
-        rect = Clamp(rect, rules);
-        int outputWidth = OutputPixelSize(rect, outputSize).Width;
-
-        int ToImagePixels(int n)
-        {
-            if (n == 0) return 0;
-            int pixels = Math.Max(1, RoundDiv(Math.Abs((long)n) * rect.Width, outputWidth));
-            return n > 0 ? pixels : -pixels;
-        }
-
-        return Clamp(rect with { X = rect.X + ToImagePixels(outputDx), Y = rect.Y + ToImagePixels(outputDy) }, rules);
-    }
-
+    // ---------------------------------------------------------------- 矩形の操作
     /// <summary>
     /// 矩形を px 単位で動かす（選択範囲の移動）。大きさは規則に合わせたまま変えず、画像の外には出ない
     /// </summary>

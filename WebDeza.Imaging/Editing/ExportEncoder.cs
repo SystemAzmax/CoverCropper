@@ -28,7 +28,7 @@ public sealed class ExportEncoder
     }
 
     /// <summary>
-    /// 書き出す画像（RenderForExport の結果）をエンコードする。
+    /// 書き出す画像（今の画像を、形式が透過を保てなければ背景色で塗ったもの）をエンコードする。
     /// オプションは、書き出し設定のその形式のオプションを、エンコーダーの記述に合わせて使う。
     /// 上限（SizeLimitBytes）があり、エンコーダーが SizeTuning を持つときは、上限以下になるいちばん高い値を探して使う。
     /// SizeTuning を持たない形式では、上限は使わない。
@@ -51,7 +51,7 @@ public sealed class ExportEncoder
         var encoder = format.Encoder;
         var options = export.GetOptions(format.Id).Normalize(encoder.Options);
 
-        // 透過を保てない形式には、不透明な画像を渡す約束（ふつうは RenderForExport が塗ってある。不透明なら何もしない）
+        // 透過を保てない形式には、不透明な画像を渡す約束（ふつうは書き出す前に塗ってある。不透明なら何もしない）
         var image = format.Capabilities.HasFlag(FormatCapabilities.Alpha)
             ? exportImage
             : Flatten.Apply(exportImage, export.Background, cancellationToken);

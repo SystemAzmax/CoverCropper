@@ -134,7 +134,7 @@ public class ParameterValuesTests
     [Fact]
     public void Equals_WorksAsDictionaryValueInRecords()
     {
-        // EditRecipe や ExportSettings が中身で比べるときの土台になる
+        // ExportSettings が中身で比べるときの土台になる
         var a = ParameterValues.Defaults(Descriptors);
         var b = ParameterValues.Defaults(Descriptors);
 

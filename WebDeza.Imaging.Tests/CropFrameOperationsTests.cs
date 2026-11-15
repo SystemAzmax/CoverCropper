@@ -2,48 +2,25 @@ using WebDeza.Imaging.Editing;
 
 namespace WebDeza.Imaging.Tests;
 
-/// <summary>CropFrameCalculator の枠の操作（Move・ResizeAroundCenter・ResizeFromHandle・Mirror）</summary>
+/// <summary>CropFrameCalculator の矩形の操作（Move・ResizeAroundCenter・ResizeFromHandle・Mirror）</summary>
 public class CropFrameOperationsTests
 {
-    private static readonly OutputSize Cover = OutputSize.ExactSize(1024, 768);
+    /// <summary>6000×2000 の画像で 4:3・最小の長さ 96（最大 2667×2000、最小 128×96）</summary>
+    private static readonly FrameRules CoverRules = CropFrameRulesTests.Rules4x3;
 
-    /// <summary>6000×2000 の画像に 1024×768（最大 2667×2000、最小 128×96）</summary>
-    private static readonly FrameRules CoverRules = CropFrameCalculator.Rules(6000, 2000, CropAspect.Free, Cover);
+    /// <summary>600×400 の画像で比率なし・最小の長さ 16（最小 16×16）</summary>
+    private static readonly FrameRules FreeRules = CropFrameCalculator.Rules(600, 400, null, 16);
 
-    /// <summary>600×400 の画像で比率が自由（最小 16×16）</summary>
-    private static readonly FrameRules FreeRules = CropFrameCalculator.Rules(600, 400, CropAspect.Free, OutputSize.OriginalSize);
-
-    // ---------------------------------------------------------------- E19: Move
-
-    [Theory]
-    [InlineData(2667, 1, 3)]    // 1 ÷ (1024 ÷ 2667) = 2.60 → 3
-    [InlineData(2667, 10, 26)]  // 26.04 → 26
-    [InlineData(300, 1, 1)]     // 0.29 → 最低 1
-    [InlineData(300, 10, 3)]    // 2.93 → 3
-    [InlineData(1024, 1, 1)]    // 等倍
-    public void Move_ConvertsOutputPixelsToImagePixels(int frameWidth, int outputStep, int expectedPixels)
-    {
-        var rect = CropFrameCalculator.Center(new PixelRect(0, 0, frameWidth, 0), CoverRules);
-
-        var right = CropFrameCalculator.Move(rect, outputStep, 0, CoverRules, Cover);
-        var left = CropFrameCalculator.Move(rect, -outputStep, 0, CoverRules, Cover);
-        var down = CropFrameCalculator.Move(rect, 0, outputStep, CoverRules, Cover);
-
-        Assert.Equal(rect.X + expectedPixels, right.X);
-        Assert.Equal(rect.X - expectedPixels, left.X);
-        // 縦も横と同じ倍率で動かす（枠が画像の高さいっぱいのときは動けない）
-        Assert.Equal(Math.Min(rect.Y + expectedPixels, 2000 - rect.Height), down.Y);
-        Assert.Equal((rect.Width, rect.Height), (right.Width, right.Height));
-    }
+    // ---------------------------------------------------------------- E19: Move（px 単位）
 
     [Fact]
-    public void Move_StopsAtImageEdge()
+    public void Move_ByPixels_StopsAtImageEdge()
     {
         var rect = new PixelRect(3330, 0, 2667, 2000); // 右端まで 3 px
 
-        Assert.Equal(3333, CropFrameCalculator.Move(rect, 10, 0, CoverRules, Cover).X);
-        Assert.Equal(0, CropFrameCalculator.Move(rect with { X = 2 }, -1, 0, CoverRules, Cover).X);
-        Assert.Equal(0, CropFrameCalculator.Move(rect, 0, -10, CoverRules, Cover).Y);
+        Assert.Equal(3333, CropFrameCalculator.Move(rect, 10, 0, CoverRules).X);
+        Assert.Equal(1, CropFrameCalculator.Move(rect with { X = 2 }, -1, 0, CoverRules).X);
+        Assert.Equal(0, CropFrameCalculator.Move(rect, 0, -10, CoverRules).Y);
     }
 
     [Fact]
@@ -51,29 +28,8 @@ public class CropFrameOperationsTests
     {
         var rect = new PixelRect(1000, 500, 1200, 900);
 
-        Assert.Equal(rect, CropFrameCalculator.Move(rect, 0, 0, CoverRules, Cover));
+        Assert.Equal(rect, CropFrameCalculator.Move(rect, 0, 0, CoverRules));
     }
-
-    [Fact]
-    public void Move_LongSideAndOriginal_UseTheirOutputScale()
-    {
-        var rules = CropFrameCalculator.Rules(6000, 4000, CropAspect.Free, OutputSize.OriginalSize);
-        var rect = new PixelRect(1000, 1000, 3000, 2000);
-
-        // 長辺 1000: 書き出し倍率 = 1000 ÷ 3000。1 px は 3 px
-        Assert.Equal(1003, CropFrameCalculator.Move(rect, 1, 0, rules, OutputSize.LongSideOf(1000)).X);
-        // 指定しない: 倍率 1
-        Assert.Equal(1001, CropFrameCalculator.Move(rect, 1, 0, rules, OutputSize.OriginalSize).X);
-    }
-
-    [Fact]
-    public void OutputScale_IsOutputWidthOverFrameWidth()
-    {
-        Assert.Equal(1024.0 / 2667, CropFrameCalculator.OutputScale(new PixelRect(0, 0, 2667, 2000), Cover), 10);
-        Assert.Equal(1024.0 / 300, CropFrameCalculator.OutputScale(new PixelRect(0, 0, 300, 225), Cover), 10); // 拡大（> 1）
-        Assert.Equal(1.0, CropFrameCalculator.OutputScale(new PixelRect(0, 0, 300, 225), OutputSize.OriginalSize));
-    }
-
     // ---------------------------------------------------------------- E21: ResizeAroundCenter
 
     [Fact]
@@ -267,11 +223,11 @@ public class CropFrameOperationsTests
         for (int i = 0; i < 1000; i++)
         {
             int width = CropFrameRulesTests.RandomLength(random), height = CropFrameRulesTests.RandomLength(random);
-            var aspect = CropFrameRulesTests.RandomAspect(random);
-            var size = CropFrameRulesTests.RandomOutputSize(random);
-            var rules = CropFrameCalculator.Rules(width, height, aspect, size);
+            var aspect = CropFrameRulesTests.RandomAspect(random, width, height);
+            int minLength = random.Next(2) == 0 ? 1 : random.Next(1, 200);
+            var rules = CropFrameCalculator.Rules(width, height, aspect, minLength);
             var rect = CropFrameCalculator.Initial(rules);
-            string context = $"#{i}: 画像 {width}×{height}・{aspect}・{size}";
+            string context = $"#{i}: 画像 {width}×{height}・{aspect}・最小 {minLength}";
 
             for (int step = 0; step < 10; step++)
             {
@@ -281,7 +237,7 @@ public class CropFrameOperationsTests
                     case 0:
                         int dx = random.Next(-20, 21), dy = random.Next(-20, 21);
                         operation = $"Move({dx}, {dy})";
-                        rect = CropFrameCalculator.Move(rect, dx, dy, rules, size);
+                        rect = CropFrameCalculator.Move(rect, dx, dy, rules);
                         break;
                     case 1:
                         int newWidth = (int)(rect.Width * (random.NextDouble() * 1.6 + 0.2));
@@ -320,8 +276,8 @@ public class CropFrameOperationsTests
 
         for (int i = 0; i < 500; i++)
         {
-            var aspect = random.Next(2) == 0 ? CropAspect.Free : CropAspect.Fixed(random.Next(1, 17), random.Next(1, 17));
-            var rules = CropFrameCalculator.Rules(4000, 3000, aspect, OutputSize.OriginalSize);
+            AspectRatio? aspect = random.Next(2) == 0 ? null : new AspectRatio(random.Next(1, 17), random.Next(1, 17));
+            var rules = CropFrameCalculator.Rules(4000, 3000, aspect, 16);
             var start = CropFrameCalculator.Clamp(new PixelRect(random.Next(4000), random.Next(3000), random.Next(16, 2000), random.Next(16, 2000)), rules);
             var handle = corners[random.Next(corners.Length)];
 

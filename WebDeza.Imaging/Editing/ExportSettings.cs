@@ -4,21 +4,19 @@ using WebDeza.Imaging.Parameters;
 namespace WebDeza.Imaging.Editing;
 
 /// <summary>
-/// 書き出し設定（全画像共通）。不変。
+/// 書き出しの設定（書き出しのダイアログで決める）。不変。大きさは持たない（今の画像の大きさのまま書き出す。設計書 F-08）。
 /// </summary>
 /// <param name="FormatId">書き出す形式の Id</param>
 /// <param name="FormatOptions">形式の Id → その形式のオプション（形式を切り替えても、それぞれの値を覚えておく）</param>
 /// <param name="SizeLimitBytes">
 /// ファイルサイズの上限（バイト）。形式のエンコーダーが SizeTuning を持つときだけ使う。null のときは「品質を指定」
 /// </param>
-/// <param name="Size">書き出す大きさ</param>
 /// <param name="Background">透過を保てない形式で書き出すときに、透過部分を塗る色</param>
-/// <remarks>比較は FormatOptions の中身で行う（書き出しプレビューの使い回しの判定に使う）。</remarks>
+/// <remarks>比較は FormatOptions の中身で行う（書き出しサイズの計算の使い回しの判定に使う）。</remarks>
 public sealed record ExportSettings(
     string FormatId,
     IReadOnlyDictionary<string, ParameterValues> FormatOptions,
     long? SizeLimitBytes,
-    OutputSize Size,
     RgbColor Background)
 {
     private readonly IReadOnlyDictionary<string, ParameterValues> _formatOptions =
@@ -43,17 +41,16 @@ public sealed record ExportSettings(
         => other is not null
            && string.Equals(FormatId, other.FormatId, StringComparison.Ordinal)
            && SizeLimitBytes == other.SizeLimitBytes
-           && Size == other.Size
            && Background == other.Background
            && ParameterValuesMap.ContentEquals(_formatOptions, other._formatOptions);
 
     public override int GetHashCode()
-        => HashCode.Combine(FormatId, SizeLimitBytes, Size, Background, ParameterValuesMap.ContentHashCode(_formatOptions));
+        => HashCode.Combine(FormatId, SizeLimitBytes, Background, ParameterValuesMap.ContentHashCode(_formatOptions));
 
     private bool PrintMembers(StringBuilder builder)
     {
         builder.Append($"FormatId = {FormatId}, FormatOptions = {ParameterValuesMap.Format(_formatOptions)}, ");
-        builder.Append($"SizeLimitBytes = {SizeLimitBytes?.ToString() ?? "null"}, Size = {Size}, Background = {Background}");
+        builder.Append($"SizeLimitBytes = {SizeLimitBytes?.ToString() ?? "null"}, Background = {Background}");
         return true;
     }
 }

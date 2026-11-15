@@ -9,10 +9,6 @@ namespace WebDeza.Models;
 /// %APPDATA%\webDeza\settings.json に保存する設定（設計書 F-12）。
 /// JSON にそのまま書く形なので、値は検証していない。読み込んだ値は SettingsService が検証してから使う。
 /// </summary>
-/// <remarks>
-/// 設計書 2.3 までの項目（切り抜きの比率 CropAspect・利用者のプリセット UserPresets・書き出しのサイズ Export.Size）は持たない。
-/// 古い設定ファイルにあっても、知らない項目として読み飛ばす。
-/// </remarks>
 public sealed class AppSettings
 {
     /// <summary>書き出し先のフォルダ</summary>
@@ -62,12 +58,10 @@ public sealed class ExportSettingsData
     public string Background { get; set; } = "#FFFFFF";
 
     /// <summary>エンジンの書き出しの設定にする（値は検証済みであること）</summary>
-    /// <remarks>エンジンの ExportSettings の大きさ（Size）は、実装計画書 6-6 で消す。それまでは「変えない」を渡す</remarks>
     public ExportSettings ToExportSettings() => new(
         FormatId,
         FormatOptions.Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value!, StringComparer.Ordinal),
         UseSizeLimit ? SizeLimitKB * 1024 : null,
-        OutputSize.OriginalSize,
         ColorText.Parse(Background));
 
     /// <summary>

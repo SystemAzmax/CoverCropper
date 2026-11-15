@@ -92,7 +92,7 @@ public class WicFormatsTests
     private static ExportSettings Settings(string formatId, long? limit, ParameterValues? options = null) => new(
         formatId,
         options is null ? new Dictionary<string, ParameterValues>() : new Dictionary<string, ParameterValues> { [formatId] = options },
-        limit, OutputSize.OriginalSize, new RgbColor(255, 255, 255));
+        limit, new RgbColor(255, 255, 255));
 
     [Fact]
     public void ExportEncoder_JpegWithLimit_FitsLimitAndReportsFoundQuality()

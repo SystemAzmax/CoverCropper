@@ -189,27 +189,6 @@ public class SettingsServiceTests
     }
 
     [Fact]
-    public void Load_OldSettingsFile_IgnoresRemovedItems()
-    {
-        // 設計書 2.3 までの項目（切り抜きの比率・プリセット・書き出しのサイズ）が入った設定ファイル
-        using var temp = new TempFolder();
-
-        var result = LoadJson(temp, """
-            {
-              "OutputFolder": "D:\\web",
-              "Export": { "FormatId": "png", "Size": { "Mode": "exact", "Width": 1024, "Height": 768 } },
-              "CropAspect": { "Kind": "fixed", "Width": 4, "Height": 3 },
-              "UserPresets": [ { "Name": "ブログ用", "Export": { "FormatId": "bmp" } } ]
-            }
-            """);
-
-        Assert.Empty(result.Messages); // 読めない設定ではないので、M20 は出さない
-        Assert.Equal(@"D:\web", result.Settings.OutputFolder);
-        Assert.Equal("png", result.Settings.Export.FormatId);
-        Assert.Equal(SelectionAspectData.FreeKind, result.Settings.SelectionAspect.Kind);
-    }
-
-    [Fact]
     public void Load_WindowValuesThatCannotBeUsed_BecomeNull()
     {
         using var temp = new TempFolder();
@@ -242,7 +221,6 @@ public class SettingsServiceTests
                 ["tiff"] = ParameterValues.Empty.With("compression", "zip"),
             },
             SizeLimitBytes: null,
-            OutputSize.OriginalSize,
             new RgbColor(0x33, 0x66, 0x99));
 
         service.Save(new AppSettings
@@ -284,8 +262,6 @@ public class SettingsServiceTests
         Assert.Equal("#FFFFFF", json["Export"]!["Background"]!.GetValue<string>());
         Assert.Equal("free", json["SelectionAspect"]!["Kind"]!.GetValue<string>());
         Assert.Null(json["SelectionAspect"]!["IsValid"]); // 計算で求める値は書かない
-        Assert.Null(json["CropAspect"]);
-        Assert.Null(json["UserPresets"]);
     }
 
     [Fact]

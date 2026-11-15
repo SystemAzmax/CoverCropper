@@ -28,7 +28,7 @@ public class ExportEncoderTests
     }
 
     private static ExportSettings Settings(string formatId, long? limit = null, params (string FormatId, ParameterValues Options)[] options)
-        => new(formatId, options.ToDictionary(o => o.FormatId, o => o.Options), limit, OutputSize.OriginalSize, White);
+        => new(formatId, options.ToDictionary(o => o.FormatId, o => o.Options), limit, White);
 
     private static readonly ImageBuffer Opaque = TestBuffers.DistinctOpaque(8, 6);
 
