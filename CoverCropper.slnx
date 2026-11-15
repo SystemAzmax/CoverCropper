@@ -5,4 +5,6 @@
   <Project Path="WebDeza.Imaging.Wic/WebDeza.Imaging.Wic.csproj" />
   <Project Path="WebDeza.Core/WebDeza.Core.csproj" />
   <Project Path="WebDeza.Imaging.Tests/WebDeza.Imaging.Tests.csproj" />
+  <Project Path="WebDeza/WebDeza.csproj" />
+  <Project Path="WebDeza.Tests/WebDeza.Tests.csproj" />
 </Solution>

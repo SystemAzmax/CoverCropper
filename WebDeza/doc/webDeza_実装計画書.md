@@ -174,7 +174,7 @@
 
 | No | 機能 | 作るもの・変えるもの | 確かめること | 規模 | 状態 |
 |---|---|---|---|---|---|
-| 5-1 | プロジェクトと起動 | `WebDeza`（WPF。`AssemblyName` は `webDeza`、`RootNamespace` は `WebDeza`、`app.manifest` は CoverCropper と同じ Per-Monitor V2）と `WebDeza.Tests` を作り、`CoverCropper.slnx` に足す。`AppInfo`・`Composition/AppModules`（形式と基本補正の登録）・`App`（ログの場所・未処理例外）・`Messages`・`MainWindow`（設計書 4.1 の領域の枠組みだけ。タイトル・初期サイズ 1440×900・最小 1024×640・案内文） | 追加: `WebDeza.Core` のテスト（`AppPaths`・`AppLog`・`JsonSettingsService`・`OutputFileNamer`）。手動: 起動すると空の画面が出る。実行ファイルが `webDeza.exe`、タイトルが `webDeza` | 中 | 未 |
+| 5-1 | プロジェクトと起動 | `WebDeza`（WPF。`AssemblyName` は `webDeza`、`RootNamespace` は `WebDeza`、`app.manifest` は CoverCropper と同じ Per-Monitor V2）と `WebDeza.Tests` を作り、`CoverCropper.slnx` に足す。`AppInfo`・`Composition/AppModules`（形式と基本補正の登録）・`App`（ログの場所・未処理例外）・`Messages`・`MainWindow`（設計書 4.1 の領域の枠組みだけ。タイトル・初期サイズ 1440×900・最小 1024×640・案内文） | 追加: `WebDeza.Core` のテスト（`AppPaths`・`AppLog`・`JsonSettingsService`・`OutputFileNamer`）。手動: 起動すると空の画面が出る。実行ファイルが `webDeza.exe`、タイトルが `webDeza` | 中 | 済 |
 | 5-2 | 設定 | `Models/AppSettings`・`Services/SettingsService`（読み書きと値の検証）。ウィンドウの位置・サイズ・最大化の保存と復元。M20・M25 | V16・V18。手動: ウィンドウの位置とサイズが次の起動で戻る | 中 | 未 |
 | 5-3 | CoverCropper の設定の引き継ぎ | `SettingsService` の初回の引き継ぎ（保存先フォルダと前回のフォルダ）。M19 | V17。手動: T20 のうち引き継ぎ | 小 | 未 |
 | 5-4 | 画像を開く | `Services/DialogService`（「開く」の種類の一覧は形式レジストリから作る）・`MainViewModel`・`ImageItemViewModel`。［開く］ / `Ctrl+O`（ここでは 1 枚）。読み込みは `Task.Run` で行い、その間は待機カーソル。タイトルと、ステータスバーの「画像:」。M01・M02・M21 | 追加（形式とダイアログを差し替えて）: 読み込むとタイトルと「画像:」が変わる / 読めない形式は M01 で、`Requirement` があれば M21 が続く / そのほかの失敗は M02 | 中 | 未 |
@@ -345,9 +345,9 @@
 
 ## 7. 決めておきたいこと
 
-設計書に書かれていないため、そのステップまでに決めておきたいこと。決まらなければ「案」のとおりに進める。
+設計書に書かれていないため、そのステップまでに決めておきたいこと。決まらなければ「案」のとおりに進める。 決まったものは「決まったこと」に書く。
 
-| No | 内容 | 案 | 決める時期 |
-|---|---|---|---|
-| Q1 | webDeza のアイコン。専用のアイコンは将来の拡張（設計書 8 章）なので、それまでどうするか | アイコンを指定しない（Windows の既定のアイコンになる）。CoverCropper のアイコンを使い回すと、同時に動かしたときに見分けにくいため | 5-1 まで |
-| Q2 | VS Code から webDeza を起動・デバッグするための構成（`.vscode/launch.json`・`tasks.json`）を足すか | 5-1 で足す | 5-1 まで |
+| No | 内容 | 案 | 決める時期 | 決まったこと |
+|---|---|---|---|---|
+| Q1 | webDeza のアイコン。専用のアイコンは将来の拡張（設計書 8 章）なので、それまでどうするか | アイコンを指定しない（Windows の既定のアイコンになる）。CoverCropper のアイコンを使い回すと、同時に動かしたときに見分けにくいため | 5-1 まで | 案のとおり（5-1）。アイコンは指定していない |
+| Q2 | VS Code から webDeza を起動・デバッグするための構成（`.vscode/launch.json`・`tasks.json`）を足すか | 5-1 で足す | 5-1 まで | 案のとおり（5-1）。`launch.json` に「webDeza」、`tasks.json` に「build webDeza」と「test」を足した |

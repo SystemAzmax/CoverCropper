@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- webDeza（編集ソフト）。プロジェクト名・名前空間は WebDeza、製品名と exe 名は webDeza（設計書 5.9） -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>webDeza</AssemblyName>
+    <RootNamespace>WebDeza</RootNamespace>
+    <AssemblyTitle>webDeza</AssemblyTitle>
+    <Product>webDeza</Product>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WebDeza.Imaging\WebDeza.Imaging.csproj" />
+    <ProjectReference Include="..\WebDeza.Imaging.Wic\WebDeza.Imaging.Wic.csproj" />
+    <ProjectReference Include="..\WebDeza.Core\WebDeza.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="doc\**" />
+  </ItemGroup>
+
+</Project>

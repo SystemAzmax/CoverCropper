@@ -18,6 +18,18 @@
             "stopAtEntry": false
         },
         {
+            "name": "webDeza",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build webDeza",
+            // AssemblyName は webDeza（プロジェクトのフォルダ名は WebDeza）
+            "program": "${workspaceFolder}/WebDeza/bin/Debug/net10.0-windows/webDeza.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/WebDeza",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        },
+        {
             "name": ".NET Core Attach",
             "type": "coreclr",
             "request": "attach"
