@@ -51,6 +51,7 @@
                                          Session="{Binding}"
                                          ResetViewRequest="{Binding ResetViewRequest}"
                                          ZoomPercent="{Binding ZoomPercent, Mode=OneWayToSource}"
+                                         ToolFactory="{Binding CurrentTool, RelativeSource={RelativeSource AncestorType=local:DocumentWorkspace}}"
                                          CheckerLightColor="{StaticResource CheckerLightColor}"
                                          CheckerDarkColor="{StaticResource CheckerDarkColor}"
                                          SelectionLightBrush="{StaticResource SelectionLightBrush}"

@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| 文書バージョン | 3.1 |
+| 文書バージョン | 3.2 |
 | 作成日 | 2026-10-24 |
 | 対象 | Claude Code による実装 |
 | 対象OS | Windows 10 / 11（64bit）のみ |
@@ -19,6 +19,7 @@
 | 2.3 | 2026-11-15 | CoverCropper の設定の引き継ぎをやめた。CoverCropper は自分用のツールで公開しないため（F-12・M19・V17・T20 を修正） |
 | 3.0 | 2026-11-15 | **位置付けを直した。** webDeza は画像編集が主で、切り抜きはその一機能とする（2.3 までは、書き出しの最適化が主で、切り抜きの枠が常に出る作りだった）。編集は「実行したら確定する」方式にし、レシピによる非破壊編集をやめた。矩形の選択範囲、ぼかし、メニューバー、画像ごとの子ウィンドウ、書き出しのダイアログを足した。画像一覧・プリセット・切り抜きの枠の常時表示・書き出しのサイズ指定をやめた（画像の大きさは、編集の「画像サイズの変更」で変える）（1 章・2 章・4 章・5.6〜5.8・5.10・5.11・6 章〜9 章を書き直し） |
 | 3.1 | 2026-11-16 | メニューを利用者の案に合わせた（4.3）。「書き出し」を「保存」に言い換えた（画面の文字と、この設計書の用語。コードの名前は変えない）。［表示］の拡大・縮小を「表示拡大」「表示縮小」に、［選択を解除］を［選択の取り消し］にし、［選択範囲］→［領域選択］を足した。将来拡張の機能（新規画像作成・上書き保存・コピー・切り取り・貼り付け・透過貼り付け・画像複製・任意角度の回転・表示サイズ・ほかのフィルター・一括処理）は、メニューに無効の項目として並べておき、8 章に書いた。［フィルター］はサブメニューに分けない |
+| 3.2 | 2026-11-16 | 道具の名前とキー（`Id`・`DisplayName`・`Shortcut`）を、道具の実体（`ICanvasTool`）ではなく `ICanvasToolFactory` に持たせた（道具のボタンを、画像が無くても登録内容から作るため）。`ICanvasHost` の中身を書いた（5.6） |
 
 ---
 
@@ -1044,9 +1045,6 @@ public interface IEditorSession
 
 public interface ICanvasTool
 {
-    string Id { get; }                                          // "select"
-    string DisplayName { get; }                                 // "選択"
-    Key Shortcut { get; }                                       // M
     void OnPointerDown(CanvasPointer pointer);                  // 画面座標・画像座標・ボタン・修飾キー
     void OnPointerMove(CanvasPointer pointer);
     void OnPointerUp(CanvasPointer pointer);
@@ -1055,12 +1053,28 @@ public interface ICanvasTool
     Cursor? GetCursor(CanvasPointer pointer);
 }
 
-/// <summary>道具は IEditorSession と ICanvasHost（再描画の依頼・パン・マウスのキャプチャ）を受け取って作る。
-/// 道具の種類は全画像で共通で、道具の実体はキャンバスごとに作る</summary>
+/// <summary>道具の種類。道具は IEditorSession と ICanvasHost を受け取って作る。
+/// 道具の種類は全画像で共通で、道具の実体はキャンバスごとに作る。名前とキーは、画像が無くても道具のボタンを作れるように、こちらが持つ</summary>
 public interface ICanvasToolFactory
 {
+    string Id { get; }                                          // "select"
+    string DisplayName { get; }                                 // "選択"
+    Key Shortcut { get; }                                       // M
     ICanvasTool Create(IEditorSession session, ICanvasHost host);
 }
+
+/// <summary>道具から見たキャンバス（EditorCanvas が実装）</summary>
+public interface ICanvasHost
+{
+    ViewTransform View { get; }                                 // 今の表示（描いているとおり）
+    bool CanPan { get; }                                        // ズーム中（全体表示ではパンしても何もしない）
+    void InvalidateVisual();                                    // 描き直しの依頼
+    void BeginPan(CanvasPointer pointer);                       // そのボタンを離すまでパンする（中ボタン・Space のパンと同じ処理）
+    bool CaptureMouse();
+    void ReleaseMouseCapture();
+}
+
+public readonly record struct CanvasPointer(Point ViewPoint, Point ImagePoint, MouseButton? Button, ModifierKeys Modifiers);
 ```
 
 - `EditorCanvas`（`FrameworkElement`）は、市松模様・表示用画像・選択範囲の縁を描き、マウスとキーを今の道具に渡す。中ボタン・`Space`・ホイールのズームは道具にかかわらずキャンバスが処理する。

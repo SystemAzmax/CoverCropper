@@ -68,6 +68,31 @@ public partial class MainWindow : Window
         await _vm.OpenPathsAsync(paths!);
     }
 
+    // ---------------------------------------------------------------- キー入力（設計書 4.4・5.10-7）
+
+    /// <summary>
+    /// 修飾キーの無い（または Shift だけの）キーは、アクティブな画像の今の道具に先に渡し、使われなければ道具の切り替えにする。
+    /// 入力欄などにフォーカスがあるときは渡さない。Ctrl つきのキーは InputBindings（メニューのキー）が受ける
+    /// </summary>
+    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (_vm.IsBusy) return;
+        var key = e.Key;
+        var modifiers = Keyboard.Modifiers;
+        if (!KeyRouting.ShouldRouteToTools(key, modifiers, KeyRouting.IsInputControl(Keyboard.FocusedElement as DependencyObject)))
+            return;
+
+        if (_vm.ActiveDocument is { } document && Workspace.GetWindow(document) is { } window
+            && window.Canvas.HandleToolKey(key, modifiers))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (KeyRouting.IsToolShortcut(modifiers) && _vm.SelectToolByShortcut(key))
+            e.Handled = true;
+    }
+
     // ---------------------------------------------------------------- ズーム（メニュー［表示］・ツールバー）
 
     /// <summary>メニューとツールバーのズームは、アクティブな画像の子ウィンドウのキャンバスに伝える（設計書 5.6）</summary>

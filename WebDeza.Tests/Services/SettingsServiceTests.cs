@@ -18,7 +18,7 @@ public class SettingsServiceTests
     private static FormatRegistry CreateFormats()
     {
         var formats = new FormatRegistry();
-        AppModules.Register(formats, new FilterRegistry());
+        AppModules.Register(formats, new FilterRegistry(), new WebDeza.Views.Canvas.ToolRegistry());
         return formats;
     }
 

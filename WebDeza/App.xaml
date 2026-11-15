@@ -39,6 +39,22 @@
             <Setter Property="Background" Value="#203A96DD" />
         </Style>
 
+        <!-- 道具のボタン（キャンバスの左。今の道具は、アクセントの色で塗る） -->
+        <Style x:Key="ToolButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Margin" Value="0,0,0,4" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Focusable" Value="False" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <!-- ツールバーのボタンの区切り（縦線） -->
         <Style x:Key="ToolbarSeparatorStyle" TargetType="Border">
             <Setter Property="Width" Value="1" />

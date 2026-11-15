@@ -4,6 +4,7 @@ using WebDeza.Imaging.Formats;
 using WebDeza.Imaging.Wic;
 using WebDeza.Services;
 using WebDeza.ViewModels;
+using WebDeza.Views.Canvas;
 
 namespace WebDeza.Tests.ViewModels;
 
@@ -52,6 +53,80 @@ public sealed class MainViewModelCommandTests : IDisposable
         Assert.False(_vm.ZoomOutCommand.CanExecute(null));
         Assert.False(_vm.ZoomToFitCommand.CanExecute(null));
         Assert.False(_vm.ZoomToActualSizeCommand.CanExecute(null));
+    }
+
+    // ---------------------------------------------------------------- 道具（8-4）
+
+    private MainViewModel CreateWithTools(out ToolRegistry tools)
+    {
+        tools = new ToolRegistry();
+        tools.Register(new WebDeza.Tests.Views.FakeToolFactory("select", "選択", System.Windows.Input.Key.M));
+        tools.Register(new HandToolFactory());
+        return new MainViewModel(_formats, new SettingsService(_formats, _temp.Combine("settings2.json")),
+            _dialogs, new AppLog(_temp.Combine("logs", "app2.log")), tools);
+    }
+
+    [Fact]
+    public void Tools_ButtonsFollowRegistrationAndFirstIsDefault()
+    {
+        var vm = CreateWithTools(out var tools);
+
+        Assert.Equal(new[] { "M", "H" }, vm.ToolItems.Select(t => t.ShortcutText));
+        Assert.Equal(new[] { "選択 (M)", "手のひら (H)" }, vm.ToolItems.Select(t => t.ToolTip));
+        Assert.Same(tools.All[0], vm.CurrentTool);
+        Assert.Equal(new[] { true, false }, vm.ToolItems.Select(t => t.IsSelected));
+    }
+
+    [Fact]
+    public void Tools_NoImage_CannotSwitch()
+    {
+        var vm = CreateWithTools(out var tools);
+
+        Assert.False(vm.SelectToolCommand.CanExecute(vm.ToolItems[1]));
+        Assert.False(vm.SelectToolByShortcut(System.Windows.Input.Key.H));
+        Assert.Same(tools.All[0], vm.CurrentTool);
+    }
+
+    [Fact]
+    public async Task Tools_WithImage_SwitchByButtonAndKey()
+    {
+        var vm = CreateWithTools(out var tools);
+        await vm.LoadAsync(CreateFile("a.fake"));
+
+        Assert.True(vm.SelectToolCommand.CanExecute(vm.ToolItems[1]));
+        vm.SelectToolCommand.Execute(vm.ToolItems[1]);
+        Assert.Same(tools.All[1], vm.CurrentTool);
+        Assert.Equal(new[] { false, true }, vm.ToolItems.Select(t => t.IsSelected));
+
+        Assert.True(vm.SelectToolByShortcut(System.Windows.Input.Key.M));
+        Assert.Same(tools.All[0], vm.CurrentTool);
+        Assert.False(vm.SelectToolByShortcut(System.Windows.Input.Key.Q)); // 登録の無いキー
+        Assert.Same(tools.All[0], vm.CurrentTool);
+    }
+
+    [Fact]
+    public async Task Tools_WhileLoading_CannotSwitch()
+    {
+        var vm = CreateWithTools(out var tools);
+        await vm.LoadAsync(CreateFile("a.fake"));
+        var gate = new ManualResetEventSlim();
+        _fake.OnDecode = () => gate.Wait(TimeSpan.FromSeconds(10));
+
+        var loading = vm.LoadAsync(CreateFile("b.fake"));
+        Assert.False(vm.SelectToolByShortcut(System.Windows.Input.Key.H));
+        Assert.False(vm.SelectToolCommand.CanExecute(vm.ToolItems[1]));
+        gate.Set();
+        await loading;
+
+        Assert.True(vm.SelectToolByShortcut(System.Windows.Input.Key.H));
+        Assert.Same(tools.All[1], vm.CurrentTool);
+    }
+
+    [Fact]
+    public void Tools_NoneRegistered_NoCurrentTool()
+    {
+        Assert.Empty(_vm.ToolItems);
+        Assert.Null(_vm.CurrentTool);
     }
 
     // ---------------------------------------------------------------- ズーム（8-2）

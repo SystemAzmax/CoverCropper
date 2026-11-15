@@ -11,7 +11,7 @@ public class OpenFileFilterTests
     public void Build_StandardFormats_ListsAllExtensionsThenEachFormat()
     {
         var formats = new FormatRegistry();
-        AppModules.Register(formats, new FilterRegistry());
+        AppModules.Register(formats, new FilterRegistry(), new WebDeza.Views.Canvas.ToolRegistry());
 
         var parts = OpenFileFilter.Build(formats).Split('|');
 

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WebDeza.Core;
@@ -8,6 +9,7 @@ using WebDeza.Imaging;
 using WebDeza.Imaging.Formats;
 using WebDeza.Models;
 using WebDeza.Services;
+using WebDeza.Views.Canvas;
 
 namespace WebDeza.ViewModels;
 
@@ -28,7 +30,9 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly AppLog _log;
     private readonly FileCollector _collector;
 
-    public MainViewModel(FormatRegistry formats, SettingsService settingsService, IDialogService dialogs, AppLog log)
+    /// <param name="tools">登録された道具（null なら道具なし。テストで省くため）</param>
+    public MainViewModel(FormatRegistry formats, SettingsService settingsService, IDialogService dialogs, AppLog log,
+        ToolRegistry? tools = null)
     {
         ArgumentNullException.ThrowIfNull(formats);
         ArgumentNullException.ThrowIfNull(settingsService);
@@ -49,6 +53,10 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         Documents.CollectionChanged += (_, _) => NotifyDocumentCommandsChanged();
+
+        // 道具のボタンは登録内容から作り、最初に登録した道具を既定にする（設計書 F-03）
+        ToolItems = (tools?.All ?? []).Select(t => new ToolItemViewModel(t)).ToList();
+        CurrentTool = ToolItems.FirstOrDefault()?.Factory;
     }
 
     /// <summary>検証済みの設定（変えたら SaveSettingsQuietly で保存する）</summary>
@@ -61,13 +69,14 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasImage), nameof(WindowTitle), nameof(StatusText))]
     [NotifyCanExecuteChangedFor(nameof(CloseCommand), nameof(ZoomInCommand), nameof(ZoomOutCommand),
-        nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand))]
+        nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand), nameof(SelectToolCommand))]
     private DocumentViewModel? _activeDocument;
 
     /// <summary>読み込み中・編集の確定中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(OpenCommand), nameof(CloseCommand), nameof(ExitCommand),
-        nameof(ZoomInCommand), nameof(ZoomOutCommand), nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand))]
+        nameof(ZoomInCommand), nameof(ZoomOutCommand), nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand),
+        nameof(SelectToolCommand))]
     private bool _isBusy;
 
     partial void OnIsBusyChanged(bool value) => NotifyDocumentCommandsChanged();
@@ -374,6 +383,39 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>［表示］→［100%］ / ツールバー［100%］ / Ctrl+1</summary>
     [RelayCommand(CanExecute = nameof(CanZoom))]
     private void ZoomToActualSize() => ZoomRequested?.Invoke(this, ZoomAction.ActualSize);
+
+    // ---------------------------------------------------------------- 道具（設計書 F-03。全画像で共通）
+
+    /// <summary>道具のボタン（登録順）</summary>
+    public IReadOnlyList<ToolItemViewModel> ToolItems { get; }
+
+    /// <summary>今の道具（全画像で共通。子ウィンドウのキャンバスが、この種類の実体を作る）</summary>
+    [ObservableProperty]
+    private ICanvasToolFactory? _currentTool;
+
+    partial void OnCurrentToolChanged(ICanvasToolFactory? value)
+    {
+        foreach (var item in ToolItems) item.IsSelected = ReferenceEquals(item.Factory, value);
+    }
+
+    /// <summary>画像が無いときと、読み込み中は、道具を切り替えられない（設計書 4.2）</summary>
+    private bool CanSelectTool(ToolItemViewModel? item) => !IsBusy && ActiveDocument is not null && item is not null;
+
+    /// <summary>道具のボタン</summary>
+    [RelayCommand(CanExecute = nameof(CanSelectTool))]
+    private void SelectTool(ToolItemViewModel? item)
+    {
+        if (CanSelectTool(item)) CurrentTool = item!.Factory;
+    }
+
+    /// <summary>道具のキー（M / H など。修飾キーなし）。その道具にしたら true</summary>
+    public bool SelectToolByShortcut(Key key)
+    {
+        var item = ToolItems.FirstOrDefault(t => t.Factory.Shortcut == key);
+        if (!CanSelectTool(item)) return false;
+        CurrentTool = item!.Factory;
+        return true;
+    }
 
     // ---------------------------------------------------------------- 閉じる
 

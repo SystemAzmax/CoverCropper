@@ -13,10 +13,11 @@ namespace WebDeza.Views.Canvas;
 /// 表示用画像は、画像（フル解像度）の大きさとして描く。選択範囲は画像のピクセル座標で、IEditorSession から読む。
 /// 倍率と位置は ViewTransform で計算する。ズームの状態はキャンバスが持つ（ViewModel には持たせない。設計書 5.6）。
 /// 全体表示のときは、大きさが変わるたびに全体表示し直す。ズーム中は、倍率と表示の中心を保つ（設計書 F-03）。
-/// パンは、中ボタンのドラッグと Space+ドラッグ（道具にかかわらず。設計書 4.5）。手のひらの道具でのパンは 8-4 で足す。
+/// パンは、中ボタンのドラッグと Space+ドラッグ（道具にかかわらず。設計書 4.5）と、道具（手のひら）から頼まれたとき。
+/// そのほかのマウスとキーは、今の道具（ToolFactory から、このキャンバス用に作った実体）に渡す。ICanvasHost として道具に使わせる。
 /// マウスで選択範囲を作る・動かすのは、道具の仕組み（8-4）と「選択」の道具（8-5・8-6）で作る。
 /// </remarks>
-public sealed class EditorCanvas : FrameworkElement
+public sealed class EditorCanvas : FrameworkElement, ICanvasHost
 {
     /// <summary>全体表示のときに、画像の周りに空ける余白（DIP。CoverCropper と同じ）</summary>
     public const double FitMargin = 12;
@@ -53,6 +54,10 @@ public sealed class EditorCanvas : FrameworkElement
         nameof(CheckerDarkColor), typeof(Color), typeof(EditorCanvas),
         new FrameworkPropertyMetadata(Color.FromRgb(0xCC, 0xCC, 0xCC), FrameworkPropertyMetadataOptions.AffectsRender, OnCheckerColorChanged));
 
+    public static readonly DependencyProperty ToolFactoryProperty = DependencyProperty.Register(
+        nameof(ToolFactory), typeof(ICanvasToolFactory), typeof(EditorCanvas),
+        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender, (d, _) => ((EditorCanvas)d).RecreateTool()));
+
     public static readonly DependencyProperty SelectionLightBrushProperty = DependencyProperty.Register(
         nameof(SelectionLightBrush), typeof(Brush), typeof(EditorCanvas),
         new FrameworkPropertyMetadata(Brushes.White, FrameworkPropertyMetadataOptions.AffectsRender, OnPenBrushChanged));
@@ -67,12 +72,19 @@ public sealed class EditorCanvas : FrameworkElement
     /// <summary>ズーム中の倍率と位置。null なら全体表示（大きさが変わるたびに全体表示し直す）</summary>
     private ViewTransform? _zoomed;
 
-    /// <summary>パン中なら、始めたときのマウスの位置と表示（始めたときからの移動量で計算し、ずれをためない）</summary>
+    /// <summary>パン中なら、始めたときのマウスの位置と表示（始めたときからの移動量で計算し、ずれをためない）と、離したら終わるボタン</summary>
     private (Point Start, ViewTransform View, MouseButton Button)? _pan;
+
+    /// <summary>今の道具の、このキャンバス用の実体</summary>
+    private ICanvasTool? _tool;
 
     public EditorCanvas()
     {
         ClipToBounds = true;
+        // クリックでフォーカスを取る（入力欄からフォーカスを戻し、キーを道具に渡すため。設計書 4.4）
+        Focusable = true;
+        FocusVisualStyle = null;
+        KeyboardNavigation.SetIsTabStop(this, false);
     }
 
     /// <summary>描く画像。null なら何も描かない</summary>
@@ -148,6 +160,25 @@ public sealed class EditorCanvas : FrameworkElement
         var canvas = (EditorCanvas)d;
         if (e.OldValue is IEditorSession oldSession) oldSession.Changed -= canvas.OnSessionContentChanged;
         if (e.NewValue is IEditorSession newSession) newSession.Changed += canvas.OnSessionContentChanged;
+        canvas.RecreateTool();
+    }
+
+    /// <summary>今の道具（全画像で共通の種類。実体はこのキャンバス用に作る）。null なら道具なし</summary>
+    public ICanvasToolFactory? ToolFactory
+    {
+        get => (ICanvasToolFactory?)GetValue(ToolFactoryProperty);
+        set => SetValue(ToolFactoryProperty, value);
+    }
+
+    /// <summary>今の道具の実体（テストと確認用）</summary>
+    public ICanvasTool? Tool => _tool;
+
+    /// <summary>道具か画像の窓口が変わったら、道具の実体を作り直す（ドラッグ中ならやめる）</summary>
+    private void RecreateTool()
+    {
+        if (IsMouseCaptured) ReleaseMouseCapture();
+        _tool = ToolFactory is { } factory && Session is { } session ? factory.Create(session, this) : null;
+        InvalidateVisual();
     }
 
     private void OnSessionContentChanged(object? sender, EventArgs e) => InvalidateVisual();
@@ -225,46 +256,100 @@ public sealed class EditorCanvas : FrameworkElement
     /// <summary>パン中か</summary>
     public bool IsPanning => _pan is not null;
 
-    /// <summary>中ボタンのドラッグと、Space を押しながらの左ドラッグでパンする（道具にかかわらず）</summary>
+    /// <summary>
+    /// 中ボタンのドラッグと、Space を押しながらの左ドラッグはパン（道具にかかわらず）。そのほかは今の道具に渡す
+    /// </summary>
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
         if (e.Handled || Image is null || _pan is not null) return;
+        Focus();
 
         bool middle = e.ChangedButton == MouseButton.Middle;
         bool spaceDrag = e.ChangedButton == MouseButton.Left && Keyboard.IsKeyDown(Key.Space);
-        if (!middle && !spaceDrag) return;
+        if (middle || spaceDrag)
+        {
+            BeginPan(MakePointer(e, e.ChangedButton));
+            e.Handled = true;
+            return;
+        }
 
-        e.Handled = true; // 道具（8-4）には渡さない
-        // 全体表示のときは、画像が領域に収まっているので何もしない（設計書 4.5）
-        if (_zoomed is not { } view) return;
-
-        _pan = (e.GetPosition(this), view, e.ChangedButton);
-        CaptureMouse();
-        Cursor = Cursors.SizeAll;
+        if (_tool is { } tool)
+        {
+            tool.OnPointerDown(MakePointer(e, e.ChangedButton));
+            e.Handled = true;
+        }
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
-        if (_pan is not { } pan || Image is not { } image) return;
-        e.Handled = true;
-        if (_zoomed is null) return; // パン中に全体表示に戻った（Ctrl+0 など）
+        if (_pan is { } pan)
+        {
+            e.Handled = true;
+            if (_zoomed is null || Image is not { } image) return; // パン中に全体表示に戻った（Ctrl+0 など）
 
-        var delta = e.GetPosition(this) - pan.Start;
-        _zoomed = pan.View.Pan(delta).ClampPan(RenderSize, image.ImageWidth, image.ImageHeight);
-        InvalidateVisual();
+            var delta = e.GetPosition(this) - pan.Start;
+            _zoomed = pan.View.Pan(delta).ClampPan(RenderSize, image.ImageWidth, image.ImageHeight);
+            InvalidateVisual();
+            return;
+        }
+
+        _tool?.OnPointerMove(MakePointer(e, PressedButton(e)));
     }
 
     protected override void OnMouseUp(MouseButtonEventArgs e)
     {
         base.OnMouseUp(e);
-        if (_pan is { } pan && e.ChangedButton == pan.Button)
+        if (_pan is { } pan)
         {
-            ReleaseMouseCapture();
+            if (e.ChangedButton == pan.Button) ReleaseMouseCapture();
+            e.Handled = true;
+            return;
+        }
+
+        if (_tool is { } tool)
+        {
+            tool.OnPointerUp(MakePointer(e, e.ChangedButton));
             e.Handled = true;
         }
     }
+
+    /// <summary>
+    /// pointer の位置からパンを始める（ICanvasHost）。pointer のボタンを離すまで、マウスに合わせて表示を動かす。
+    /// 全体表示のときは、画像が領域に収まっているので何もしない（設計書 4.5）
+    /// </summary>
+    public void BeginPan(CanvasPointer pointer)
+    {
+        if (_pan is not null || _zoomed is not { } view || pointer.Button is not { } button) return;
+        _pan = (pointer.ViewPoint, view, button);
+        CaptureMouse();
+        Cursor = Cursors.SizeAll;
+    }
+
+    /// <summary>パンできるか（ICanvasHost。ズーム中）</summary>
+    public bool CanPan => _zoomed is not null && Image is not null;
+
+    /// <summary>今の表示倍率と位置（ICanvasHost。描いているとおり、物理ピクセルにそろえたもの）</summary>
+    public ViewTransform View => Image is { } image ? CurrentView(image).SnapToPixels(DpiScale) : default;
+
+    private CanvasPointer MakePointer(MouseEventArgs e, MouseButton? button)
+    {
+        var viewPoint = e.GetPosition(this);
+        var imagePoint = Image is null ? default : View.ViewToImage(viewPoint);
+        return new CanvasPointer(viewPoint, imagePoint, button, Keyboard.Modifiers);
+    }
+
+    private static MouseButton? PressedButton(MouseEventArgs e)
+        => e.LeftButton == MouseButtonState.Pressed ? MouseButton.Left
+         : e.RightButton == MouseButtonState.Pressed ? MouseButton.Right
+         : e.MiddleButton == MouseButtonState.Pressed ? MouseButton.Middle
+         : null;
+
+    /// <summary>
+    /// 修飾キーの無い（または Shift だけの）キーを今の道具に渡す（メインウィンドウの PreviewKeyDown から。設計書 5.10-7）。処理したら true
+    /// </summary>
+    public bool HandleToolKey(Key key, ModifierKeys modifiers) => Image is not null && _tool?.OnKeyDown(key, modifiers) == true;
 
     protected override void OnLostMouseCapture(MouseEventArgs e)
     {
@@ -279,13 +364,18 @@ public sealed class EditorCanvas : FrameworkElement
         ClearValue(CursorProperty);
     }
 
-    /// <summary>ズーム中に Space を押していれば、パンできることを移動のカーソルで示す</summary>
+    /// <summary>カーソル: パン中は移動。ズーム中に Space を押していれば移動。そのほかは今の道具が決める</summary>
     protected override void OnQueryCursor(QueryCursorEventArgs e)
     {
         base.OnQueryCursor(e);
-        if (_pan is null && _zoomed is not null && Keyboard.IsKeyDown(Key.Space))
+        if (_pan is not null || Image is null) return;
+
+        Cursor? cursor = _zoomed is not null && Keyboard.IsKeyDown(Key.Space)
+            ? Cursors.SizeAll
+            : _tool?.GetCursor(MakePointer(e, PressedButton(e)));
+        if (cursor is not null)
         {
-            e.Cursor = Cursors.SizeAll;
+            e.Cursor = cursor;
             e.Handled = true;
         }
     }
@@ -391,6 +481,9 @@ public sealed class EditorCanvas : FrameworkElement
         {
             RenderSelection(dc, ImageRectToView(selection, view, dpiScale), dpiScale);
         }
+
+        // 道具の重ね描き（ハンドルなど）
+        _tool?.Render(dc, view);
     }
 
     private void UpdateZoomPercent(double percent)

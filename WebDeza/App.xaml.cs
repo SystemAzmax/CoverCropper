@@ -8,6 +8,7 @@ using WebDeza.Imaging.Formats;
 using WebDeza.Services;
 using WebDeza.ViewModels;
 using WebDeza.Views;
+using WebDeza.Views.Canvas;
 
 namespace WebDeza;
 
@@ -37,10 +38,11 @@ public partial class App : Application
         // 形式・フィルターの登録（足すときは AppModules に 1 行足す）
         var formats = new FormatRegistry();
         var filters = new FilterRegistry();
-        AppModules.Register(formats, filters);
+        var tools = new ToolRegistry();
+        AppModules.Register(formats, filters, tools);
 
         // 設定は形式の登録の後に読む（形式 Id とオプションの検証に使うため）
-        var viewModel = new MainViewModel(formats, new SettingsService(formats), new DialogService(), log);
+        var viewModel = new MainViewModel(formats, new SettingsService(formats), new DialogService(), log, tools);
 
         var window = new MainWindow(viewModel);
         MainWindow = window;

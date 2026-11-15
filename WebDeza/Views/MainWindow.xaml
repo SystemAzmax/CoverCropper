@@ -13,6 +13,7 @@
         WindowStartupLocation="CenterScreen"
         UseLayoutRounding="True"
         AllowDrop="True"
+        PreviewKeyDown="OnPreviewKeyDown"
         PreviewDragEnter="OnPreviewDragEnter"
         PreviewDragOver="OnPreviewDragOver"
         PreviewDragLeave="OnPreviewDragLeave"
@@ -157,7 +158,16 @@
 
         <!-- 道具（キャンバスの左） -->
         <Border DockPanel.Dock="Left" MinWidth="40" BorderThickness="0,0,1,0" Style="{StaticResource AreaBorderStyle}">
-            <StackPanel x:Name="ToolArea" Margin="4" />
+            <!-- 登録された道具のボタン（登録順。設計書 4.2）。ボタンの文字は道具のキー、ツールチップは名前とキー -->
+            <ItemsControl x:Name="ToolArea" Margin="4" ItemsSource="{Binding ToolItems}" Focusable="False">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="{x:Type vm:ToolItemViewModel}">
+                        <Button Style="{StaticResource ToolButtonStyle}" Content="{Binding ShortcutText}" ToolTip="{Binding ToolTip}"
+                                CommandParameter="{Binding}"
+                                Command="{Binding DataContext.SelectToolCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
         </Border>
 
         <!-- 中央（ワークスペース）: 画像ごとの子ウィンドウを置く（設計書 F-02） -->
@@ -166,6 +176,7 @@
                                          Background="{StaticResource WorkspaceBackgroundBrush}"
                                          Documents="{Binding Documents}"
                                          ActiveDocument="{Binding ActiveDocument}"
+                                         CurrentTool="{Binding CurrentTool}"
                                          CloseCommand="{Binding CloseCommand}" />
 
             <!-- 案内文はワークスペースの中央に出し、画像があるときは隠す -->

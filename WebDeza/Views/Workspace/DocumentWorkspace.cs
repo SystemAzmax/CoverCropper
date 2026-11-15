@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using WebDeza.ViewModels;
+using WebDeza.Views.Canvas;
 
 namespace WebDeza.Views.Workspace;
 
@@ -33,6 +34,9 @@ public sealed class DocumentWorkspace : Panel
 
     public static readonly DependencyProperty CloseCommandProperty = DependencyProperty.Register(
         nameof(CloseCommand), typeof(ICommand), typeof(DocumentWorkspace));
+
+    public static readonly DependencyProperty CurrentToolProperty = DependencyProperty.Register(
+        nameof(CurrentTool), typeof(ICanvasToolFactory), typeof(DocumentWorkspace));
 
     private readonly Dictionary<DocumentViewModel, DocumentWindow> _windows = new();
 
@@ -73,6 +77,13 @@ public sealed class DocumentWorkspace : Panel
     {
         get => (ICommand?)GetValue(CloseCommandProperty);
         set => SetValue(CloseCommandProperty, value);
+    }
+
+    /// <summary>今の道具（全画像で共通。子ウィンドウのキャンバスに渡す）</summary>
+    public ICanvasToolFactory? CurrentTool
+    {
+        get => (ICanvasToolFactory?)GetValue(CurrentToolProperty);
+        set => SetValue(CurrentToolProperty, value);
     }
 
     /// <summary>画像の子ウィンドウ（無ければ null）</summary>
