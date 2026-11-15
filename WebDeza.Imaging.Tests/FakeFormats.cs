@@ -64,7 +64,10 @@ internal sealed class FakeDecoder(string formatId) : IImageDecoder
     }
 }
 
-/// <summary>テスト用の偽のエンコーダー。品質（1〜100）を持ち、品質 × 10 バイトを書く</summary>
+/// <summary>
+/// テスト用の偽のエンコーダー。既定では品質（1〜100、既定 85）を持ち、品質 × 10 バイトを書く。
+/// 呼ばれたときのオプションと画像を記録する
+/// </summary>
 internal sealed class FakeEncoder : IImageEncoder
 {
     public IReadOnlyList<ParameterDescriptor> Options { get; init; } = new[]
@@ -74,10 +77,18 @@ internal sealed class FakeEncoder : IImageEncoder
 
     public SizeTuning? SizeTuning { get; init; } = new("quality");
 
+    /// <summary>オプションから書くバイト数を決める（既定は品質 × 10。品質が無ければ 100）</summary>
+    public Func<ParameterValues, int> SizeOf { get; init; }
+        = options => options.ContainsKey("quality") ? options.Get<int>("quality") * 10 : 100;
+
+    public List<ParameterValues> Calls { get; } = new();
+    public ImageBuffer? LastImage { get; private set; }
+
     public void Encode(ImageBuffer image, ParameterValues options, Stream output, CancellationToken cancellationToken)
     {
-        int quality = options.Normalize(Options).Get<int>("quality");
-        output.Write(new byte[quality * 10]);
+        Calls.Add(options);
+        LastImage = image;
+        output.Write(new byte[SizeOf(options)]);
     }
 }
 
