@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:root="clr-namespace:WebDeza"
         xmlns:vm="clr-namespace:WebDeza.ViewModels"
+        xmlns:canvas="clr-namespace:WebDeza.Views.Canvas"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
         Title="{Binding WindowTitle}"
@@ -53,12 +54,29 @@
 
         <!-- 中央（キャンバス） -->
         <Grid x:Name="CanvasArea" Background="{StaticResource CanvasBackgroundBrush}">
+            <canvas:EditorCanvas x:Name="ImageCanvas"
+                                 Image="{Binding Display}"
+                                 ResetViewRequest="{Binding ResetViewRequest}"
+                                 CheckerLightColor="{StaticResource CheckerLightColor}"
+                                 CheckerDarkColor="{StaticResource CheckerDarkColor}" />
+
+            <!-- 案内文は、画像があるときは隠す -->
             <TextBlock x:Name="PlaceholderText"
                        Text="{x:Static root:Messages.Placeholder}"
                        Foreground="{StaticResource CanvasPlaceholderBrush}" FontSize="18"
                        HorizontalAlignment="Center" VerticalAlignment="Center"
                        TextWrapping="Wrap" TextAlignment="Center" Margin="16"
-                       IsHitTestVisible="False" />
+                       IsHitTestVisible="False">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasImage}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
         </Grid>
     </DockPanel>
 </Window>

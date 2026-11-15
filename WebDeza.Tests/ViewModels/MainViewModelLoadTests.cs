@@ -2,6 +2,7 @@ using System.IO;
 using WebDeza.Core;
 using WebDeza.Imaging;
 using WebDeza.Imaging.Editing;
+using WebDeza.Imaging.Filters;
 using WebDeza.Imaging.Formats;
 using WebDeza.Imaging.Wic;
 using WebDeza.Models;
@@ -36,7 +37,7 @@ public sealed class MainViewModelLoadTests : IDisposable
     private string LogPath => _temp.Combine("logs", "app.log");
 
     private MainViewModel CreateViewModel()
-        => new(_formats, new SettingsService(_formats, SettingsPath), _dialogs, new AppLog(LogPath));
+        => new(_formats, new FilterRegistry(), new SettingsService(_formats, SettingsPath), _dialogs, new AppLog(LogPath));
 
     /// <summary>中身のあるファイルを作る（中身は偽の形式が読むので何でもよい）</summary>
     private string CreateFile(string name, int bytes = 1234)
@@ -52,6 +53,7 @@ public sealed class MainViewModelLoadTests : IDisposable
     public void Initially_HasNoImage()
     {
         Assert.False(_vm.HasImage);
+        Assert.Null(_vm.Display);
         Assert.Equal("webDeza", _vm.WindowTitle);
         Assert.Equal("", _vm.StatusText);
         Assert.Empty(_vm.Items);
@@ -240,7 +242,70 @@ public sealed class MainViewModelLoadTests : IDisposable
         await _vm.LoadAsync(CreateFile("b.fake"));
 
         Assert.Null(_vm.SourceImage); // 前の画像への参照を外している
+        Assert.Null(_vm.Display);
         Assert.Equal("b.fake", Assert.Single(_vm.Items).FileName);
+    }
+
+    // ---------------------------------------------------------------- 表示用画像（5-5）
+
+    [Fact]
+    public async Task Load_SmallImage_DisplaysAtSameSize()
+    {
+        _fake.Image = ImageBuffer.Create(30, 20, new byte[30 * 20 * 4]);
+
+        await _vm.LoadAsync(CreateFile("a.fake"));
+
+        var display = Assert.IsType<DisplayImage>(_vm.Display);
+        Assert.Same(_fake.Image, display.Preview.Image); // 縮小もフィルターも要らなければ、そのまま使う
+        Assert.Equal((30, 20), (display.EditedWidth, display.EditedHeight));
+        Assert.Equal((30, 20), (display.Bitmap.PixelWidth, display.Bitmap.PixelHeight));
+        Assert.True(display.Bitmap.IsFrozen); // バックグラウンドで作って画面のスレッドで使う
+        Assert.False(display.IsOpaque); // 0 で埋めた画像はアルファも 0
+    }
+
+    [Fact]
+    public async Task Load_LargeImage_DisplaysShrunkImageWithFullResolutionSize()
+    {
+        _fake.Image = ImageBuffer.Create(6000, 2000, new byte[6000 * 2000 * 4]);
+
+        await _vm.LoadAsync(CreateFile("a.fake"));
+
+        // 表示用画像は長辺 4096 px 以下に縮小し、切り抜きの座標系はフル解像度のまま
+        var display = _vm.Display!;
+        Assert.Equal((4096, 1365), (display.Bitmap.PixelWidth, display.Bitmap.PixelHeight));
+        Assert.Equal((6000, 2000), (display.EditedWidth, display.EditedHeight));
+        Assert.Same(_fake.Image, _vm.SourceImage); // 元画像はフル解像度のまま持つ（書き出しに使う）
+    }
+
+    [Fact]
+    public async Task Load_KeepsTransparency()
+    {
+        var pixels = new byte[4 * 4 * 4];
+        for (int i = 0; i < pixels.Length; i += 4) pixels[i + 3] = (byte)(i < 32 ? 255 : 128);
+        _fake.Image = ImageBuffer.Create(4, 4, pixels);
+
+        await _vm.LoadAsync(CreateFile("a.fake"));
+
+        // 読み込み時に背景色で塗らない（キャンバスが市松模様の上に描く）
+        Assert.False(_vm.Display!.IsOpaque);
+        var bitmapPixels = new byte[4 * 4 * 4];
+        _vm.Display.Bitmap.CopyPixels(bitmapPixels, 16, 0);
+        Assert.Equal(128, bitmapPixels[^1]);
+    }
+
+    [Fact]
+    public async Task Load_EachImageRequestsResetView()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        Assert.Equal(1, _vm.ResetViewRequest);
+
+        await _vm.LoadAsync(CreateFile("b.fake"));
+        Assert.Equal(2, _vm.ResetViewRequest);
+
+        // 読めなかったときは表示する画像が無いので、増やさない
+        _fake.Throw = () => new FileFormatException("x");
+        await _vm.LoadAsync(CreateFile("c.fake"));
+        Assert.Equal(2, _vm.ResetViewRequest);
     }
 
     // ---------------------------------------------------------------- ［開く］

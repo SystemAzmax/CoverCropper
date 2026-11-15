@@ -12,6 +12,10 @@
         <SolidColorBrush x:Key="CanvasBackgroundBrush" Color="#FF2B2B2B" />
         <SolidColorBrush x:Key="CanvasPlaceholderBrush" Color="#FFB0B0B0" />
 
+        <!-- 透過の部分に敷く市松模様（8 DIP 角の白と明るい灰。設計書 F-03） -->
+        <Color x:Key="CheckerLightColor">#FFFFFFFF</Color>
+        <Color x:Key="CheckerDarkColor">#FFCCCCCC</Color>
+
         <!-- 領域（ツールバー・画像一覧・道具・編集パネル）の枠 -->
         <Style x:Key="AreaBorderStyle" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorBaseBrush}" />

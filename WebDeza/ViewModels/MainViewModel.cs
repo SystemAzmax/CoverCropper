@@ -4,7 +4,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WebDeza.Core;
 using WebDeza.Imaging;
+using WebDeza.Imaging.Editing;
+using WebDeza.Imaging.Filters;
 using WebDeza.Imaging.Formats;
+using WebDeza.Imaging.Wic;
 using WebDeza.Models;
 using WebDeza.Services;
 
@@ -19,20 +22,26 @@ namespace WebDeza.ViewModels;
 /// </remarks>
 public sealed partial class MainViewModel : ObservableObject
 {
+    /// <summary>表示用画像の長辺の上限（設計書 F-03）。これより大きい画像は縮小して表示する（書き出しには使わない）</summary>
+    public const int PreviewMaxSide = 4096;
+
     private readonly FormatRegistry _formats;
+    private readonly RenderPipeline _pipeline;
     private readonly SettingsService _settingsService;
     private readonly IDialogService _dialogs;
     private readonly AppLog _log;
     private readonly TimeProvider _time;
 
-    public MainViewModel(FormatRegistry formats, SettingsService settingsService, IDialogService dialogs, AppLog log,
-        TimeProvider? time = null)
+    public MainViewModel(FormatRegistry formats, FilterRegistry filters, SettingsService settingsService,
+        IDialogService dialogs, AppLog log, TimeProvider? time = null)
     {
         ArgumentNullException.ThrowIfNull(formats);
+        ArgumentNullException.ThrowIfNull(filters);
         ArgumentNullException.ThrowIfNull(settingsService);
         ArgumentNullException.ThrowIfNull(dialogs);
         ArgumentNullException.ThrowIfNull(log);
         _formats = formats;
+        _pipeline = new RenderPipeline(filters);
         _settingsService = settingsService;
         _dialogs = dialogs;
         _log = log;
@@ -62,6 +71,17 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasImage), nameof(WindowTitle), nameof(StatusText))]
     private ImageBuffer? _sourceImage;
+
+    /// <summary>キャンバスに描く表示用画像。読み込めていなければ null</summary>
+    [ObservableProperty]
+    private DisplayImage? _display;
+
+    /// <summary>
+    /// キャンバスを全体表示に戻す合図。画像を切り替えたとき（7-1 からは 90° 回転したときも）に 1 増やす。
+    /// ズームの状態は表示だけの関心事なので ViewModel には持たせない（設計書 5.6）
+    /// </summary>
+    [ObservableProperty]
+    private int _resetViewRequest;
 
     /// <summary>読み込み中・書き出し中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
     [ObservableProperty]
@@ -128,6 +148,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         // 次の画像を読む前に、前の画像への参照を外す（大きな画像を 2 枚同時に持たないため。設計書 5.10-3）
         SourceImage = null;
+        Display = null;
         Items.Clear();
         Items.Add(item);
         SelectedItem = item;
@@ -137,13 +158,19 @@ public sealed partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var (image, size) = await Task.Run(() =>
+            var recipe = item.History.Current;
+            var aspect = Settings.CropAspect.ToCropAspect() ?? CropAspect.Free;
+            var export = Settings.Export.ToExportSettings();
+            var (image, display, size) = await Task.Run(() =>
             {
                 var decoded = _formats.Decode(item.Path);
-                return (decoded.Image, ImageItemViewModel.GetFileSize(item.Path));
+                var display = CreateDisplay(decoded.Image, recipe, aspect, export);
+                return (decoded.Image, display, ImageItemViewModel.GetFileSize(item.Path));
             });
             item.SetLoaded(size);
             SourceImage = image;
+            Display = display;
+            ResetViewRequest++;
         }
         catch (UnsupportedImageFormatException ex)
         {
@@ -182,6 +209,16 @@ public sealed partial class MainViewModel : ObservableObject
             item.SetError(error);
             _dialogs.ShowError(error);
         }
+    }
+
+    /// <summary>
+    /// 表示用画像を作る: 向き → 長辺 4096 px 以下に縮小 → フィルター → 描画用の BitmapSource（設計書 5.8「表示」）。
+    /// バックグラウンドで呼んでよい
+    /// </summary>
+    private DisplayImage CreateDisplay(ImageBuffer source, EditRecipe recipe, CropAspect aspect, ExportSettings export)
+    {
+        var preview = _pipeline.RenderPreview(source, recipe, aspect, export, PreviewMaxSide);
+        return new DisplayImage(preview, BitmapSourceConverter.ToBitmapSource(preview.Image));
     }
 
     // ---------------------------------------------------------------- 設定
