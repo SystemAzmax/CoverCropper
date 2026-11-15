@@ -1,8 +1,28 @@
+<!-- 見た目は WPF に組み込まれた Fluent テーマ。明暗は Windows の設定（アプリ モード）に合わせる（実装計画書 6-9 の候補 B・C） -->
 <Application x:Class="WebDeza.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             ShutdownMode="OnMainWindowClose">
+             ShutdownMode="OnMainWindowClose"
+             ThemeMode="System">
     <Application.Resources>
+        <!-- 画面の色と余白はここにまとめ、コントロールに直接書かない（6-9 でまとめて見直すため）。
+             テーマの色は DynamicResource で引き、明暗の切り替えに追従させる -->
 
+        <!-- キャンバスの周り: 色の判断を邪魔しない無彩色の灰色（明暗の設定によらず同じ） -->
+        <SolidColorBrush x:Key="CanvasBackgroundBrush" Color="#FF2B2B2B" />
+        <SolidColorBrush x:Key="CanvasPlaceholderBrush" Color="#FFB0B0B0" />
+
+        <!-- 領域（ツールバー・画像一覧・道具・編集パネル）の枠 -->
+        <Style x:Key="AreaBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorBaseBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource DividerStrokeColorDefaultBrush}" />
+        </Style>
+
+        <!-- ボタンはフォーカスを取らない（キー操作をキャンバスに残すため。設計書 4.1） -->
+        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="MinWidth" Value="64" />
+            <Setter Property="Focusable" Value="False" />
+        </Style>
     </Application.Resources>
 </Application>
