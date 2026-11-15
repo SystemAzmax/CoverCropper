@@ -1,6 +1,5 @@
-using System.IO;
-using System.Text.Json;
 using CoverCropper.Models;
+using WebDeza.Core;
 
 namespace CoverCropper.Services;
 
@@ -13,44 +12,18 @@ public interface ISettingsService
     string? LastLoadError { get; }
 }
 
+/// <summary>%APPDATA%\CoverCropper\settings.json の読み書き（共通の JsonSettingsService に任せる）</summary>
 public sealed class SettingsService : ISettingsService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private readonly JsonSettingsService<AppSettings> _service;
 
-    private readonly string _path;
+    public SettingsService() : this(System.IO.Path.Combine(AppPaths.DataFolder, WebDeza.Core.AppPaths.SettingsFileName)) { }
 
-    public SettingsService() : this(Path.Combine(AppPaths.DataFolder, "settings.json")) { }
+    public SettingsService(string path) => _service = new JsonSettingsService<AppSettings>(path);
 
-    public SettingsService(string path) => _path = path;
+    public string? LastLoadError => _service.LastLoadError;
 
-    public string? LastLoadError { get; private set; }
+    public AppSettings Load() => _service.Load();
 
-    public AppSettings Load()
-    {
-        LastLoadError = null;
-        if (!File.Exists(_path)) return new AppSettings();
-
-        try
-        {
-            var json = File.ReadAllText(_path);
-            return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
-        }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or NotSupportedException)
-        {
-            LastLoadError = ex.Message;
-            return new AppSettings();
-        }
-    }
-
-    public void Save(AppSettings settings)
-    {
-        ArgumentNullException.ThrowIfNull(settings);
-
-        var folder = Path.GetDirectoryName(Path.GetFullPath(_path))!;
-        Directory.CreateDirectory(folder);
-
-        var tempPath = _path + ".tmp";
-        File.WriteAllText(tempPath, JsonSerializer.Serialize(settings, JsonOptions));
-        File.Move(tempPath, _path, overwrite: true);
-    }
+    public void Save(AppSettings settings) => _service.Save(settings);
 }

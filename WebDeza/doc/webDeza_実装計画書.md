@@ -74,7 +74,7 @@
 | 1 | 基準ファイルの作成 | 1 | 置き換える前の CoverCropper の処理結果が、基準として残っている | 済 |
 | 2 | エンジン（`WebDeza.Imaging`） | 16 | 画像処理の計算がそろい、すべてテストで確かめてある（画面も、ファイルの読み書きもまだ無い） | 済 |
 | 3 | WIC プラグイン（`WebDeza.Imaging.Wic`） | 4 | 画像ファイルを読み書きできる | 済 |
-| 4 | Core と CoverCropper の載せ替え | 8 | CoverCropper が共通部品の上で動き、今までと同じ結果を出す | 未 |
+| 4 | Core と CoverCropper の載せ替え | 8 | CoverCropper が共通部品の上で動き、今までと同じ結果を出す | 済 |
 | 5 | webDeza の土台 | 13 | webDeza で画像を 1 枚開き、枠を動かし、書き出し設定を変えて書き出せる | 未 |
 | 6 | キャンバスと道具 | 8 | ズーム・パンをしながら、枠の移動・大きさ・比率を変えられる | 未 |
 | 7 | 編集 | 3 | 回転・反転・基本補正と、元に戻す / やり直しが使える | 未 |
@@ -150,14 +150,14 @@
 
 | No | 機能 | 作るもの・変えるもの | 確かめること | 規模 | 状態 |
 |---|---|---|---|---|---|
-| 4-1 | 読み込みの載せ替え | `CoverCropper.csproj` に `WebDeza.Imaging` と `WebDeza.Imaging.Wic` への参照を足す。CoverCropper の中に、WIC の形式を登録した既定の形式レジストリを 1 つ持つ。`ImageLoader.Load` と `ApplyOrientation` の中身を置き換える | `ImageLoaderTests`（14 件）・基準との比較（読み込み） | 中 | 未 |
-| 4-2 | リサイズの載せ替え | `ImageResizer.Resize` を `Resize.Apply` に（`CalculateSize` は CoverCropper だけの計算なので、今のまま） | `ImageResizerTests`（15 件）・基準との比較（リサイズ） | 小 | 未 |
-| 4-3 | 切り抜きの載せ替え | `ImageCropper.Crop` を `Crop.Apply` に（`Clamp` と `Center` は今のまま） | `ImageCropperTests`（14 件）・基準との比較（切り抜き） | 小 | 未 |
-| 4-4 | JPEG 保存の載せ替え | `JpegSaver.Save` を、WIC プラグインの JPEG エンコーダーと `SafeFileWriter` に | `JpegSaverTests`（3 件）・基準との比較（JPEG のバイト列） | 小 | 未 |
-| 4-5 | Core とログ | `WebDeza.Core`（net10.0）を作り、`CoverCropper.slnx` と `CoverCropper.csproj` の参照に足す。`AppPaths`・`AppLog`。CoverCropper の `AppPaths`・`AppLog` の中身を置き換える | テスト全件。手動: ログが今までと同じ場所に、同じ書式で書かれる（R03） | 小 | 未 |
-| 4-6 | 設定の載せ替え | `JsonSettingsService<T>`。CoverCropper の `SettingsService` の中身を置き換える | `SettingsServiceTests`（3 件） | 小 | 未 |
-| 4-7 | ファイル名の載せ替え | `WebDeza.Core.OutputFileNamer`（拡張子を指定できる）。CoverCropper の `OutputFileNamer` の中身を置き換える | `OutputFileNamerTests`（4 件） | 小 | 未 |
-| 4-8 | 回帰確認と設計書の更新 | CoverCropper 設計書の 4.2（ソリューション構成）を今の構成に直す。配布用ビルドを作り、中身を確かめる | R01〜R05 を通しで。R02（起動して操作する）と R03 は手動 | 小 | 未 |
+| 4-1 | 読み込みの載せ替え | `CoverCropper.csproj` に `WebDeza.Imaging` と `WebDeza.Imaging.Wic` への参照を足す。CoverCropper の中に、WIC の形式を登録した既定の形式レジストリを 1 つ持つ。`ImageLoader.Load` と `ApplyOrientation` の中身を置き換える | `ImageLoaderTests`（14 件）・基準との比較（読み込み） | 中 | 済 |
+| 4-2 | リサイズの載せ替え | `ImageResizer.Resize` を `Resize.Apply` に（`CalculateSize` は CoverCropper だけの計算なので、今のまま） | `ImageResizerTests`（15 件）・基準との比較（リサイズ） | 小 | 済 |
+| 4-3 | 切り抜きの載せ替え | `ImageCropper.Crop` を `Crop.Apply` に（`Clamp` と `Center` は今のまま） | `ImageCropperTests`（14 件）・基準との比較（切り抜き） | 小 | 済 |
+| 4-4 | JPEG 保存の載せ替え | `JpegSaver.Save` を、WIC プラグインの JPEG エンコーダーと `SafeFileWriter` に | `JpegSaverTests`（3 件）・基準との比較（JPEG のバイト列） | 小 | 済 |
+| 4-5 | Core とログ | `WebDeza.Core`（net10.0）を作り、`CoverCropper.slnx` と `CoverCropper.csproj` の参照に足す。`AppPaths`・`AppLog`。CoverCropper の `AppPaths`・`AppLog` の中身を置き換える | テスト全件。手動: ログが今までと同じ場所に、同じ書式で書かれる（R03） | 小 | 済 |
+| 4-6 | 設定の載せ替え | `JsonSettingsService<T>`。CoverCropper の `SettingsService` の中身を置き換える | `SettingsServiceTests`（3 件） | 小 | 済 |
+| 4-7 | ファイル名の載せ替え | `WebDeza.Core.OutputFileNamer`（拡張子を指定できる）。CoverCropper の `OutputFileNamer` の中身を置き換える | `OutputFileNamerTests`（4 件） | 小 | 済 |
+| 4-8 | 回帰確認と設計書の更新 | CoverCropper 設計書の 4.2（ソリューション構成）を今の構成に直す。配布用ビルドを作り、中身を確かめる | R01〜R05 を通しで。R02（起動して操作する）と R03 は手動 | 小 | 済 |
 
 注意:
 

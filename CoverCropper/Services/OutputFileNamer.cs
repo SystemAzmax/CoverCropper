@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.IO;
 
 namespace CoverCropper.Services;
@@ -9,29 +8,18 @@ public interface IOutputFileNamer
     string CreatePath(string outputFolder, string sourcePath, DateTime now);
 }
 
+/// <summary>ファイル名の生成（共通の WebDeza.Core.OutputFileNamer に、拡張子 .jpg を渡す）</summary>
 public sealed class OutputFileNamer : IOutputFileNamer
 {
-    private readonly Func<string, bool> _exists;
+    private const string Extension = ".jpg";
+
+    private readonly WebDeza.Core.OutputFileNamer _namer;
 
     public OutputFileNamer() : this(p => File.Exists(p) || Directory.Exists(p)) { }
 
     /// <param name="exists">パスが既に使われているかの判定（テスト用に差し替え可能）</param>
-    public OutputFileNamer(Func<string, bool> exists) => _exists = exists;
+    public OutputFileNamer(Func<string, bool> exists) => _namer = new WebDeza.Core.OutputFileNamer(exists);
 
     public string CreatePath(string outputFolder, string sourcePath, DateTime now)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(outputFolder);
-        ArgumentException.ThrowIfNullOrEmpty(sourcePath);
-
-        var baseName = Path.GetFileNameWithoutExtension(sourcePath);
-        if (string.IsNullOrWhiteSpace(baseName)) baseName = "image";
-
-        var stem = $"{baseName}_{now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture)}";
-        var candidate = Path.Combine(outputFolder, stem + ".jpg");
-
-        for (int i = 2; _exists(candidate); i++)
-            candidate = Path.Combine(outputFolder, $"{stem}_{i}.jpg");
-
-        return candidate;
-    }
+        => _namer.CreatePath(outputFolder, sourcePath, now, Extension);
 }

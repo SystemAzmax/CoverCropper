@@ -2,8 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 文書バージョン | 1.0 |
+| 文書バージョン | 1.1 |
 | 作成日 | 2026-10-13 |
+| 更新日 | 2026-11-15（1.1: 4.2 を、共通部品へ載せ替えた後の構成に直した） |
 | 対象 | Claude Code による実装 |
 | 対象OS | Windows 10 / 11（64bit）のみ |
 | 言語 / FW | C# / WPF / .NET 10 |
@@ -201,39 +202,48 @@ if newH < 768:
 
 ### 4.2 ソリューション構成
 
+画像処理・設定・ログ・ファイル名は、webDeza と共通の部品（`WebDeza.Imaging`・`WebDeza.Imaging.Wic`・`WebDeza.Core`）に任せている。CoverCropper のクラスは public API を変えずに残し、中身だけが共通部品の呼び出しになっている（詳しくは `WebDeza/doc/webDeza_設計書.md` の 3 章と 5.5）。
+
 ```
+CoverCropper.slnx                      … ソリューション（CoverCropper と webDeza の共通部品）
 CoverCropper/
-├─ CoverCropper.sln
-├─ src/
-│  └─ CoverCropper/
-│     ├─ CoverCropper.csproj
-│     ├─ app.manifest                  … PerMonitorV2
-│     ├─ App.xaml / App.xaml.cs
-│     ├─ AppConstants.cs               … 1024, 768, 85 などの定数
-│     ├─ Views/
-│     │  ├─ MainWindow.xaml(.cs)
-│     │  ├─ SettingsWindow.xaml(.cs)
-│     │  └─ Controls/
-│     │     └─ CropCanvas.xaml(.cs)    … 画像表示＋枠描画＋ドラッグ処理
-│     ├─ ViewModels/
-│     │  ├─ MainViewModel.cs
-│     │  └─ SettingsViewModel.cs
-│     ├─ Services/
-│     │  ├─ ImageLoader.cs             … 読み込み・EXIF回転・透過合成・Bgr24化
-│     │  ├─ ImageResizer.cs            … サイズ計算・リサイズ
-│     │  ├─ ImageCropper.cs            … 切り抜き・座標クランプ
-│     │  ├─ JpegSaver.cs               … JPEG保存（品質85・一時ファイル経由）
-│     │  ├─ OutputFileNamer.cs         … ファイル名生成・重複回避
-│     │  └─ SettingsService.cs         … settings.json 読み書き
-│     └─ Models/
-│        ├─ AppSettings.cs
-│        └─ CropState.cs               … 原寸/リサイズ後サイズ・枠位置
-└─ tests/
-   └─ CoverCropper.Tests/
-      ├─ ImageResizerTests.cs
-      ├─ ImageCropperTests.cs
-      ├─ OutputFileNamerTests.cs
-      └─ SettingsServiceTests.cs
+├─ CoverCropper.csproj                 … WebDeza.Imaging・WebDeza.Imaging.Wic・WebDeza.Core を参照
+├─ app.manifest                        … PerMonitorV2
+├─ App.xaml / App.xaml.cs
+├─ AppConstants.cs                     … 1024, 768, 85 などの定数・対応する拡張子
+├─ Messages.cs                         … 3.3 のメッセージ
+├─ Assets/AppIcon.ico
+├─ doc/CoverCropper_設計書.md          … 本書
+├─ Views/
+│  ├─ MainWindow.xaml(.cs)
+│  └─ Controls/
+│     └─ CropCanvas.cs                 … 画像表示＋枠描画＋ドラッグ処理
+├─ ViewModels/
+│  └─ MainViewModel.cs
+├─ Services/
+│  ├─ DefaultFormats.cs                … WIC の形式を登録した既定の形式レジストリ
+│  ├─ ImageLoader.cs                   … 読み込み（形式レジストリ）→ 白背景合成（Flatten）→ Bgr24化
+│  ├─ ImageResizer.cs                  … サイズ計算（CoverCropper だけの計算）・リサイズ（エンジンの Resize）
+│  ├─ ImageCropper.cs                  … 座標クランプ・切り抜き（エンジンの Crop）
+│  ├─ JpegSaver.cs                     … JPEG保存（WIC の JPEG エンコーダー＋SafeFileWriter）
+│  ├─ OutputFileNamer.cs               … ファイル名生成・重複回避（WebDeza.Core.OutputFileNamer）
+│  ├─ SettingsService.cs               … settings.json 読み書き（WebDeza.Core.JsonSettingsService）
+│  ├─ AppPaths.cs / AppLog.cs          … %APPDATA%\CoverCropper とログ（WebDeza.Core）
+│  └─ DialogService.cs
+└─ Models/
+   ├─ AppSettings.cs
+   └─ CropState.cs                     … 原寸/リサイズ後サイズ・枠位置
+CoverCropper.Tests/                    … CoverCropper の単体テスト（xUnit）
+├─ ImageLoaderTests.cs / ImageResizerTests.cs / ImageCropperTests.cs / JpegSaverTests.cs
+├─ OutputFileNamerTests.cs / SettingsServiceTests.cs
+├─ BaselineRegressionTests.cs          … 共通部品へ置き換える前の基準（Baseline/）との比較
+└─ Baseline/
+WebDeza.Imaging/                       … 画像処理エンジン（webDeza と共通）
+WebDeza.Imaging.Wic/                   … 標準の形式プラグイン（WIC での読み書き）
+WebDeza.Core/                          … アプリ共通（データフォルダ・ログ・設定・ファイル名）
+WebDeza.Imaging.Tests/                 … エンジンと形式プラグインのテスト
+WebDeza/doc/                           … webDeza の設計書・実装計画書
+tools/                                 … BaselineGenerator（基準ファイルの作成）・IconGenerator（アイコンの作成）
 ```
 
 ### 4.3 主要クラス・インターフェース

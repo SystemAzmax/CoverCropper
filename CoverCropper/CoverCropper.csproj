@@ -19,6 +19,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 共通部品: 画像処理エンジン、WIC の形式プラグイン、アプリ共通（設定・ログ・ファイル名） -->
+    <ProjectReference Include="..\WebDeza.Imaging\WebDeza.Imaging.csproj" />
+    <ProjectReference Include="..\WebDeza.Imaging.Wic\WebDeza.Imaging.Wic.csproj" />
+    <ProjectReference Include="..\WebDeza.Core\WebDeza.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Remove="doc\**" />
     <Resource Include="Assets\AppIcon.ico" />
   </ItemGroup>

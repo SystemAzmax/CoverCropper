@@ -1,6 +1,6 @@
-using System.Windows;
-using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using WebDeza.Imaging;
+using WebDeza.Imaging.Wic;
 
 namespace CoverCropper.Services;
 
@@ -39,17 +39,9 @@ public sealed class ImageCropper : IImageCropper
 
         (x, y) = Clamp(x, y, source.PixelWidth, source.PixelHeight);
 
-        BitmapSource bgr = source.Format == PixelFormats.Bgr24
-            ? source
-            : new FormatConvertedBitmap(source, PixelFormats.Bgr24, null, 0);
-
-        const int w = AppConstants.TargetWidth, h = AppConstants.TargetHeight;
-        int stride = w * 3;
-        var pixels = new byte[stride * h];
-        bgr.CopyPixels(new Int32Rect(x, y, w, h), pixels, stride, 0);
-
-        var result = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgr24, null, pixels, stride);
-        result.Freeze();
-        return result;
+        // 切り出しは共通エンジンの Crop。96DPI・Bgr24 にして返す
+        var rect = new PixelRect(x, y, AppConstants.TargetWidth, AppConstants.TargetHeight);
+        var cropped = WebDeza.Imaging.Operations.Crop.Apply(BitmapSourceConverter.FromBitmapSource(source), rect);
+        return BitmapSourceConverter.ToBgr24BitmapSource(cropped);
     }
 }
