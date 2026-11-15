@@ -54,11 +54,12 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>アクティブな画像（メニュー・道具・編集パネル・ステータスバーの対象）。画像が無ければ null</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasImage), nameof(WindowTitle), nameof(StatusText))]
+    [NotifyCanExecuteChangedFor(nameof(CloseCommand))]
     private DocumentViewModel? _activeDocument;
 
     /// <summary>読み込み中・編集の確定中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(OpenCommand), nameof(ExitCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenCommand), nameof(CloseCommand), nameof(ExitCommand))]
     private bool _isBusy;
 
     /// <summary>ステータスバーの末尾に出すメッセージ</summary>
@@ -100,7 +101,8 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void OnActiveDocumentPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        // 選択範囲・画像が変わったら、ステータスバーを更新する
+        // 選択範囲・画像が変わったら、ステータスバーを更新する（子ウィンドウを動かしただけのときは要らない）
+        if (e.PropertyName == nameof(DocumentViewModel.WindowBounds)) return;
         OnPropertyChanged(nameof(StatusText));
     }
 
@@ -196,6 +198,33 @@ public sealed partial class MainViewModel : ObservableObject
         else if (error is not null)
         {
             _dialogs.ShowError(error);
+        }
+    }
+
+    // ---------------------------------------------------------------- 閉じる
+
+    private bool CanClose(DocumentViewModel? document) => !IsBusy && (document ?? ActiveDocument) is not null;
+
+    /// <summary>
+    /// 画像を閉じる（設計書 F-02）。メニュー［ファイル］→［閉じる］ / Ctrl+W はアクティブな画像を（引数は null）、
+    /// 子ウィンドウの［閉じる］はその画像を閉じる。ファイルは削除しない。
+    /// 閉じた画像への参照はすべて外す（画像・表示用画像・履歴を手放すため。設計書 5.10-11）
+    /// </summary>
+    /// <remarks>書き出していない編集があるときの確認（M16）は 9-8 で足す</remarks>
+    [RelayCommand(CanExecute = nameof(CanClose))]
+    private void Close(DocumentViewModel? document)
+    {
+        document ??= ActiveDocument;
+        if (document is null || IsBusy) return;
+
+        int index = Documents.IndexOf(document);
+        if (index < 0) return;
+
+        Documents.RemoveAt(index);
+        if (ActiveDocument == document)
+        {
+            // 次の画像（無ければ前の画像）をアクティブにする
+            ActiveDocument = Documents.Count > 0 ? Documents[Math.Min(index, Documents.Count - 1)] : null;
         }
     }
 

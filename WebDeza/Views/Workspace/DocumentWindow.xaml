@@ -1,0 +1,84 @@
+<!-- 子ウィンドウ 1 つ（設計書 F-02・5.6）。タイトルバーとキャンバス。DataContext は DocumentViewModel -->
+<UserControl x:Class="WebDeza.Views.Workspace.DocumentWindow"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:WebDeza.ViewModels"
+             xmlns:canvas="clr-namespace:WebDeza.Views.Canvas"
+             xmlns:local="clr-namespace:WebDeza.Views.Workspace"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance Type=vm:DocumentViewModel}"
+             d:DesignWidth="480" d:DesignHeight="320">
+
+    <UserControl.Resources>
+        <!-- 大きさを変えるためにつかむ縁と角（透明。見た目は枠の Border が持つ） -->
+        <Style x:Key="ResizeGripStyle" TargetType="Rectangle">
+            <Setter Property="Fill" Value="Transparent" />
+            <EventSetter Event="MouseLeftButtonDown" Handler="OnResizeGripMouseLeftButtonDown" />
+            <EventSetter Event="MouseMove" Handler="OnDragMouseMove" />
+            <EventSetter Event="MouseLeftButtonUp" Handler="OnDragMouseLeftButtonUp" />
+            <EventSetter Event="LostMouseCapture" Handler="OnDragLostMouseCapture" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Border x:Name="Frame" Style="{StaticResource DocumentWindowFrameStyle}">
+            <DockPanel>
+                <!-- タイトルバー: ドラッグで移動、ダブルクリックで最大化 ⇔ 元に戻す -->
+                <Border x:Name="TitleBar" DockPanel.Dock="Top" Style="{StaticResource DocumentTitleBarStyle}"
+                        MouseLeftButtonDown="OnTitleBarMouseLeftButtonDown"
+                        MouseMove="OnDragMouseMove"
+                        MouseLeftButtonUp="OnDragMouseLeftButtonUp"
+                        LostMouseCapture="OnDragLostMouseCapture">
+                    <DockPanel>
+                        <Button x:Name="CloseButton" DockPanel.Dock="Right" Style="{StaticResource TitleBarButtonStyle}"
+                                Content="&#xE8BB;" ToolTip="閉じる (Ctrl+W)"
+                                CommandParameter="{Binding}"
+                                Command="{Binding CloseCommand, RelativeSource={RelativeSource AncestorType=local:DocumentWorkspace}}" />
+                        <Button x:Name="MaximizeButton" DockPanel.Dock="Right" Style="{StaticResource TitleBarButtonStyle}"
+                                Click="OnMaximizeButtonClick" />
+                        <TextBlock Text="{Binding FileName}" ToolTip="{Binding Path}"
+                                   VerticalAlignment="Center" Margin="10,0,8,0" TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                </Border>
+
+                <!-- キャンバス（大きさが変わると、描き直して全体表示し直す。表示用画像は作り直さない。設計書 5.10-11） -->
+                <Border Background="{StaticResource CanvasBackgroundBrush}">
+                    <canvas:EditorCanvas x:Name="ImageCanvas"
+                                         Image="{Binding Display}"
+                                         Session="{Binding}"
+                                         ResetViewRequest="{Binding ResetViewRequest}"
+                                         CheckerLightColor="{StaticResource CheckerLightColor}"
+                                         CheckerDarkColor="{StaticResource CheckerDarkColor}"
+                                         SelectionLightBrush="{StaticResource SelectionLightBrush}"
+                                         SelectionDarkBrush="{StaticResource SelectionDarkBrush}" />
+                </Border>
+            </DockPanel>
+        </Border>
+
+        <!-- 縁と角（角は縁の上に重ねる）。最大化している間は隠す -->
+        <Grid x:Name="ResizeGrips">
+            <Rectangle Style="{StaticResource ResizeGripStyle}" Tag="{x:Static local:ResizeEdges.Left}" Cursor="SizeWE"
+                       HorizontalAlignment="Left" Width="{x:Static local:DocumentWindow.GripThickness}" />
+            <Rectangle Style="{StaticResource ResizeGripStyle}" Tag="{x:Static local:ResizeEdges.Right}" Cursor="SizeWE"
+                       HorizontalAlignment="Right" Width="{x:Static local:DocumentWindow.GripThickness}" />
+            <Rectangle Style="{StaticResource ResizeGripStyle}" Tag="{x:Static local:ResizeEdges.Top}" Cursor="SizeNS"
+                       VerticalAlignment="Top" Height="{x:Static local:DocumentWindow.GripThickness}" />
+            <Rectangle Style="{StaticResource ResizeGripStyle}" Tag="{x:Static local:ResizeEdges.Bottom}" Cursor="SizeNS"
+                       VerticalAlignment="Bottom" Height="{x:Static local:DocumentWindow.GripThickness}" />
+            <Rectangle Style="{StaticResource ResizeGripStyle}" Tag="{x:Static local:ResizeEdges.TopLeft}" Cursor="SizeNWSE"
+                       HorizontalAlignment="Left" VerticalAlignment="Top"
+                       Width="{x:Static local:DocumentWindow.CornerGripSize}" Height="{x:Static local:DocumentWindow.CornerGripSize}" />
+            <Rectangle Style="{StaticResource ResizeGripStyle}" Tag="{x:Static local:ResizeEdges.TopRight}" Cursor="SizeNESW"
+                       HorizontalAlignment="Right" VerticalAlignment="Top"
+                       Width="{x:Static local:DocumentWindow.CornerGripSize}" Height="{x:Static local:DocumentWindow.CornerGripSize}" />
+            <Rectangle Style="{StaticResource ResizeGripStyle}" Tag="{x:Static local:ResizeEdges.BottomLeft}" Cursor="SizeNESW"
+                       HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                       Width="{x:Static local:DocumentWindow.CornerGripSize}" Height="{x:Static local:DocumentWindow.CornerGripSize}" />
+            <Rectangle Style="{StaticResource ResizeGripStyle}" Tag="{x:Static local:ResizeEdges.BottomRight}" Cursor="SizeNWSE"
+                       HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                       Width="{x:Static local:DocumentWindow.CornerGripSize}" Height="{x:Static local:DocumentWindow.CornerGripSize}" />
+        </Grid>
+    </Grid>
+</UserControl>

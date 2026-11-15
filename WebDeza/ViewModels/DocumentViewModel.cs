@@ -1,4 +1,5 @@
 using System.IO;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using WebDeza.Imaging;
 using WebDeza.Imaging.Editing;
@@ -65,6 +66,13 @@ public sealed partial class DocumentViewModel : ObservableObject, IEditorSession
     /// </summary>
     [ObservableProperty]
     private int _resetViewRequest;
+
+    /// <summary>
+    /// 子ウィンドウの位置と大きさ（ワークスペースの左上を原点とする DIP）。null なら、まだ置いていない（ワークスペースが決める）。
+    /// 最大化している間も、元に戻したときの位置と大きさとして持っておく（最大化はワークスペース全体で 1 つの状態。設計書 5.6）
+    /// </summary>
+    [ObservableProperty]
+    private Rect? _windowBounds;
 
     /// <summary>書き出していない編集があるか（履歴の状態が、開いたとき・最後に書き出したときと違う）</summary>
     public bool HasUnexportedEdits => History.StateId != _exportedStateId;

@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:root="clr-namespace:WebDeza"
         xmlns:vm="clr-namespace:WebDeza.ViewModels"
-        xmlns:canvas="clr-namespace:WebDeza.Views.Canvas"
+        xmlns:workspace="clr-namespace:WebDeza.Views.Workspace"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
         Title="{Binding WindowTitle}"
@@ -15,6 +15,7 @@
 
     <Window.InputBindings>
         <KeyBinding Modifiers="Control" Key="O" Command="{Binding OpenCommand}" />
+        <KeyBinding Modifiers="Control" Key="W" Command="{Binding CloseCommand}" />
     </Window.InputBindings>
 
     <!-- 設計書 4.1 の領域の枠組み。中身は、それぞれの機能を作るステップで入れる -->
@@ -25,7 +26,7 @@
         <Menu x:Name="MainMenu" DockPanel.Dock="Top">
             <MenuItem Header="ファイル(_F)">
                 <MenuItem Header="開く(_O)…" InputGestureText="Ctrl+O" Command="{Binding OpenCommand}" />
-                <MenuItem Header="閉じる(_C)" InputGestureText="Ctrl+W" IsEnabled="False" />          <!-- 7-2 -->
+                <MenuItem Header="閉じる(_C)" InputGestureText="Ctrl+W" Command="{Binding CloseCommand}" />
                 <MenuItem Header="すべて閉じる(_L)" IsEnabled="False" />                              <!-- 7-4 -->
                 <Separator />
                 <MenuItem Header="書き出し(_E)…" InputGestureText="Ctrl+E" IsEnabled="False" />       <!-- 10-2 -->
@@ -102,19 +103,14 @@
             <StackPanel x:Name="ToolArea" Margin="4" />
         </Border>
 
-        <!-- 中央（キャンバス） -->
-        <Grid x:Name="CanvasArea" Background="{StaticResource CanvasBackgroundBrush}">
-            <!-- アクティブな画像のキャンバス（子ウィンドウに分けるのは 7-2） -->
-            <canvas:EditorCanvas x:Name="ImageCanvas"
-                                 Image="{Binding ActiveDocument.Display}"
-                                 Session="{Binding ActiveDocument}"
-                                 ResetViewRequest="{Binding ActiveDocument.ResetViewRequest}"
-                                 CheckerLightColor="{StaticResource CheckerLightColor}"
-                                 CheckerDarkColor="{StaticResource CheckerDarkColor}"
-                                 SelectionLightBrush="{StaticResource SelectionLightBrush}"
-                                 SelectionDarkBrush="{StaticResource SelectionDarkBrush}" />
+        <!-- 中央（ワークスペース）: 画像ごとの子ウィンドウを置く（設計書 F-02） -->
+        <Grid x:Name="CanvasArea">
+            <workspace:DocumentWorkspace x:Name="Workspace"
+                                         Background="{StaticResource WorkspaceBackgroundBrush}"
+                                         Documents="{Binding Documents}"
+                                         CloseCommand="{Binding CloseCommand}" />
 
-            <!-- 案内文は、画像があるときは隠す -->
+            <!-- 案内文はワークスペースの中央に出し、画像があるときは隠す -->
             <TextBlock x:Name="PlaceholderText"
                        Text="{x:Static root:Messages.Placeholder}"
                        Foreground="{StaticResource CanvasPlaceholderBrush}" FontSize="18"

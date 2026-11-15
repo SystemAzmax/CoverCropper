@@ -8,9 +8,11 @@
         <!-- 画面の色と余白はここにまとめ、コントロールに直接書かない（6-9 でまとめて見直すため）。
              テーマの色は DynamicResource で引き、明暗の切り替えに追従させる -->
 
-        <!-- キャンバスの周り: 色の判断を邪魔しない無彩色の灰色（明暗の設定によらず同じ） -->
+        <!-- キャンバスの周りとワークスペース: 色の判断を邪魔しない無彩色の灰色（明暗の設定によらず同じ）。
+             子ウィンドウの中（キャンバス）を少し暗くして、ワークスペースと見分けられるようにする -->
         <SolidColorBrush x:Key="CanvasBackgroundBrush" Color="#FF2B2B2B" />
-        <SolidColorBrush x:Key="CanvasPlaceholderBrush" Color="#FFB0B0B0" />
+        <SolidColorBrush x:Key="WorkspaceBackgroundBrush" Color="#FF404040" />
+        <SolidColorBrush x:Key="CanvasPlaceholderBrush" Color="#FFB8B8B8" />
 
         <!-- 透過の部分に敷く市松模様（8 DIP 角の白と明るい灰。設計書 F-03） -->
         <Color x:Key="CheckerLightColor">#FFFFFFFF</Color>
@@ -37,6 +39,32 @@
         <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Margin" Value="0,0,6,0" />
             <Setter Property="MinWidth" Value="64" />
+            <Setter Property="Focusable" Value="False" />
+        </Style>
+
+        <!-- 子ウィンドウ（設計書 F-02）の枠。太さとタイトルバーの高さは DocumentWindow の定数（大きさの計算に使うため） -->
+        <Style x:Key="DocumentWindowFrameStyle" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorBaseBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource DividerStrokeColorDefaultBrush}" />
+        </Style>
+
+        <!-- 子ウィンドウのタイトルバー（アクティブなときの色は 7-3 で足す） -->
+        <Style x:Key="DocumentTitleBarStyle" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorSecondaryBrush}" />
+        </Style>
+
+        <!-- 子ウィンドウのタイトルバーのボタン（最大化 / 元に戻す・閉じる）。記号は Segoe Fluent Icons -->
+        <Style x:Key="TitleBarButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Width" Value="40" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+            <Setter Property="FontSize" Value="10" />
             <Setter Property="Focusable" Value="False" />
         </Style>
     </Application.Resources>

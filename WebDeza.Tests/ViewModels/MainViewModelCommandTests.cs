@@ -44,6 +44,92 @@ public sealed class MainViewModelCommandTests : IDisposable
         Assert.False(_vm.HasImage);
         Assert.True(_vm.OpenCommand.CanExecute(null));
         Assert.True(_vm.ExitCommand.CanExecute(null));
+        Assert.False(_vm.CloseCommand.CanExecute(null));
+    }
+
+    // ---------------------------------------------------------------- 閉じる（7-2）
+
+    [Fact]
+    public async Task Close_ActiveDocument_DocumentsBecomeEmpty()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        Assert.True(_vm.CloseCommand.CanExecute(null));
+        var closeChanged = 0;
+        _vm.CloseCommand.CanExecuteChanged += (_, _) => closeChanged++;
+
+        _vm.CloseCommand.Execute(null); // メニュー / Ctrl+W は引数なしで、アクティブな画像を閉じる
+
+        Assert.Empty(_vm.Documents);
+        Assert.Null(_vm.ActiveDocument);
+        Assert.False(_vm.HasImage);
+        Assert.Equal("webDeza", _vm.WindowTitle);
+        Assert.Equal("", _vm.StatusText);
+        Assert.False(_vm.CloseCommand.CanExecute(null));
+        Assert.True(closeChanged > 0);
+        Assert.Empty(_dialogs.Errors);
+    }
+
+    [Fact]
+    public async Task Close_WithDocument_ClosesThatDocument()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        var document = _vm.ActiveDocument!;
+
+        Assert.True(_vm.CloseCommand.CanExecute(document));
+        _vm.CloseCommand.Execute(document); // 子ウィンドウの［閉じる］は、その画像を渡す
+
+        Assert.Empty(_vm.Documents);
+        Assert.Null(_vm.ActiveDocument);
+    }
+
+    [Fact]
+    public async Task Close_DoesNotDeleteFile()
+    {
+        var path = CreateFile("a.fake");
+        await _vm.LoadAsync(path);
+
+        _vm.CloseCommand.Execute(null);
+
+        Assert.True(File.Exists(path));
+    }
+
+    [Fact]
+    public async Task Close_ReleasesDocument()
+    {
+        // 閉じた画像（画像・表示用画像・履歴）を、MainViewModel が持ち続けない（設計書 5.10-11）
+        var weak = await LoadAndGetWeakReference();
+
+        _vm.CloseCommand.Execute(null);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        Assert.False(weak.IsAlive);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private async Task<WeakReference> LoadAndGetWeakReference()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        return new WeakReference(_vm.ActiveDocument);
+    }
+
+    [Fact]
+    public async Task WhileLoading_CloseIsDisabled()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        var gate = new ManualResetEventSlim();
+        _fake.OnDecode = () => gate.Wait(TimeSpan.FromSeconds(10));
+
+        var loading = _vm.LoadAsync(CreateFile("b.fake"));
+
+        Assert.False(_vm.CloseCommand.CanExecute(null));
+        _vm.CloseCommand.Execute(null); // 読み込み中に頼まれても閉じない
+        Assert.Single(_vm.Documents);
+        gate.Set();
+        await loading;
+
+        Assert.True(_vm.CloseCommand.CanExecute(null));
     }
 
     // ---------------------------------------------------------------- 終了
