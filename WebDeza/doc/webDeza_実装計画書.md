@@ -72,7 +72,7 @@
 | 段階 | 内容 | ステップ数 | ここまででできること | 状態 |
 |---|---|---|---|---|
 | 1 | 基準ファイルの作成 | 1 | 置き換える前の CoverCropper の処理結果が、基準として残っている | 済 |
-| 2 | エンジン（`WebDeza.Imaging`） | 16 | 画像処理の計算がそろい、すべてテストで確かめてある（画面も、ファイルの読み書きもまだ無い） | 未 |
+| 2 | エンジン（`WebDeza.Imaging`） | 16 | 画像処理の計算がそろい、すべてテストで確かめてある（画面も、ファイルの読み書きもまだ無い） | 済 |
 | 3 | WIC プラグイン（`WebDeza.Imaging.Wic`） | 4 | 画像ファイルを読み書きできる | 未 |
 | 4 | Core と CoverCropper の載せ替え | 8 | CoverCropper が共通部品の上で動き、今までと同じ結果を出す | 未 |
 | 5 | webDeza の土台 | 13 | webDeza で画像を 1 枚開き、枠を動かし、書き出し設定を変えて書き出せる | 未 |
@@ -117,7 +117,7 @@
 | 2-14 | 処理の流れ | `Editing/RenderPipeline`（`RenderForExport`・`RenderPreview`）・`PreviewImage` | E25〜E27。追加: 値が既定値のフィルターは呼ばれない | 中 | 済 |
 | 2-15 | 上限に合う品質の探索 | `Editing/SizeTargetSearch` | E28・E29 | 小 | 済 |
 | 2-16 | メモリ上へのエンコード | `Editing/ExportEncoder`・`EncodedImage` | E30（ここでは偽のエンコーダーで。実際の JPEG・PNG では 3-4 で確かめる） | 小 | 済 |
-| 2-17 | 履歴 | `Editing/EditHistory` | E23 | 小 | 未 |
+| 2-17 | 履歴 | `Editing/EditHistory` | E23 | 小 | 済 |
 
 注意:
 
