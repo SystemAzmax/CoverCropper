@@ -2,110 +2,118 @@
 <Application x:Class="WebDeza.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:parameters="clr-namespace:WebDeza.Views.Parameters"
              ShutdownMode="OnMainWindowClose"
              ThemeMode="System">
     <Application.Resources>
-        <!-- 画面の色と余白はここにまとめ、コントロールに直接書かない（6-9 でまとめて見直すため）。
-             テーマの色は DynamicResource で引き、明暗の切り替えに追従させる -->
+        <ResourceDictionary>
+            <!-- パラメーターの入力欄（フィルターと保存の形式のオプションで使う。設計書 5.6） -->
+            <ResourceDictionary.MergedDictionaries>
+                <parameters:ParameterTemplates />
+            </ResourceDictionary.MergedDictionaries>
 
-        <!-- キャンバスの周りとワークスペース: 色の判断を邪魔しない無彩色の灰色（明暗の設定によらず同じ）。
-             子ウィンドウの中（キャンバス）を少し暗くして、ワークスペースと見分けられるようにする -->
-        <SolidColorBrush x:Key="CanvasBackgroundBrush" Color="#FF2B2B2B" />
-        <SolidColorBrush x:Key="WorkspaceBackgroundBrush" Color="#FF404040" />
-        <SolidColorBrush x:Key="CanvasPlaceholderBrush" Color="#FFB8B8B8" />
+            <!-- 画面の色と余白はここにまとめ、コントロールに直接書かない（6-9 でまとめて見直すため）。
+                 テーマの色は DynamicResource で引き、明暗の切り替えに追従させる -->
 
-        <!-- 透過の部分に敷く市松模様（8 DIP 角の白と明るい灰。設計書 F-03） -->
-        <Color x:Key="CheckerLightColor">#FFFFFFFF</Color>
-        <Color x:Key="CheckerDarkColor">#FFCCCCCC</Color>
+            <!-- キャンバスの周りとワークスペース: 色の判断を邪魔しない無彩色の灰色（明暗の設定によらず同じ）。
+                 子ウィンドウの中（キャンバス）を少し暗くして、ワークスペースと見分けられるようにする -->
+            <SolidColorBrush x:Key="CanvasBackgroundBrush" Color="#FF2B2B2B" />
+            <SolidColorBrush x:Key="WorkspaceBackgroundBrush" Color="#FF404040" />
+            <SolidColorBrush x:Key="CanvasPlaceholderBrush" Color="#FFB8B8B8" />
 
-        <!-- 選択範囲の縁: 暗い線の上に、明るい点線を重ねる（設計書 F-03） -->
-        <SolidColorBrush x:Key="SelectionLightBrush" Color="#FFFFFFFF" />
-        <SolidColorBrush x:Key="SelectionDarkBrush" Color="#FF000000" />
+            <!-- 透過の部分に敷く市松模様（8 DIP 角の白と明るい灰。設計書 F-03） -->
+            <Color x:Key="CheckerLightColor">#FFFFFFFF</Color>
+            <Color x:Key="CheckerDarkColor">#FFCCCCCC</Color>
 
-        <!-- 領域（ツールバー・道具・編集パネル）の枠 -->
-        <Style x:Key="AreaBorderStyle" TargetType="Border">
-            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorBaseBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource DividerStrokeColorDefaultBrush}" />
-        </Style>
+            <!-- 選択範囲の縁: 暗い線の上に、明るい点線を重ねる（設計書 F-03） -->
+            <SolidColorBrush x:Key="SelectionLightBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="SelectionDarkBrush" Color="#FF000000" />
 
-        <!-- D&D 中のハイライト（ワークスペースに重ねる枠） -->
-        <Style x:Key="DropHighlightStyle" TargetType="Border">
-            <Setter Property="Visibility" Value="Collapsed" />
-            <Setter Property="IsHitTestVisible" Value="False" />
-            <Setter Property="Margin" Value="6" />
-            <Setter Property="BorderThickness" Value="3" />
-            <Setter Property="CornerRadius" Value="4" />
-            <Setter Property="BorderBrush" Value="#FF3A96DD" />
-            <Setter Property="Background" Value="#203A96DD" />
-        </Style>
+            <!-- 領域（ツールバー・道具・編集パネル）の枠 -->
+            <Style x:Key="AreaBorderStyle" TargetType="Border">
+                <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorBaseBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource DividerStrokeColorDefaultBrush}" />
+            </Style>
 
-        <!-- 道具のボタン（キャンバスの左。今の道具は、アクセントの色で塗る） -->
-        <Style x:Key="ToolButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Margin" Value="0,0,0,4" />
-            <Setter Property="MinWidth" Value="0" />
-            <Setter Property="Width" Value="32" />
-            <Setter Property="Height" Value="32" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Focusable" Value="False" />
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
-                    <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
+            <!-- D&D 中のハイライト（ワークスペースに重ねる枠） -->
+            <Style x:Key="DropHighlightStyle" TargetType="Border">
+                <Setter Property="Visibility" Value="Collapsed" />
+                <Setter Property="IsHitTestVisible" Value="False" />
+                <Setter Property="Margin" Value="6" />
+                <Setter Property="BorderThickness" Value="3" />
+                <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="BorderBrush" Value="#FF3A96DD" />
+                <Setter Property="Background" Value="#203A96DD" />
+            </Style>
 
-        <!-- ツールバーのボタンの区切り（縦線） -->
-        <Style x:Key="ToolbarSeparatorStyle" TargetType="Border">
-            <Setter Property="Width" Value="1" />
-            <Setter Property="Margin" Value="2,2,8,2" />
-            <Setter Property="Background" Value="{DynamicResource DividerStrokeColorDefaultBrush}" />
-        </Style>
+            <!-- 道具のボタン（キャンバスの左。今の道具は、アクセントの色で塗る） -->
+            <Style x:Key="ToolButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Margin" Value="0,0,0,4" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="Width" Value="32" />
+                <Setter Property="Height" Value="32" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Focusable" Value="False" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                        <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                        <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
 
-        <!-- ボタンはフォーカスを取らない（キー操作をキャンバスに残すため。設計書 4.1） -->
-        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Margin" Value="0,0,6,0" />
-            <Setter Property="MinWidth" Value="64" />
-            <Setter Property="Focusable" Value="False" />
-        </Style>
+            <!-- ツールバーのボタンの区切り（縦線） -->
+            <Style x:Key="ToolbarSeparatorStyle" TargetType="Border">
+                <Setter Property="Width" Value="1" />
+                <Setter Property="Margin" Value="2,2,8,2" />
+                <Setter Property="Background" Value="{DynamicResource DividerStrokeColorDefaultBrush}" />
+            </Style>
 
-        <!-- 子ウィンドウ（設計書 F-02）の枠。太さとタイトルバーの高さは DocumentWindow の定数（大きさの計算に使うため） -->
-        <Style x:Key="DocumentWindowFrameStyle" TargetType="Border">
-            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorBaseBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource DividerStrokeColorDefaultBrush}" />
-        </Style>
+            <!-- ボタンはフォーカスを取らない（キー操作をキャンバスに残すため。設計書 4.1） -->
+            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Margin" Value="0,0,6,0" />
+                <Setter Property="MinWidth" Value="64" />
+                <Setter Property="Focusable" Value="False" />
+            </Style>
 
-        <!-- 子ウィンドウのタイトルバー。アクティブな子ウィンドウは、上の縁をアクセントの色にし、文字を濃くする（設計書 F-02） -->
-        <Style x:Key="DocumentTitleBarStyle" TargetType="Border">
-            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorSecondaryBrush}" />
-            <Setter Property="BorderThickness" Value="0,3,0,0" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-        </Style>
-        <Style x:Key="DocumentTitleBarActiveStyle" TargetType="Border" BasedOn="{StaticResource DocumentTitleBarStyle}">
-            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorBaseBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
-        </Style>
-        <Style x:Key="DocumentTitleTextStyle" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
-        </Style>
-        <Style x:Key="DocumentTitleTextActiveStyle" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-        </Style>
+            <!-- 子ウィンドウ（設計書 F-02）の枠。太さとタイトルバーの高さは DocumentWindow の定数（大きさの計算に使うため） -->
+            <Style x:Key="DocumentWindowFrameStyle" TargetType="Border">
+                <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorBaseBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource DividerStrokeColorDefaultBrush}" />
+            </Style>
 
-        <!-- 子ウィンドウのタイトルバーのボタン（最大化 / 元に戻す・閉じる）。記号は Segoe Fluent Icons -->
-        <Style x:Key="TitleBarButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Margin" Value="0" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="MinWidth" Value="0" />
-            <Setter Property="MinHeight" Value="0" />
-            <Setter Property="Width" Value="40" />
-            <Setter Property="VerticalAlignment" Value="Stretch" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
-            <Setter Property="FontSize" Value="10" />
-            <Setter Property="Focusable" Value="False" />
-        </Style>
+            <!-- 子ウィンドウのタイトルバー。アクティブな子ウィンドウは、上の縁をアクセントの色にし、文字を濃くする（設計書 F-02） -->
+            <Style x:Key="DocumentTitleBarStyle" TargetType="Border">
+                <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorSecondaryBrush}" />
+                <Setter Property="BorderThickness" Value="0,3,0,0" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+            </Style>
+            <Style x:Key="DocumentTitleBarActiveStyle" TargetType="Border" BasedOn="{StaticResource DocumentTitleBarStyle}">
+                <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorBaseBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+            </Style>
+            <Style x:Key="DocumentTitleTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+            </Style>
+            <Style x:Key="DocumentTitleTextActiveStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+            </Style>
+
+            <!-- 子ウィンドウのタイトルバーのボタン（最大化 / 元に戻す・閉じる）。記号は Segoe Fluent Icons -->
+            <Style x:Key="TitleBarButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Margin" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Width" Value="40" />
+                <Setter Property="VerticalAlignment" Value="Stretch" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+                <Setter Property="FontSize" Value="10" />
+                <Setter Property="Focusable" Value="False" />
+            </Style>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

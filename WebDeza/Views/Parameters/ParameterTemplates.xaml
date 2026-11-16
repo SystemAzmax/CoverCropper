@@ -1,0 +1,109 @@
+<!--
+    パラメーターの入力欄（設計書 5.6「入力欄の自動生成」）。ParameterViewModel の派生の型ごとの DataTemplate で、
+    ItemsControl に ParameterViewModel の並びを入れると、種類に合った入力欄が並ぶ。App.xaml で合わせる。
+    名前の列は SharedSizeGroup="ParameterName" で、並べる側が Grid.IsSharedSizeScope="True" にすると幅がそろう。
+    テンプレートの中の TextBlock には、外側の暗黙のスタイルが効かないので、ここで決める。
+-->
+<ResourceDictionary x:Class="WebDeza.Views.Parameters.ParameterTemplates"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:WebDeza.ViewModels">
+
+    <Style x:Key="ParameterNameStyle" TargetType="TextBlock">
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="0,0,8,0" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        <Setter Property="ToolTip" Value="{Binding DisplayName}" />
+    </Style>
+
+    <Style x:Key="ParameterUnitStyle" TargetType="TextBlock">
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="4,0,0,0" />
+    </Style>
+
+    <!-- Integer / Number: スライダー（ダブルクリックで既定値）と数値入力 -->
+    <DataTemplate DataType="{x:Type vm:NumericParameterViewModel}">
+        <Grid Margin="0,2,0,2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" SharedSizeGroup="ParameterName" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="64" />
+                <ColumnDefinition Width="Auto" SharedSizeGroup="ParameterUnit" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Style="{StaticResource ParameterNameStyle}" Text="{Binding DisplayName}" />
+            <!-- Minimum・Maximum を Value より先に入れる（範囲が決まる前に Value が丸められて、値が書き換わらないように） -->
+            <Slider Grid.Column="1" x:Name="ParameterSlider" VerticalAlignment="Center" MinWidth="80"
+                    Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
+                    SmallChange="{Binding Step}" LargeChange="{Binding LargeStep}"
+                    TickFrequency="{Binding Step}" IsSnapToTickEnabled="True"
+                    Value="{Binding SliderValue}"
+                    MouseDoubleClick="OnSliderMouseDoubleClick"
+                    ToolTip="ダブルクリックで既定値に戻す" />
+            <!-- 数値と色の入力欄: Enter かフォーカスが外れたときに当てはめる（Esc で今の値に戻す）。
+                 テーマのスタイルを保つため、スタイルを使わずに属性で書く -->
+            <TextBox Grid.Column="2" x:Name="ParameterInput" Margin="8,0,0,0" Text="{Binding Text}" MaxLength="12"
+                     TextAlignment="Right" VerticalAlignment="Center" InputMethod.IsInputMethodEnabled="False"
+                     KeyDown="OnInputKeyDown" GotKeyboardFocus="OnInputGotKeyboardFocus" />
+            <TextBlock Grid.Column="3" Style="{StaticResource ParameterUnitStyle}" Text="{Binding Unit}" />
+        </Grid>
+    </DataTemplate>
+
+    <!-- Boolean: チェックボックス -->
+    <DataTemplate DataType="{x:Type vm:BooleanParameterViewModel}">
+        <CheckBox Content="{Binding DisplayName}" IsChecked="{Binding IsChecked}" Margin="0,2,0,2" />
+    </DataTemplate>
+
+    <!-- Choice: コンボボックス（選択肢の表示は変わらないので DisplayMemberPath でよい） -->
+    <DataTemplate DataType="{x:Type vm:ChoiceParameterViewModel}">
+        <Grid Margin="0,2,0,2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" SharedSizeGroup="ParameterName" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Style="{StaticResource ParameterNameStyle}" Text="{Binding DisplayName}" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}"
+                      DisplayMemberPath="DisplayName" />
+        </Grid>
+    </DataTemplate>
+
+    <!-- Color: 色見本（白・黒・灰）・今の色・#RRGGBB の入力 -->
+    <DataTemplate DataType="{x:Type vm:ColorParameterViewModel}">
+        <Grid Margin="0,2,0,2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" SharedSizeGroup="ParameterName" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" MinWidth="80" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Style="{StaticResource ParameterNameStyle}" Text="{Binding DisplayName}" />
+            <ItemsControl Grid.Column="1" ItemsSource="{x:Static vm:ColorParameterViewModel.Swatches}" Focusable="False"
+                          VerticalAlignment="Center">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Width="22" Height="22" MinWidth="0" Padding="0" Margin="0,0,3,0" ToolTip="{Binding}"
+                                CommandParameter="{Binding}"
+                                Command="{Binding DataContext.SelectSwatchCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                            <Rectangle Width="12" Height="12" Fill="{Binding}" Stroke="#FF808080" StrokeThickness="1" />
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <!-- 今の色 -->
+            <Border Grid.Column="2" Width="18" Height="18" Margin="3,0,6,0" VerticalAlignment="Center"
+                    BorderBrush="#FF808080" BorderThickness="1" ToolTip="今の色">
+                <Border.Background>
+                    <SolidColorBrush Color="{Binding Color}" />
+                </Border.Background>
+            </Border>
+            <!-- #RRGGBB は残りの幅いっぱいに（7 文字が欠けずに見えるように） -->
+            <TextBox Grid.Column="3" x:Name="ColorInput" MaxLength="9" Text="{Binding Text}" ToolTip="#RRGGBB"
+                     TextAlignment="Right" VerticalAlignment="Center" InputMethod.IsInputMethodEnabled="False"
+                     KeyDown="OnInputKeyDown" GotKeyboardFocus="OnInputGotKeyboardFocus" />
+        </Grid>
+    </DataTemplate>
+</ResourceDictionary>
