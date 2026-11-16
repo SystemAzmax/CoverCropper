@@ -56,7 +56,124 @@ public sealed class MainViewModelCommandTests : IDisposable
         Assert.False(_vm.SelectAllCommand.CanExecute(null));
         Assert.False(_vm.DeselectCommand.CanExecute(null));
         Assert.False(_vm.CropCommand.CanExecute(null));
+        Assert.False(_vm.UndoCommand.CanExecute(null));
+        Assert.False(_vm.RedoCommand.CanExecute(null));
+        Assert.Equal("元に戻す(_U)", _vm.UndoHeader);
+        Assert.Equal("やり直し(_R)", _vm.RedoHeader);
     }
+
+    // ---------------------------------------------------------------- 元に戻す・やり直し（V29・V42。9-2）
+
+    [Fact]
+    public async Task UndoRedo_DisabledWithoutHistory()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake"));
+
+        Assert.False(_vm.UndoCommand.CanExecute(null)); // V42: 履歴が無いときは無効
+        Assert.False(_vm.RedoCommand.CanExecute(null));
+        Assert.Equal("元に戻す (Ctrl+Z)", _vm.UndoToolTip);
+        Assert.Equal("やり直し (Ctrl+Y)", _vm.RedoToolTip);
+    }
+
+    [Fact]
+    public async Task UndoRedo_AfterCrop_ShowsOperationName()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        var document = _vm.ActiveDocument!;
+        document.Selection = new WebDeza.Imaging.PixelRect(1, 2, 10, 8);
+        var undoChanged = 0;
+        var properties = new List<string?>();
+        _vm.UndoCommand.CanExecuteChanged += (_, _) => undoChanged++;
+        _vm.PropertyChanged += (_, e) => properties.Add(e.PropertyName);
+
+        await _vm.CropCommand.ExecuteAsync(null);
+
+        Assert.True(_vm.UndoCommand.CanExecute(null));
+        Assert.False(_vm.RedoCommand.CanExecute(null));
+        Assert.True(undoChanged > 0);
+        Assert.Contains(nameof(MainViewModel.UndoHeader), properties);
+        Assert.Equal("元に戻す: 切り抜き(_U)", _vm.UndoHeader);
+        Assert.Equal("元に戻す: 切り抜き (Ctrl+Z)", _vm.UndoToolTip);
+        Assert.Equal("やり直し(_R)", _vm.RedoHeader);
+
+        await _vm.UndoCommand.ExecuteAsync(null);
+
+        Assert.Equal((30, 20), (document.ImageWidth, document.ImageHeight));
+        Assert.False(document.HasUnexportedEdits);
+        Assert.False(_vm.UndoCommand.CanExecute(null));
+        Assert.True(_vm.RedoCommand.CanExecute(null));
+        Assert.Equal("元に戻す(_U)", _vm.UndoHeader);
+        Assert.Equal("やり直し: 切り抜き(_R)", _vm.RedoHeader);
+        Assert.Equal("やり直し: 切り抜き (Ctrl+Y)", _vm.RedoToolTip);
+        Assert.Equal("画像: 30×20", _vm.StatusText);
+
+        await _vm.RedoCommand.ExecuteAsync(null);
+
+        Assert.Equal((10, 8), (document.ImageWidth, document.ImageHeight));
+        Assert.True(document.HasUnexportedEdits);
+        Assert.Equal("元に戻す: 切り抜き(_U)", _vm.UndoHeader);
+        Assert.Equal("やり直し(_R)", _vm.RedoHeader);
+    }
+
+    [Fact]
+    public async Task Undo_UsesHistoryOfActiveDocument()
+    {
+        // V29: 画像 A を編集 → B をアクティブに → A に戻って元に戻す → A の編集が 1 段戻る（B は変わらない）
+        await _vm.OpenPathsAsync([CreateFile("a.fake"), CreateFile("b.fake")]);
+        var a = _vm.Documents[0];
+        var b = _vm.Documents[1];
+        _vm.ActiveDocument = a;
+        a.Selection = new WebDeza.Imaging.PixelRect(0, 0, 10, 10);
+        await _vm.CropCommand.ExecuteAsync(null);
+        b.Selection = new WebDeza.Imaging.PixelRect(0, 0, 20, 10);
+        _vm.ActiveDocument = b;
+        await _vm.CropCommand.ExecuteAsync(null);
+        await _vm.UndoCommand.ExecuteAsync(null); // B の履歴を戻す（A は変わらない）
+        Assert.Equal((30, 20), (b.ImageWidth, b.ImageHeight));
+        Assert.Equal((10, 10), (a.ImageWidth, a.ImageHeight));
+
+        Assert.False(_vm.UndoCommand.CanExecute(null)); // B にはもう戻す編集が無い
+        Assert.Equal("元に戻す(_U)", _vm.UndoHeader);
+
+        _vm.ActiveDocument = a;
+        Assert.True(_vm.UndoCommand.CanExecute(null));
+        Assert.Equal("元に戻す: 切り抜き(_U)", _vm.UndoHeader);
+        await _vm.UndoCommand.ExecuteAsync(null);
+
+        Assert.Equal((30, 20), (a.ImageWidth, a.ImageHeight));
+        Assert.False(a.CanUndo);
+        Assert.True(b.CanRedo); // B の履歴はそのまま
+        Assert.Equal((30, 20), (b.ImageWidth, b.ImageHeight));
+    }
+
+    [Fact]
+    public async Task UndoRedo_DisabledWhileBusy()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        var document = _vm.ActiveDocument!;
+        document.Selection = new WebDeza.Imaging.PixelRect(0, 0, 10, 10);
+        await _vm.CropCommand.ExecuteAsync(null);
+        await _vm.UndoCommand.ExecuteAsync(null);
+        var gate = new ManualResetEventSlim();
+
+        var editing = document.ApplyEditAsync("編集", (image, _) => { gate.Wait(TimeSpan.FromSeconds(10)); return image; },
+            changedRegion: null, newSelection: null, resetView: false);
+        Assert.False(_vm.UndoCommand.CanExecute(null));
+        Assert.False(_vm.RedoCommand.CanExecute(null));
+        gate.Set();
+        await editing;
+
+        Assert.True(_vm.UndoCommand.CanExecute(null));
+        Assert.Equal("元に戻す: 編集(_U)", _vm.UndoHeader);
+        Assert.False(_vm.RedoCommand.CanExecute(null)); // 新しく積んだので、やり直す先は消える
+    }
+
+    [Theory]
+    [InlineData("元に戻す", null, "U", "元に戻す(_U)")]
+    [InlineData("元に戻す", "ぼかし", "U", "元に戻す: ぼかし(_U)")]
+    [InlineData("やり直し", "a_b", "R", "やり直し: a__b(_R)")] // 「_」はアクセスキーの印にしない
+    public void HistoryHeader_Format(string action, string? name, string key, string expected)
+        => Assert.Equal(expected, MainViewModel.HistoryHeader(action, name, key));
 
     // ---------------------------------------------------------------- 切り抜き（V33。9-1）
 

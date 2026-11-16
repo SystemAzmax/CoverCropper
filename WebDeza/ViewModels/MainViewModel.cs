@@ -76,10 +76,12 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>アクティブな画像（メニュー・道具・編集パネル・ステータスバーの対象）。画像が無ければ null</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasImage), nameof(WindowTitle), nameof(StatusText), nameof(IsEditPanelEnabled))]
+    [NotifyPropertyChangedFor(nameof(HasImage), nameof(WindowTitle), nameof(StatusText), nameof(IsEditPanelEnabled),
+        nameof(UndoHeader), nameof(RedoHeader), nameof(UndoToolTip), nameof(RedoToolTip))]
     [NotifyCanExecuteChangedFor(nameof(CloseCommand), nameof(ZoomInCommand), nameof(ZoomOutCommand),
         nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand), nameof(SelectToolCommand),
-        nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand), nameof(CropCommand))]
+        nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand), nameof(CropCommand),
+        nameof(UndoCommand), nameof(RedoCommand))]
     private DocumentViewModel? _activeDocument;
 
     /// <summary>読み込み中・編集の確定中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
@@ -88,7 +90,7 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(OpenCommand), nameof(CloseCommand), nameof(ExitCommand),
         nameof(ZoomInCommand), nameof(ZoomOutCommand), nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand),
         nameof(SelectToolCommand), nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand),
-        nameof(CropCommand))]
+        nameof(CropCommand), nameof(UndoCommand), nameof(RedoCommand))]
     private bool _isBusy;
 
     partial void OnIsBusyChanged(bool value) => NotifyDocumentCommandsChanged();
@@ -189,6 +191,10 @@ public sealed partial class MainViewModel : ObservableObject
         {
             DeselectCommand.NotifyCanExecuteChanged();
             CropCommand.NotifyCanExecuteChanged();
+        }
+        else if (e.PropertyName is nameof(DocumentViewModel.UndoName) or nameof(DocumentViewModel.RedoName))
+        {
+            NotifyHistoryChanged();
         }
         OnPropertyChanged(nameof(StatusText));
     }
@@ -500,6 +506,65 @@ public sealed partial class MainViewModel : ObservableObject
     private ToolItemViewModel? SelectToolItem => ToolItems.FirstOrDefault(t => t.Factory.Id == SelectToolFactory.ToolId);
 
     private bool CanUseSelectTool() => CanSelectTool(SelectToolItem);
+
+    // ---------------------------------------------------------------- 元に戻す・やり直し（メニュー［編集］・ツールバー。設計書 F-07）
+
+    private bool CanUndo => !IsBusy && ActiveDocument?.CanUndo == true;
+
+    private bool CanRedo => !IsBusy && ActiveDocument?.CanRedo == true;
+
+    /// <summary>［編集］→［元に戻す］ / ツールバー / Ctrl+Z: アクティブな画像の履歴を 1 段戻す（画像ごとの履歴）</summary>
+    [RelayCommand(CanExecute = nameof(CanUndo))]
+    private Task UndoAsync()
+    {
+        if (!CanUndo) return Task.CompletedTask;
+        StatusMessage = null;
+        return ActiveDocument!.UndoAsync();
+    }
+
+    /// <summary>［編集］→［やり直し］ / ツールバー / Ctrl+Y・Ctrl+Shift+Z</summary>
+    [RelayCommand(CanExecute = nameof(CanRedo))]
+    private Task RedoAsync()
+    {
+        if (!CanRedo) return Task.CompletedTask;
+        StatusMessage = null;
+        return ActiveDocument!.RedoAsync();
+    }
+
+    /// <summary>メニュー［編集］の［元に戻す］の文字（例: 「元に戻す: 切り抜き(_U)」。設計書 F-07）</summary>
+    public string UndoHeader => HistoryHeader("元に戻す", ActiveDocument?.UndoName, "U");
+
+    /// <summary>メニュー［編集］の［やり直し］の文字（例: 「やり直し: 切り抜き(_R)」）</summary>
+    public string RedoHeader => HistoryHeader("やり直し", ActiveDocument?.RedoName, "R");
+
+    /// <summary>ツールバーの［元に戻す］のツールチップ（例: 「元に戻す: 切り抜き (Ctrl+Z)」）</summary>
+    public string UndoToolTip => HistoryToolTip("元に戻す", ActiveDocument?.UndoName, "Ctrl+Z");
+
+    /// <summary>ツールバーの［やり直し］のツールチップ（例: 「やり直し: 切り抜き (Ctrl+Y)」）</summary>
+    public string RedoToolTip => HistoryToolTip("やり直し", ActiveDocument?.RedoName, "Ctrl+Y");
+
+    /// <summary>
+    /// 元に戻す・やり直しのメニューの文字。操作の名前があれば「{動作}: {名前}(_{キー})」、無ければ「{動作}(_{キー})」。
+    /// 名前の「_」は、アクセスキーの印と見なされないように「__」にする
+    /// </summary>
+    public static string HistoryHeader(string action, string? operationName, string accessKey)
+        => operationName is null
+            ? $"{action}(_{accessKey})"
+            : $"{action}: {operationName.Replace("_", "__")}(_{accessKey})";
+
+    private static string HistoryToolTip(string action, string? operationName, string gesture)
+        => operationName is null ? $"{action} ({gesture})" : $"{action}: {operationName} ({gesture})";
+
+    /// <summary>アクティブな画像の履歴が変わったことを、コマンドとメニューの文字に知らせる</summary>
+    private void NotifyHistoryChanged()
+    {
+        UndoCommand.NotifyCanExecuteChanged();
+        RedoCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(UndoHeader));
+        OnPropertyChanged(nameof(RedoHeader));
+        OnPropertyChanged(nameof(UndoToolTip));
+        OnPropertyChanged(nameof(RedoToolTip));
+    }
 
     // ---------------------------------------------------------------- 画像の編集（メニュー［画像］。設計書 F-04・F-05）
 

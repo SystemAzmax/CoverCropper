@@ -25,6 +25,9 @@
         <KeyBinding Modifiers="Control" Key="A" Command="{Binding SelectAllCommand}" />
         <KeyBinding Modifiers="Control" Key="D" Command="{Binding DeselectCommand}" />
         <KeyBinding Modifiers="Control+Shift" Key="X" Command="{Binding CropCommand}" />
+        <KeyBinding Modifiers="Control" Key="Z" Command="{Binding UndoCommand}" />
+        <KeyBinding Modifiers="Control" Key="Y" Command="{Binding RedoCommand}" />
+        <KeyBinding Modifiers="Control+Shift" Key="Z" Command="{Binding RedoCommand}" />
         <KeyBinding Modifiers="Control" Key="Tab" Command="{Binding NextDocumentCommand}" />
         <KeyBinding Modifiers="Control+Shift" Key="Tab" Command="{Binding PreviousDocumentCommand}" />
         <!-- + / - はキーコードで判定し、Shift の有無は問わない（日本語キーボードでは + を Shift+; で入力するため。設計書 4.4） -->
@@ -60,8 +63,9 @@
                 <MenuItem Header="終了(_X)" Command="{Binding ExitCommand}" />
             </MenuItem>
             <MenuItem Header="編集(_E)">
-                <MenuItem Header="元に戻す(_U)" InputGestureText="Ctrl+Z" IsEnabled="False" />        <!-- 9-2 -->
-                <MenuItem Header="やり直し(_R)" InputGestureText="Ctrl+Y" IsEnabled="False" />        <!-- 9-2 -->
+                <!-- 操作の名前を出す（例: 「元に戻す: 切り抜き」。設計書 F-07） -->
+                <MenuItem x:Name="UndoMenuItem" Header="{Binding UndoHeader}" InputGestureText="Ctrl+Z" Command="{Binding UndoCommand}" />
+                <MenuItem x:Name="RedoMenuItem" Header="{Binding RedoHeader}" InputGestureText="Ctrl+Y" Command="{Binding RedoCommand}" />
                 <Separator />
                 <MenuItem Header="コピー(_C)" InputGestureText="Ctrl+C" IsEnabled="False" />          <!-- 将来 -->
                 <MenuItem Header="切り取り(_T)" InputGestureText="Ctrl+X" IsEnabled="False" />        <!-- 将来 -->
@@ -135,8 +139,8 @@
                 <Button Content="開く" Command="{Binding OpenCommand}" ToolTip="画像を開く (Ctrl+O)" />
                 <Button Content="保存" IsEnabled="False" ToolTip="保存 (Ctrl+E)" />                    <!-- 10-2 -->
                 <Border Style="{StaticResource ToolbarSeparatorStyle}" />
-                <Button Content="元に戻す" IsEnabled="False" ToolTip="元に戻す (Ctrl+Z)" />            <!-- 9-2 -->
-                <Button Content="やり直し" IsEnabled="False" ToolTip="やり直し (Ctrl+Y)" />            <!-- 9-2 -->
+                <Button Content="元に戻す" Command="{Binding UndoCommand}" ToolTip="{Binding UndoToolTip}" />
+                <Button Content="やり直し" Command="{Binding RedoCommand}" ToolTip="{Binding RedoToolTip}" />
                 <Border Style="{StaticResource ToolbarSeparatorStyle}" />
                 <Button Content="全体" Command="{Binding ZoomToFitCommand}" ToolTip="全体表示 (Ctrl+0)" />
                 <Button Content="100%" Command="{Binding ZoomToActualSizeCommand}" ToolTip="100% (Ctrl+1)" />

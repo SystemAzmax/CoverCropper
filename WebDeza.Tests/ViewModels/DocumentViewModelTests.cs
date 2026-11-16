@@ -307,6 +307,118 @@ public sealed class DocumentViewModelTests : IDisposable
         Assert.Equal((60, 40), (document.ImageWidth, document.ImageHeight));
     }
 
+    // ---------------------------------------------------------------- 元に戻す・やり直し（V32 のうち保存を除く部分。実装計画書 9-2）
+
+    [Fact]
+    public async Task UndoRedo_FollowsHistory_AndUnexportedMark()
+    {
+        var document = Create(Pattern(60, 40));
+        var original = (Image: document.Image, Display: document.Display);
+        var edited = Blank(60, 40);
+        Assert.False(document.CanUndo);
+        Assert.False(document.CanRedo);
+
+        await document.ApplyEditAsync("編集", (_, _) => edited, changedRegion: null, newSelection: null, resetView: false);
+        Assert.True(document.HasUnexportedEdits);
+        Assert.True(document.CanUndo);
+        Assert.Equal("編集", document.UndoName);
+
+        var properties = new List<string?>();
+        document.PropertyChanged += (_, e) => properties.Add(e.PropertyName);
+        await document.UndoAsync();
+
+        Assert.Same(original.Image, document.Image);
+        Assert.NotSame(edited, document.Display.Image);
+        Assert.Equal(original.Image.Pixels, document.Display.Image.Pixels);
+        Assert.False(document.HasUnexportedEdits); // 開いた時点の状態に戻れば、印は消える
+        Assert.Equal("photo.png", document.Title);
+        Assert.False(document.CanUndo);
+        Assert.True(document.CanRedo);
+        Assert.Null(document.UndoName);
+        Assert.Equal("編集", document.RedoName);
+        Assert.Contains(nameof(DocumentViewModel.UndoName), properties);
+        Assert.Contains(nameof(DocumentViewModel.RedoName), properties);
+        Assert.Contains(nameof(DocumentViewModel.Title), properties);
+        Assert.Equal(0, document.ResetViewRequest); // 大きさが変わらなければ、表示はそのまま
+
+        await document.RedoAsync();
+
+        Assert.Same(edited, document.Image);
+        Assert.True(document.HasUnexportedEdits);
+        Assert.Equal("photo.png *", document.Title);
+        Assert.True(document.CanUndo);
+        Assert.False(document.CanRedo);
+        Assert.False(document.IsBusy);
+        Assert.Empty(_dialogs.Errors);
+    }
+
+    [Fact]
+    public async Task UndoRedo_SizeChange_ResetsView_AndRefitsSelection()
+    {
+        var document = Create(600, 400);
+        document.Selection = new PixelRect(10, 20, 300, 200);
+        await document.ApplyEditAsync("切り抜き", (_, _) => Blank(300, 200), changedRegion: null, newSelection: null, resetView: true);
+        Assert.Equal(1, document.ResetViewRequest);
+
+        // 元に戻す: 大きくなるので、選択範囲はそのまま。全体表示に戻す
+        document.Selection = new PixelRect(10, 10, 100, 100);
+        await document.UndoAsync();
+        Assert.Equal((600, 400), (document.ImageWidth, document.ImageHeight));
+        Assert.Equal((600, 400), (document.Display.ImageWidth, document.Display.ImageHeight));
+        Assert.Equal(new PixelRect(10, 10, 100, 100), document.Selection);
+        Assert.Equal(2, document.ResetViewRequest);
+
+        // やり直し: 収まる大きさの選択範囲は、内側へ寄せる
+        document.Selection = new PixelRect(400, 300, 100, 50);
+        await document.RedoAsync();
+        Assert.Equal((300, 200), (document.ImageWidth, document.ImageHeight));
+        Assert.Equal(new PixelRect(200, 150, 100, 50), document.Selection);
+        Assert.Equal(3, document.ResetViewRequest);
+
+        // 収まらない大きさの選択範囲は、解除する（設計書 F-04）
+        await document.UndoAsync();
+        document.Selection = new PixelRect(0, 0, 500, 100);
+        await document.RedoAsync();
+        Assert.Null(document.Selection);
+    }
+
+    [Fact]
+    public async Task Undo_RegionEdit_RestoresPixels_AndKeepsSelection()
+    {
+        var source = Pattern(60, 40);
+        var document = Create(source);
+        document.Selection = new PixelRect(10, 10, 20, 20);
+        var edited = Blank(60, 40);
+        source.Pixels.AsSpan().CopyTo(edited.Pixels);
+        edited.Pixels.AsSpan((10 * 60 + 10) * 4, 20 * 4).Clear(); // 選択範囲の中の 1 行だけ変える
+
+        await document.ApplyEditAsync("編集", (_, _) => edited, changedRegion: document.Selection, newSelection: document.Selection, resetView: false);
+        await document.UndoAsync();
+
+        Assert.Equal(source.Pixels, document.Image.Pixels);
+        Assert.Equal(new PixelRect(10, 10, 20, 20), document.Selection);
+        Assert.Equal(0, document.ResetViewRequest);
+
+        await document.RedoAsync();
+        Assert.Equal(edited.Pixels, document.Image.Pixels);
+    }
+
+    [Fact]
+    public async Task UndoRedo_NothingToDo_DoesNothing()
+    {
+        var document = Create(60, 40);
+        var before = (Image: document.Image, Display: document.Display);
+        var properties = new List<string?>();
+        document.PropertyChanged += (_, e) => properties.Add(e.PropertyName);
+
+        await document.UndoAsync();
+        await document.RedoAsync();
+
+        Assert.Same(before.Image, document.Image);
+        Assert.Same(before.Display, document.Display);
+        Assert.Empty(properties); // 確定中にもならない
+    }
+
     // ---------------------------------------------------------------- MainViewModel との組み合わせ
 
     [Fact]

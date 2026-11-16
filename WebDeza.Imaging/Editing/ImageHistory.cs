@@ -108,28 +108,38 @@ public sealed class ImageHistory
         TrimOldSteps();
     }
 
-    /// <summary>1 段元に戻し、戻した後の画像を返す</summary>
+    /// <summary>
+    /// 1 段元に戻し、戻した後の画像を返す。
+    /// 戻した画像を作れなかったとき（範囲の画素を貼るときのメモリ不足など）は、履歴を変えずに例外を投げる
+    /// </summary>
     /// <exception cref="InvalidOperationException">元に戻せない（CanUndo が false）</exception>
     public ImageBuffer Undo()
     {
         if (!CanUndo) throw new InvalidOperationException("元に戻せる編集がありません。");
-        var step = _steps[--_applied];
-        Current = step.Region is { } region
+        var step = _steps[_applied - 1];
+        var image = step.Region is { } region
             ? Paste.Apply(Current, step.BeforePatch!, region.X, region.Y)
             : step.Before!;
+        _applied--;
+        Current = image;
         StateId = step.BeforeId;
         return Current;
     }
 
-    /// <summary>1 段やり直し、やり直した後の画像を返す</summary>
+    /// <summary>
+    /// 1 段やり直し、やり直した後の画像を返す。
+    /// やり直した画像を作れなかったときは、履歴を変えずに例外を投げる
+    /// </summary>
     /// <exception cref="InvalidOperationException">やり直せない（CanRedo が false）</exception>
     public ImageBuffer Redo()
     {
         if (!CanRedo) throw new InvalidOperationException("やり直せる編集がありません。");
-        var step = _steps[_applied++];
-        Current = step.Region is { } region
+        var step = _steps[_applied];
+        var image = step.Region is { } region
             ? Paste.Apply(Current, step.AfterPatch!, region.X, region.Y)
             : step.After!;
+        _applied++;
+        Current = image;
         StateId = step.AfterId;
         return Current;
     }

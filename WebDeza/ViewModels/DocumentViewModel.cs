@@ -133,30 +133,108 @@ public sealed partial class DocumentViewModel : ObservableObject, IEditorSession
         ArgumentNullException.ThrowIfNull(edit);
         if (IsBusy) return;
 
-        string? error = null;
-        DisplayImage? display = null;
-        IsBusy = true;
-        try
+        var display = await RunBusyAsync("Edit", name, async () =>
         {
             var source = Image;
-            ImageBuffer next;
-            (next, display) = await Task.Run(() =>
+            var (next, display) = await Task.Run(() =>
             {
                 var edited = edit(source, CancellationToken.None)
                     ?? throw new InvalidOperationException("編集の結果がありません。");
                 return (edited, DisplayImage.Create(edited));
             });
             History.Push(name, next, changedRegion);
+            return display;
+        });
+        if (display is null) return;
+
+        // 画像が変わったので、選択範囲は新しい画像の内側に収め、表示用画像を差し替える
+        Selection = newSelection;
+        if (resetView) ResetViewRequest++;
+        Display = display;
+        NotifyImageChanged();
+    }
+
+    // ---------------------------------------------------------------- 元に戻す・やり直し（設計書 F-07）
+
+    /// <summary>元に戻せるか</summary>
+    public bool CanUndo => History.CanUndo;
+
+    /// <summary>やり直せるか</summary>
+    public bool CanRedo => History.CanRedo;
+
+    /// <summary>元に戻す操作の名前（メニューに出す。無ければ null）</summary>
+    public string? UndoName => History.UndoName;
+
+    /// <summary>やり直す操作の名前（無ければ null）</summary>
+    public string? RedoName => History.RedoName;
+
+    /// <summary>1 段元に戻す（戻せないとき・確定中は何もしない）</summary>
+    public Task UndoAsync() => StepHistoryAsync(undo: true);
+
+    /// <summary>1 段やり直す（やり直せないとき・確定中は何もしない）</summary>
+    public Task RedoAsync() => StepHistoryAsync(undo: false);
+
+    /// <summary>
+    /// 履歴を 1 段動かし、表示用画像を作り直す（バックグラウンド。その間は確定中）。
+    /// 選択範囲は画像の内側に収め直し（収まらなければ解除）、大きさが変わったら全体表示に戻す（設計書 F-04・F-07）。
+    /// 表示用画像を作れなかったときは、履歴を動かす前に戻して M28 を出す（画像と表示をずらさない）
+    /// </summary>
+    private async Task StepHistoryAsync(bool undo)
+    {
+        if (IsBusy || !(undo ? CanUndo : CanRedo)) return;
+
+        var before = Image;
+        string name = (undo ? UndoName : RedoName)!;
+        var display = await RunBusyAsync(undo ? "Undo" : "Redo", name, async () =>
+        {
+            // 履歴は UI のスレッドだけで使う（ImageHistory はスレッドセーフではない）
+            var image = undo ? History.Undo() : History.Redo();
+            try
+            {
+                return await Task.Run(() => DisplayImage.Create(image));
+            }
+            catch
+            {
+                if (undo) History.Redo();
+                else History.Undo();
+                throw;
+            }
+        });
+        if (display is null) return;
+
+        bool sizeChanged = Image.Width != before.Width || Image.Height != before.Height;
+        Selection = Selection is { } selection && (selection.Width > ImageWidth || selection.Height > ImageHeight)
+            ? null
+            : Selection;
+        if (sizeChanged) ResetViewRequest++;
+        Display = display;
+        NotifyImageChanged();
+    }
+
+    /// <summary>
+    /// 確定中にして work を行い、作った表示用画像を返す。失敗したとき（例外・メモリ不足）は、ログに書き、
+    /// 確定中を解いてから M28 を出して null を返す（work は、失敗したら画像も履歴も変えないこと）
+    /// </summary>
+    /// <param name="operation">ログに書く操作の種類（Edit / Undo / Redo）</param>
+    /// <param name="name">操作の名前</param>
+    private async Task<DisplayImage?> RunBusyAsync(string operation, string name, Func<Task<DisplayImage>> work)
+    {
+        string? error = null;
+        DisplayImage? display = null;
+        IsBusy = true;
+        try
+        {
+            display = await work();
         }
         catch (OutOfMemoryException ex)
         {
-            _log.Error($"Edit OOM: {name} ({Path})", ex);
+            _log.Error($"{operation} OOM: {name} ({Path})", ex);
             error = Messages.M28_EditFailed(Messages.OutOfMemory);
         }
         catch (Exception ex)
         {
             // フィルターなどのプラグインの例外も、アプリを落とさない（設計書 5.10-6）
-            _log.Error($"Edit failed: {name} ({Path})", ex);
+            _log.Error($"{operation} failed: {name} ({Path})", ex);
             error = Messages.M28_EditFailed(ex.Message);
         }
         finally
@@ -164,20 +242,15 @@ public sealed partial class DocumentViewModel : ObservableObject, IEditorSession
             IsBusy = false;
         }
 
-        if (error is not null)
-        {
-            _dialogs.ShowError(error);
-            return;
-        }
-
-        // 画像が変わったので、選択範囲は新しい画像の内側に収め、表示用画像を差し替える
-        Selection = newSelection;
-        if (resetView) ResetViewRequest++;
-        Display = display!;
-        NotifyImageChanged();
+        if (error is null) return display;
+        _dialogs.ShowError(error);
+        return null;
     }
 
-    /// <summary>今の画像（History.Current）が変わったことを知らせる（大きさ・書き出していない編集の印も変わりうる）</summary>
+    /// <summary>
+    /// 今の画像（History.Current）が変わったことを知らせる
+    /// （大きさ・書き出していない編集の印・元に戻す / やり直しの名前も変わりうる）
+    /// </summary>
     private void NotifyImageChanged()
     {
         OnPropertyChanged(nameof(Image));
@@ -185,6 +258,10 @@ public sealed partial class DocumentViewModel : ObservableObject, IEditorSession
         OnPropertyChanged(nameof(ImageHeight));
         OnPropertyChanged(nameof(HasUnexportedEdits));
         OnPropertyChanged(nameof(Title));
+        OnPropertyChanged(nameof(CanUndo));
+        OnPropertyChanged(nameof(CanRedo));
+        OnPropertyChanged(nameof(UndoName));
+        OnPropertyChanged(nameof(RedoName));
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
