@@ -22,6 +22,11 @@ public partial class MainWindow : Window
         _vm.ExitRequested += (_, _) => Close();
         _vm.ArrangeWindowsRequested += OnArrangeWindowsRequested;
         _vm.ZoomRequested += OnZoomRequested;
+        _vm.FilterPanel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(FilterPanelViewModel.SelectedFilter)) UpdateFilterInputsTemplate();
+        };
+        UpdateFilterInputsTemplate();
         WindowMenu.SubmenuClosed += OnWindowMenuClosed;
         RestorePlacement();
     }
@@ -102,6 +107,18 @@ public partial class MainWindow : Window
     /// <summary>キーボードでフォーカスが来たら、全体を選ぶ（打てば置き換わる）</summary>
     private void OnNumberInputGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
         => NumberInput.OnGotKeyboardFocus(sender, e);
+
+    // ---------------------------------------------------------------- 編集パネルの「フィルター」の入力欄
+
+    /// <summary>
+    /// フィルターの入力欄のテンプレートを決める（設計書 5.6）: フィルターの Id をキーにした DataTemplate がリソースにあればそれを、
+    /// 無ければ、パラメーターの記述から自動で作るものを使う
+    /// </summary>
+    private void UpdateFilterInputsTemplate()
+    {
+        var custom = _vm.FilterPanel.SelectedFilter is { } filter ? TryFindResource(filter.Id) as DataTemplate : null;
+        FilterInputs.ContentTemplate = custom ?? (DataTemplate)FilterSection.FindResource("FilterParametersTemplate");
+    }
 
     // ---------------------------------------------------------------- ズーム（メニュー［表示］・ツールバー）
 

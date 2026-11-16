@@ -45,6 +45,7 @@ public sealed partial class DocumentViewModel : ObservableObject, IEditorSession
         SourceFileSize = sourceFileSize;
         History = new ImageHistory(image);
         _display = display;
+        _baseDisplay = display;
         _selectionAspect = selectionAspect;
         _dialogs = dialogs;
         _log = log;
@@ -66,9 +67,35 @@ public sealed partial class DocumentViewModel : ObservableObject, IEditorSession
     /// <summary>今の画像（フル解像度。History.Current と同じ）</summary>
     public ImageBuffer Image => History.Current;
 
-    /// <summary>キャンバスに描く表示用画像</summary>
+    /// <summary>キャンバスに描く表示用画像。フィルターのプレビュー中は、プレビューをかけたもの（設計書 5.6）</summary>
     [ObservableProperty]
     private DisplayImage _display;
+
+    private DisplayImage _baseDisplay;
+
+    /// <summary>フィルターをかける前の表示用画像（今の画像から作ったもの。プレビューはこれにかける）</summary>
+    public DisplayImage BaseDisplay => _baseDisplay;
+
+    /// <summary>フィルターのプレビューを表示しているか</summary>
+    public bool IsPreviewing => !ReferenceEquals(Display, _baseDisplay);
+
+    /// <summary>
+    /// フィルターのプレビューを表示する（null なら、プレビューをやめて今の画像の表示に戻す）。
+    /// 画像も履歴も変えない（設計書 5.8）。preview は BaseDisplay.WithImage で作ったものであること
+    /// </summary>
+    public void SetPreview(DisplayImage? preview)
+    {
+        if (preview is not null && (preview.ImageWidth != ImageWidth || preview.ImageHeight != ImageHeight))
+            throw new ArgumentException("プレビューが、今の画像と同じ大きさのものではありません。", nameof(preview));
+        Display = preview ?? _baseDisplay;
+    }
+
+    /// <summary>今の画像の表示用画像を差し替える（編集の確定・元に戻す・やり直し。プレビューは終わる）</summary>
+    private void SetBaseDisplay(DisplayImage display)
+    {
+        _baseDisplay = display;
+        Display = display;
+    }
 
     /// <summary>
     /// キャンバスを全体表示に戻す合図。画像の大きさが変わる編集のたびに 1 増やす。
@@ -150,7 +177,7 @@ public sealed partial class DocumentViewModel : ObservableObject, IEditorSession
         // 画像が変わったので、選択範囲は新しい画像の内側に収め、表示用画像を差し替える
         Selection = newSelection;
         if (resetView) ResetViewRequest++;
-        Display = display;
+        SetBaseDisplay(display);
         NotifyImageChanged();
     }
 
@@ -207,7 +234,7 @@ public sealed partial class DocumentViewModel : ObservableObject, IEditorSession
             ? null
             : Selection;
         if (sizeChanged) ResetViewRequest++;
-        Display = display;
+        SetBaseDisplay(display);
         NotifyImageChanged();
     }
 

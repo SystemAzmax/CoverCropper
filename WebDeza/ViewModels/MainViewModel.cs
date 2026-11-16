@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.Input;
 using WebDeza.Core;
 using WebDeza.Imaging;
 using WebDeza.Imaging.Editing;
+using WebDeza.Imaging.Filters;
 using WebDeza.Imaging.Formats;
 using WebDeza.Imaging.Geometry;
 using WebDeza.Imaging.Operations;
@@ -36,8 +37,9 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly FileCollector _collector;
 
     /// <param name="tools">登録された道具（null なら道具なし。テストで省くため）</param>
+    /// <param name="filters">登録されたフィルター（null ならフィルターなし。テストで省くため）</param>
     public MainViewModel(FormatRegistry formats, SettingsService settingsService, IDialogService dialogs, AppLog log,
-        ToolRegistry? tools = null)
+        ToolRegistry? tools = null, FilterRegistry? filters = null)
     {
         ArgumentNullException.ThrowIfNull(formats);
         ArgumentNullException.ThrowIfNull(settingsService);
@@ -48,6 +50,7 @@ public sealed partial class MainViewModel : ObservableObject
         _dialogs = dialogs;
         _log = log;
         _collector = new FileCollector(formats);
+        FilterPanel = new FilterPanelViewModel(filters ?? new FilterRegistry(), log);
 
         var loaded = settingsService.Load();
         Settings = loaded.Settings;
@@ -146,6 +149,9 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>編集パネルの「選択範囲」の入力欄（アクティブな画像の選択範囲）</summary>
     public SelectionPanelViewModel SelectionPanel { get; } = new();
 
+    /// <summary>編集パネルの「フィルター」（アクティブな画像が対象。設計書 F-06）</summary>
+    public FilterPanelViewModel FilterPanel { get; }
+
     /// <summary>ウィンドウのタイトル: 「{アクティブな画像のファイル名} - webDeza」（画像が無いときは「webDeza」）</summary>
     public string WindowTitle => ActiveDocument is { } document
         ? $"{document.FileName} - {AppInfo.ProductName}"
@@ -184,6 +190,7 @@ public sealed partial class MainViewModel : ObservableObject
             newValue.IsActive = true;
         }
         SelectionPanel.Document = newValue;
+        FilterPanel.Document = newValue; // 前の画像のプレビューは消える
     }
 
     private void OnActiveDocumentPropertyChanged(object? sender, PropertyChangedEventArgs e)

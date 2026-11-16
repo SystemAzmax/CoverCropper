@@ -247,6 +247,31 @@
                                     ToolTip="選択範囲で切り抜き (Ctrl+Shift+X)" HorizontalAlignment="Left" Margin="0,8,0,0" />
                         </StackPanel>
                     </Expander>
+
+                    <!-- 「フィルター」（設計書 4.1・F-06）。値を変えると、キャンバスにプレビューが出る。［適用］は 9-7 で足す -->
+                    <Expander x:Name="FilterSection" Header="フィルター" IsExpanded="True" Margin="0,8,0,0"
+                              DataContext="{Binding FilterPanel}">
+                        <Expander.Resources>
+                            <!-- 入力欄は、パラメーターの記述から自動で作る（ParameterTemplates.xaml）。
+                                 専用の画面が要るフィルターは、フィルターの Id をキーにした DataTemplate（DataContext は FilterPanelViewModel）を
+                                 リソースに足すと、これの代わりに使われる（MainWindow.xaml.cs の UpdateFilterInputsTemplate） -->
+                            <DataTemplate x:Key="FilterParametersTemplate" DataType="{x:Type vm:FilterPanelViewModel}">
+                                <ItemsControl ItemsSource="{Binding Parameters}" Focusable="False" />
+                            </DataTemplate>
+                        </Expander.Resources>
+                        <StackPanel Margin="0,4,0,0">
+                            <ComboBox x:Name="FilterCombo" ItemsSource="{Binding Filters}" SelectedItem="{Binding SelectedFilter}"
+                                      DisplayMemberPath="DisplayName" ToolTip="フィルター" />
+                            <ContentControl x:Name="FilterInputs" Content="{Binding}" Focusable="False" Margin="0,6,0,0"
+                                            Grid.IsSharedSizeScope="True"
+                                            ContentTemplate="{StaticResource FilterParametersTemplate}" />
+                            <TextBlock x:Name="FilterTargetText" Text="{Binding TargetText}" Margin="0,6,0,0" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button x:Name="FilterResetButton" Content="リセット" Command="{Binding ResetCommand}"
+                                        ToolTip="すべての値を既定値に戻す" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Expander>
                 </StackPanel>
             </ScrollViewer>
         </Border>

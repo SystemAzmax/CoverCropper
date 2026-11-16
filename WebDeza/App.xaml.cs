@@ -42,7 +42,7 @@ public partial class App : Application
         AppModules.Register(formats, filters, tools);
 
         // 設定は形式の登録の後に読む（形式 Id とオプションの検証に使うため）
-        var viewModel = new MainViewModel(formats, new SettingsService(formats), new DialogService(), log, tools);
+        var viewModel = new MainViewModel(formats, new SettingsService(formats), new DialogService(), log, tools, filters);
 
         var window = new MainWindow(viewModel);
         MainWindow = window;

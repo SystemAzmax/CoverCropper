@@ -35,6 +35,39 @@ public sealed record DisplayImage(ImageBuffer Image, BitmapSource Bitmap, int Im
         return new DisplayImage(shown, BitmapSourceConverter.ToBitmapSource(shown), image.Width, image.Height);
     }
 
+    /// <summary>
+    /// 表示用画像の画素だけを差し替えたもの（フィルターのプレビュー。設計書 5.8）。大きさは同じであること。
+    /// バックグラウンドで呼んでよい
+    /// </summary>
+    public DisplayImage WithImage(ImageBuffer image)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        if (image.Width != Image.Width || image.Height != Image.Height)
+            throw new ArgumentException("表示用画像と大きさが違います。", nameof(image));
+        return ReferenceEquals(image, Image) ? this : this with { Image = image, Bitmap = BitmapSourceConverter.ToBitmapSource(image) };
+    }
+
+    /// <summary>この表示用画像の 1 px が、画像（フル解像度）の何 px に当たるか（縮小していなければ 1。フィルターの PixelScale）</summary>
+    public double PixelScale => (double)ImageWidth / Image.Width;
+
+    /// <summary>
+    /// 画像（フル解像度）の矩形を、この表示用画像の座標に換算する（外側へ丸め、表示用画像の内側に収める。設計書 5.8）
+    /// </summary>
+    public PixelRect ToDisplayRect(PixelRect rect)
+    {
+        var (x0, x1) = Convert(rect.X, rect.Width, ImageWidth, Image.Width);
+        var (y0, y1) = Convert(rect.Y, rect.Height, ImageHeight, Image.Height);
+        return new PixelRect(x0, y0, x1 - x0, y1 - y0);
+
+        static (int Start, int End) Convert(int start, int length, int imageSize, int displaySize)
+        {
+            int s = (int)Math.Clamp((long)start * displaySize / imageSize, 0, displaySize - 1);
+            long endNumerator = (long)(start + length) * displaySize;
+            int e = (int)Math.Clamp((endNumerator + imageSize - 1) / imageSize, s + 1, displaySize);
+            return (s, e);
+        }
+    }
+
     /// <summary>長辺が maxSide 以下になる大きさ（縦横比を保ち、四捨五入。各辺は最低 1）。既に収まっていればそのまま</summary>
     internal static (int Width, int Height) FitWithin(int width, int height, int maxSide)
     {

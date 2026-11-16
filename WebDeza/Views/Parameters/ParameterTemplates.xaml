@@ -27,7 +27,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" SharedSizeGroup="ParameterName" />
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="64" />
+                <ColumnDefinition Width="72" />
                 <ColumnDefinition Width="Auto" SharedSizeGroup="ParameterUnit" />
             </Grid.ColumnDefinitions>
             <TextBlock Style="{StaticResource ParameterNameStyle}" Text="{Binding DisplayName}" />

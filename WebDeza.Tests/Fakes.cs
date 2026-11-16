@@ -93,3 +93,47 @@ internal sealed class FakeDialogs : IDialogService
         return PathsToOpen;
     }
 }
+
+/// <summary>
+/// テスト用のフィルター。パラメーターは「量」（0〜255 の整数。既定は 0 で、0 のときは何もしない）だけで、
+/// かけると、渡された画像のすべてのバイトを量の値にする。呼ばれたときの状況を覚える
+/// </summary>
+internal sealed class FakeFilter : WebDeza.Imaging.Filters.IImageFilter
+{
+    public const string AmountKey = "amount";
+
+    private readonly List<(int Width, int Height, int Amount, double PixelScale)> _calls = new();
+
+    public FakeFilter(string id = "fake") => Id = id;
+
+    public string Id { get; }
+    public string DisplayName => "テスト用 " + Id;
+
+    public IReadOnlyList<ParameterDescriptor> Parameters { get; } =
+        [new ParameterDescriptor(AmountKey, "量", ParameterKind.Integer, 0, Min: 0, Max: 255)];
+
+    /// <summary>かける前に呼ぶ処理（計算中の状態を確かめるために、止めておくのに使う）</summary>
+    public Action? OnApply { get; set; }
+
+    /// <summary>かけたときに投げる例外（null なら投げない）</summary>
+    public Func<Exception>? Throw { get; set; }
+
+    /// <summary>かけた回数ぶんの（渡された画像の幅, 高さ, 量, PixelScale）</summary>
+    public IReadOnlyList<(int Width, int Height, int Amount, double PixelScale)> Calls
+    {
+        get { lock (_calls) return _calls.ToList(); }
+    }
+
+    public bool IsIdentity(ParameterValues values) => values.Get<int>(AmountKey) == 0;
+
+    public ImageBuffer Apply(ImageBuffer source, ParameterValues values, WebDeza.Imaging.Filters.FilterContext context)
+    {
+        int amount = values.Get<int>(AmountKey);
+        lock (_calls) _calls.Add((source.Width, source.Height, amount, context.PixelScale));
+        OnApply?.Invoke();
+        if (Throw is not null) throw Throw();
+        var pixels = new byte[source.Pixels.Length];
+        Array.Fill(pixels, (byte)amount);
+        return ImageBuffer.Create(source.Width, source.Height, pixels);
+    }
+}
