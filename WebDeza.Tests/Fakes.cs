@@ -52,6 +52,9 @@ internal sealed class FakeDialogs : IDialogService
 {
     public List<string> Errors { get; } = new();
 
+    /// <summary>エラーを出すときに呼ぶ処理（出したときの状態を確かめるのに使う）</summary>
+    public Action<string>? OnShowError { get; set; }
+
     /// <summary>「開く」で返すパス（null ならやめた）</summary>
     public IReadOnlyList<string>? PathsToOpen { get; set; }
 
@@ -65,7 +68,11 @@ internal sealed class FakeDialogs : IDialogService
     /// <summary>「開く」に渡された（最初のフォルダ, 種類の一覧）</summary>
     public List<(string? InitialDirectory, string Filter)> OpenRequests { get; } = new();
 
-    public void ShowError(string message) => Errors.Add(message);
+    public void ShowError(string message)
+    {
+        OnShowError?.Invoke(message);
+        Errors.Add(message);
+    }
 
     public IReadOnlyList<string>? ShowOpenImageDialog(string? initialDirectory, string filter)
     {

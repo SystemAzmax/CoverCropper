@@ -39,7 +39,7 @@
                                 Command="{Binding CloseCommand, RelativeSource={RelativeSource AncestorType=local:DocumentWorkspace}}" />
                         <Button x:Name="MaximizeButton" DockPanel.Dock="Right" Style="{StaticResource TitleBarButtonStyle}"
                                 Click="OnMaximizeButtonClick" />
-                        <TextBlock x:Name="TitleText" Text="{Binding FileName}" ToolTip="{Binding Path}"
+                        <TextBlock x:Name="TitleText" Text="{Binding Title}" ToolTip="{Binding Path}"
                                    VerticalAlignment="Center" Margin="10,0,8,0" TextTrimming="CharacterEllipsis" />
                     </DockPanel>
                 </Border>

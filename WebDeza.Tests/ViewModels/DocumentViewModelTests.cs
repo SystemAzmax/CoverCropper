@@ -14,16 +14,27 @@ namespace WebDeza.Tests.ViewModels;
 public sealed class DocumentViewModelTests : IDisposable
 {
     private readonly TempFolder _temp = new();
+    private readonly FakeDialogs _dialogs = new();
 
     public void Dispose() => _temp.Dispose();
 
+    private string LogFile => _temp.Combine("logs", "app.log");
+
     private static ImageBuffer Blank(int width, int height) => ImageBuffer.Create(width, height, new byte[width * height * 4]);
 
-    private static DocumentViewModel Create(int width = 600, int height = 400, AspectRatio? aspect = null)
+    /// <summary>画素ごとに違う値を持つ画像</summary>
+    private static ImageBuffer Pattern(int width, int height)
     {
-        var image = Blank(width, height);
-        return new DocumentViewModel(@"C:\images\photo.png", image, DisplayImage.Create(image), 1234, (_, _) => aspect);
+        var pixels = new byte[width * height * 4];
+        for (int i = 0; i < pixels.Length; i++) pixels[i] = (byte)(i * 7 % 251);
+        return ImageBuffer.Create(width, height, pixels);
     }
+
+    private DocumentViewModel Create(int width = 600, int height = 400, AspectRatio? aspect = null)
+        => Create(Blank(width, height), aspect);
+
+    private DocumentViewModel Create(ImageBuffer image, AspectRatio? aspect = null)
+        => new(@"C:\images\photo.png", image, DisplayImage.Create(image), 1234, (_, _) => aspect, _dialogs, new AppLog(LogFile));
 
     // ---------------------------------------------------------------- 最初の状態
 
@@ -39,6 +50,8 @@ public sealed class DocumentViewModelTests : IDisposable
         Assert.False(document.HasUnexportedEdits);
         Assert.Equal(0, document.ResetViewRequest);
         Assert.Same(document.History.Current, document.Image);
+        Assert.Equal("photo.png", document.Title);
+        Assert.False(document.IsBusy);
     }
 
     [Fact]
@@ -47,7 +60,7 @@ public sealed class DocumentViewModelTests : IDisposable
         var image = Blank(10, 10);
 
         Assert.Throws<ArgumentException>(() =>
-            new DocumentViewModel("a.png", image, DisplayImage.Create(Blank(5, 5)), 0, (_, _) => null));
+            new DocumentViewModel("a.png", image, DisplayImage.Create(Blank(5, 5)), 0, (_, _) => null, _dialogs, new AppLog(LogFile)));
     }
 
     // ---------------------------------------------------------------- 選択範囲
@@ -58,7 +71,7 @@ public sealed class DocumentViewModelTests : IDisposable
         // 比率（全画像共通の設定）が変わったときに MainViewModel が呼ぶ（実装計画書 8-8）
         AspectRatio? aspect = null;
         var image = Blank(600, 400);
-        var document = new DocumentViewModel("a.png", image, DisplayImage.Create(image), 0, (_, _) => aspect);
+        var document = new DocumentViewModel("a.png", image, DisplayImage.Create(image), 0, (_, _) => aspect, _dialogs, new AppLog(LogFile));
         document.Selection = new PixelRect(100, 100, 200, 50);
         int changed = 0;
         document.Changed += (_, _) => changed++;
@@ -158,6 +171,140 @@ public sealed class DocumentViewModelTests : IDisposable
 
         document.History.Undo();
         Assert.False(document.HasUnexportedEdits); // 開いた時点の状態に戻れば、書き出していない編集は無い
+    }
+
+    // ---------------------------------------------------------------- 編集の確定（V31。実装計画書 9-1）
+
+    [Fact]
+    public async Task ApplyEdit_Success_PushesHistoryAndRebuildsDisplay()
+    {
+        var document = Create(Pattern(60, 40));
+        document.Selection = new PixelRect(10, 10, 20, 20);
+        var before = (Image: document.Image, Display: document.Display);
+        var properties = new List<string?>();
+        int changed = 0;
+        document.PropertyChanged += (_, e) => properties.Add(e.PropertyName);
+        document.Changed += (_, _) => changed++;
+        var edited = Blank(60, 40);
+
+        await document.ApplyEditAsync("編集", (image, _) => image == before.Image ? edited : throw new InvalidOperationException(),
+            changedRegion: null, newSelection: document.Selection, resetView: false);
+
+        Assert.Same(edited, document.Image);
+        Assert.NotSame(before.Display, document.Display);
+        Assert.Same(edited, document.Display.Image); // 縮小が要らない大きさなら、画像そのものを表示する
+        Assert.Equal(1, document.History.UndoCount);
+        Assert.Equal("編集", document.History.UndoName);
+        Assert.Equal(new PixelRect(10, 10, 20, 20), document.Selection); // フィルターのように、選択範囲は今のまま
+        Assert.Equal(0, document.ResetViewRequest);
+        Assert.True(document.HasUnexportedEdits);
+        Assert.Equal("photo.png *", document.Title);
+        Assert.False(document.IsBusy);
+        Assert.Empty(_dialogs.Errors);
+        Assert.Contains(nameof(DocumentViewModel.Image), properties);
+        Assert.Contains(nameof(DocumentViewModel.HasUnexportedEdits), properties);
+        Assert.Contains(nameof(DocumentViewModel.Title), properties);
+        Assert.True(changed > 0); // キャンバスに描き直させる
+    }
+
+    [Fact]
+    public async Task ApplyEdit_SizeChanged_ResetsViewAndSelection()
+    {
+        var document = Create(600, 400);
+        document.Selection = new PixelRect(10, 20, 300, 200);
+
+        await document.ApplyEditAsync("切り抜き", (_, _) => Blank(300, 200),
+            changedRegion: null, newSelection: null, resetView: true);
+
+        Assert.Equal((300, 200), (document.ImageWidth, document.ImageHeight));
+        Assert.Equal((300, 200), (document.Display.ImageWidth, document.Display.ImageHeight));
+        Assert.Null(document.Selection);
+        Assert.Equal(1, document.ResetViewRequest);
+    }
+
+    [Fact]
+    public async Task ApplyEdit_NewSelectionIsClampedIntoNewImage()
+    {
+        var document = Create(600, 400);
+
+        await document.ApplyEditAsync("編集", (_, _) => Blank(100, 50),
+            changedRegion: null, newSelection: new PixelRect(80, 40, 40, 20), resetView: true);
+
+        Assert.Equal(new PixelRect(60, 30, 40, 20), document.Selection);
+    }
+
+    [Fact]
+    public async Task ApplyEdit_WithChangedRegion_HistoryKeepsOnlyTheRegion()
+    {
+        // 選択範囲へのフィルターのように一部だけが変わる編集では、履歴がその範囲の画素だけを持つ
+        var document = Create(600, 400);
+
+        await document.ApplyEditAsync("編集", (_, _) => Pattern(600, 400),
+            changedRegion: new PixelRect(0, 0, 10, 10), newSelection: null, resetView: false);
+
+        Assert.True(document.History.StoredBytes < 600L * 400 * 4);
+    }
+
+    [Fact]
+    public async Task ApplyEdit_Throws_KeepsImageAndHistory_AndShowsM28()
+    {
+        var document = Create(600, 400);
+        document.Selection = new PixelRect(10, 20, 300, 200);
+        var before = (Image: document.Image, Display: document.Display, StateId: document.History.StateId);
+        bool busyWhenShown = true;
+        _dialogs.OnShowError = _ => busyWhenShown = document.IsBusy;
+
+        await document.ApplyEditAsync("編集", (_, _) => throw new InvalidOperationException("壊れた"),
+            changedRegion: null, newSelection: null, resetView: true);
+
+        Assert.Same(before.Image, document.Image);
+        Assert.Same(before.Display, document.Display);
+        Assert.Equal(before.StateId, document.History.StateId);
+        Assert.False(document.History.CanUndo);
+        Assert.Equal(new PixelRect(10, 20, 300, 200), document.Selection);
+        Assert.Equal(0, document.ResetViewRequest);
+        Assert.False(document.HasUnexportedEdits);
+        Assert.Equal([Messages.M28_EditFailed("壊れた")], _dialogs.Errors);
+        Assert.False(busyWhenShown); // 確定中（待機カーソル）を解いてから出す
+        Assert.False(document.IsBusy);
+        Assert.Contains("Edit failed", File.ReadAllText(LogFile));
+    }
+
+    [Fact]
+    public async Task ApplyEdit_OutOfMemory_ShowsM28WithMemoryMessage()
+    {
+        var document = Create(60, 40);
+
+        await document.ApplyEditAsync("編集", (_, _) => throw new OutOfMemoryException(),
+            changedRegion: null, newSelection: null, resetView: false);
+
+        Assert.Equal([Messages.M28_EditFailed(Messages.OutOfMemory)], _dialogs.Errors);
+        Assert.False(document.History.CanUndo);
+        Assert.Contains("Edit OOM", File.ReadAllText(LogFile));
+    }
+
+    [Fact]
+    public async Task ApplyEdit_WhileBusy_IgnoresOtherEdits()
+    {
+        var document = Create(60, 40);
+        var gate = new ManualResetEventSlim();
+        var busy = new List<bool>();
+        document.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(DocumentViewModel.IsBusy)) busy.Add(document.IsBusy);
+        };
+
+        var first = document.ApplyEditAsync("1", (_, _) => { gate.Wait(TimeSpan.FromSeconds(10)); return Blank(60, 40); },
+            changedRegion: null, newSelection: null, resetView: false);
+        Assert.True(document.IsBusy);
+        await document.ApplyEditAsync("2", (_, _) => Blank(30, 20), changedRegion: null, newSelection: null, resetView: true);
+        gate.Set();
+        await first;
+
+        Assert.Equal([true, false], busy);
+        Assert.Equal(1, document.History.UndoCount);
+        Assert.Equal("1", document.History.UndoName);
+        Assert.Equal((60, 40), (document.ImageWidth, document.ImageHeight));
     }
 
     // ---------------------------------------------------------------- MainViewModel との組み合わせ

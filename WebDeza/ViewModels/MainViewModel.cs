@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
@@ -9,6 +10,7 @@ using WebDeza.Core;
 using WebDeza.Imaging;
 using WebDeza.Imaging.Editing;
 using WebDeza.Imaging.Formats;
+using WebDeza.Imaging.Operations;
 using WebDeza.Models;
 using WebDeza.Services;
 using WebDeza.Views.Canvas;
@@ -54,7 +56,7 @@ public sealed partial class MainViewModel : ObservableObject
             _log.Write($"Settings: {string.Join(" / ", loaded.Messages)} ({settingsService.FilePath})");
         }
 
-        Documents.CollectionChanged += (_, _) => NotifyDocumentCommandsChanged();
+        Documents.CollectionChanged += OnDocumentsChanged;
 
         // 選択範囲の比率は、保存してある設定から選択欄の状態を作る（設計書 F-04）
         AspectOptions = AspectOptionViewModel.CreateAll();
@@ -77,7 +79,7 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasImage), nameof(WindowTitle), nameof(StatusText), nameof(IsEditPanelEnabled))]
     [NotifyCanExecuteChangedFor(nameof(CloseCommand), nameof(ZoomInCommand), nameof(ZoomOutCommand),
         nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand), nameof(SelectToolCommand),
-        nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand))]
+        nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand), nameof(CropCommand))]
     private DocumentViewModel? _activeDocument;
 
     /// <summary>読み込み中・編集の確定中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
@@ -85,10 +87,35 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsEditPanelEnabled))]
     [NotifyCanExecuteChangedFor(nameof(OpenCommand), nameof(CloseCommand), nameof(ExitCommand),
         nameof(ZoomInCommand), nameof(ZoomOutCommand), nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand),
-        nameof(SelectToolCommand), nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand))]
+        nameof(SelectToolCommand), nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand),
+        nameof(CropCommand))]
     private bool _isBusy;
 
     partial void OnIsBusyChanged(bool value) => NotifyDocumentCommandsChanged();
+
+    /// <summary>読み込み中か（IsBusy の元の 1 つ。もう 1 つは、どれかの画像の編集の確定中）</summary>
+    private bool _isLoading;
+
+    /// <summary>IsBusy を、読み込み中か、どれかの画像が編集の確定中かに合わせる</summary>
+    private void UpdateIsBusy() => IsBusy = _isLoading || Documents.Any(d => d.IsBusy);
+
+    /// <summary>
+    /// 画像を足した・閉じたとき: 画像ごとの編集の確定中を見張る（編集の確定は DocumentViewModel が行うので、
+    /// その間アプリ全体を確定中にするため）。閉じた画像からは外す
+    /// </summary>
+    private void OnDocumentsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems is not null)
+            foreach (DocumentViewModel document in e.OldItems) document.PropertyChanged -= OnDocumentPropertyChanged;
+        if (e.NewItems is not null)
+            foreach (DocumentViewModel document in e.NewItems) document.PropertyChanged += OnDocumentPropertyChanged;
+        NotifyDocumentCommandsChanged();
+    }
+
+    private void OnDocumentPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(DocumentViewModel.IsBusy)) UpdateIsBusy();
+    }
 
     /// <summary>開いている画像の数で有効・無効が決まるコマンドに、変わったことを知らせる</summary>
     private void NotifyDocumentCommandsChanged()
@@ -158,7 +185,11 @@ public sealed partial class MainViewModel : ObservableObject
     {
         // 選択範囲・画像が変わったら、ステータスバーを更新する（子ウィンドウの位置やアクティブの印が変わっただけのときは要らない）
         if (e.PropertyName is nameof(DocumentViewModel.WindowBounds) or nameof(DocumentViewModel.IsActive)) return;
-        if (e.PropertyName == nameof(DocumentViewModel.Selection)) DeselectCommand.NotifyCanExecuteChanged();
+        if (e.PropertyName == nameof(DocumentViewModel.Selection))
+        {
+            DeselectCommand.NotifyCanExecuteChanged();
+            CropCommand.NotifyCanExecuteChanged();
+        }
         OnPropertyChanged(nameof(StatusText));
     }
 
@@ -222,7 +253,8 @@ public sealed partial class MainViewModel : ObservableObject
         CollectResult collected;
 
         StatusMessage = null;
-        IsBusy = true;
+        _isLoading = true;
+        UpdateIsBusy();
         try
         {
             // フォルダの中を見るので、バックグラウンドで行う（ネットワークのフォルダなどで画面を止めない）
@@ -246,7 +278,8 @@ public sealed partial class MainViewModel : ObservableObject
         }
         finally
         {
-            IsBusy = false;
+            _isLoading = false;
+            UpdateIsBusy();
         }
 
         // 今回の中で（自然順の）最後にあって、開いている画像をアクティブにする
@@ -297,7 +330,7 @@ public sealed partial class MainViewModel : ObservableObject
                 var display = DisplayImage.Create(decoded.Image);
                 return (decoded.Image, display, DocumentViewModel.GetFileSize(fullPath));
             });
-            return (new DocumentViewModel(fullPath, image, display, size, SelectionAspect), null);
+            return (new DocumentViewModel(fullPath, image, display, size, SelectionAspect, _dialogs, _log), null);
         }
         catch (UnsupportedImageFormatException ex)
         {
@@ -467,6 +500,38 @@ public sealed partial class MainViewModel : ObservableObject
     private ToolItemViewModel? SelectToolItem => ToolItems.FirstOrDefault(t => t.Factory.Id == SelectToolFactory.ToolId);
 
     private bool CanUseSelectTool() => CanSelectTool(SelectToolItem);
+
+    // ---------------------------------------------------------------- 画像の編集（メニュー［画像］。設計書 F-04・F-05）
+
+    /// <summary>切り抜きの、元に戻す・やり直しのメニューに出す名前</summary>
+    public const string CropEditName = "切り抜き";
+
+    private bool CanCrop => !IsBusy && ActiveDocument?.Selection is not null;
+
+    /// <summary>
+    /// ［画像］→［選択範囲で切り抜き］ / Ctrl+Shift+X / 編集パネルの［切り抜き］（設計書 F-04）。
+    /// 画像を選択範囲の大きさに切り出し、選択範囲を解除して全体表示に戻す。履歴に 1 段積む。選択範囲が無いときは無効
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanCrop))]
+    private Task CropAsync()
+    {
+        if (!CanCrop) return Task.CompletedTask;
+        var selection = ActiveDocument!.Selection!.Value;
+        return ApplyEditAsync(ActiveDocument, CropEditName, (image, token) => Crop.Apply(image, selection, token),
+            changedRegion: null, newSelection: null, resetView: true);
+    }
+
+    /// <summary>
+    /// アクティブな画像に編集を確定させる（メニューのコマンドの共通の入り口）。前の操作の知らせ（M09 など）は消す。
+    /// 確定中は、DocumentViewModel.IsBusy を見て、アプリ全体を確定中にする
+    /// </summary>
+    private Task ApplyEditAsync(DocumentViewModel document, string name, Func<ImageBuffer, CancellationToken, ImageBuffer> edit,
+        PixelRect? changedRegion, PixelRect? newSelection, bool resetView)
+    {
+        if (IsBusy) return Task.CompletedTask;
+        StatusMessage = null;
+        return document.ApplyEditAsync(name, edit, changedRegion, newSelection, resetView);
+    }
 
     // ---------------------------------------------------------------- 選択範囲の比率（編集パネルの「選択範囲」。設計書 F-04）
 
@@ -655,6 +720,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (!HasDocumentsAndIdle) return;
         StatusMessage = null;
         ActiveDocument = null;
+        foreach (var document in Documents) document.PropertyChanged -= OnDocumentPropertyChanged; // Clear は外した画像を知らせない
         Documents.Clear();
     }
 

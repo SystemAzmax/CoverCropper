@@ -24,6 +24,7 @@
         <KeyBinding Modifiers="Control" Key="W" Command="{Binding CloseCommand}" />
         <KeyBinding Modifiers="Control" Key="A" Command="{Binding SelectAllCommand}" />
         <KeyBinding Modifiers="Control" Key="D" Command="{Binding DeselectCommand}" />
+        <KeyBinding Modifiers="Control+Shift" Key="X" Command="{Binding CropCommand}" />
         <KeyBinding Modifiers="Control" Key="Tab" Command="{Binding NextDocumentCommand}" />
         <KeyBinding Modifiers="Control+Shift" Key="Tab" Command="{Binding PreviousDocumentCommand}" />
         <!-- + / - はキーコードで判定し、Shift の有無は問わない（日本語キーボードでは + を Shift+; で入力するため。設計書 4.4） -->
@@ -75,7 +76,7 @@
                 <MenuItem Header="領域選択(_M)" InputGestureText="M" Command="{Binding UseSelectToolCommand}" />
             </MenuItem>
             <MenuItem Header="画像(_I)">
-                <MenuItem Header="選択範囲で切り抜き(_P)" InputGestureText="Ctrl+Shift+X" IsEnabled="False" /> <!-- 9-1 -->
+                <MenuItem Header="選択範囲で切り抜き(_P)" InputGestureText="Ctrl+Shift+X" Command="{Binding CropCommand}" />
                 <Separator />
                 <MenuItem Header="右に 90° 回転(_R)" InputGestureText="Ctrl+R" IsEnabled="False" />   <!-- 9-3 -->
                 <MenuItem Header="左に 90° 回転(_L)" InputGestureText="Ctrl+Shift+R" IsEnabled="False" /> <!-- 9-3 -->
@@ -155,7 +156,7 @@
         <Border DockPanel.Dock="Right" Width="300" BorderThickness="1,0,0,0" Style="{StaticResource AreaBorderStyle}">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
                 <StackPanel x:Name="EditPanelArea" Margin="8" IsEnabled="{Binding IsEditPanelEnabled}">
-                    <!-- 「選択範囲」（設計書 4.1・F-04）。［切り抜き］は 9-1 で足す -->
+                    <!-- 「選択範囲」（設計書 4.1・F-04） -->
                     <Expander x:Name="SelectionSection" Header="選択範囲" IsExpanded="True">
                         <StackPanel Margin="0,4,0,0">
                             <!-- 数値の入力欄: Enter かフォーカスが外れたときに当てはめる（Esc で元の値に戻す） -->
@@ -235,6 +236,9 @@
                                 <Button Content="すべて選択" Command="{Binding SelectAllCommand}" ToolTip="すべて選択 (Ctrl+A)" />
                                 <Button Content="解除" Command="{Binding DeselectCommand}" ToolTip="選択の取り消し (Ctrl+D)" Margin="8,0,0,0" />
                             </StackPanel>
+                            <!-- 画像を選択範囲の大きさにする（選択範囲が無いときは無効） -->
+                            <Button x:Name="CropButton" Content="切り抜き" Command="{Binding CropCommand}"
+                                    ToolTip="選択範囲で切り抜き (Ctrl+Shift+X)" HorizontalAlignment="Left" Margin="0,8,0,0" />
                         </StackPanel>
                     </Expander>
                 </StackPanel>

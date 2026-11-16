@@ -1,3 +1,4 @@
+using WebDeza.Core;
 using WebDeza.Imaging;
 using WebDeza.Imaging.Editing;
 using WebDeza.ViewModels;
@@ -10,7 +11,9 @@ public class SelectionPanelViewModelTests
     private static DocumentViewModel Create(int width = 400, int height = 300, AspectRatio? aspect = null)
     {
         var image = ImageBuffer.Create(width, height, new byte[width * height * 4]);
-        return new DocumentViewModel(@"C:\images\photo.png", image, DisplayImage.Create(image), 0, (_, _) => aspect);
+        // 編集しないので、ログは書かれない
+        return new DocumentViewModel(@"C:\images\photo.png", image, DisplayImage.Create(image), 0, (_, _) => aspect,
+            new FakeDialogs(), new AppLog(@"C:\unused\app.log"));
     }
 
     private static (SelectionPanelViewModel Panel, DocumentViewModel Document) WithSelection(

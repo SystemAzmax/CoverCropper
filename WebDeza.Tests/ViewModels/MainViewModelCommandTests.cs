@@ -55,6 +55,149 @@ public sealed class MainViewModelCommandTests : IDisposable
         Assert.False(_vm.ZoomToActualSizeCommand.CanExecute(null));
         Assert.False(_vm.SelectAllCommand.CanExecute(null));
         Assert.False(_vm.DeselectCommand.CanExecute(null));
+        Assert.False(_vm.CropCommand.CanExecute(null));
+    }
+
+    // ---------------------------------------------------------------- 切り抜き（V33。9-1）
+
+    /// <summary>画素ごとに違う値を持つ画像（切り抜いた位置を確かめられる）</summary>
+    private static WebDeza.Imaging.ImageBuffer Pattern(int width, int height)
+    {
+        var pixels = new byte[width * height * 4];
+        for (int i = 0; i < pixels.Length; i++) pixels[i] = (byte)(i * 7 % 251);
+        return WebDeza.Imaging.ImageBuffer.Create(width, height, pixels);
+    }
+
+    [Fact]
+    public async Task Crop_CutsOutSelection_ClearsSelection_AndResetsView()
+    {
+        var source = Pattern(600, 400);
+        _fake.Image = source;
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        var document = _vm.ActiveDocument!;
+        document.Selection = new WebDeza.Imaging.PixelRect(10, 20, 300, 200);
+
+        Assert.True(_vm.CropCommand.CanExecute(null));
+        await _vm.CropCommand.ExecuteAsync(null);
+
+        var image = document.Image;
+        Assert.Equal((300, 200), (image.Width, image.Height));
+        for (int y = 0; y < 200; y++)
+        {
+            Assert.True(source.Pixels.AsSpan(((20 + y) * 600 + 10) * 4, 300 * 4)
+                .SequenceEqual(image.Pixels.AsSpan(y * 300 * 4, 300 * 4)), $"y = {y}");
+        }
+        Assert.Null(document.Selection);
+        Assert.Equal(1, document.ResetViewRequest);
+        Assert.Equal((300, 200), (document.Display.ImageWidth, document.Display.ImageHeight));
+        Assert.Equal(MainViewModel.CropEditName, document.History.UndoName);
+        Assert.True(document.HasUnexportedEdits);
+        Assert.Equal("a.fake *", document.Title);
+        Assert.Equal("画像: 300×200", _vm.StatusText); // 前の操作の知らせ（M09）は消す
+        Assert.False(_vm.CropCommand.CanExecute(null)); // 選択範囲が無くなったので無効
+        Assert.Empty(_dialogs.Errors);
+    }
+
+    [Fact]
+    public async Task Crop_EnabledOnlyWithSelection()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        var document = _vm.ActiveDocument!;
+        var changed = 0;
+        _vm.CropCommand.CanExecuteChanged += (_, _) => changed++;
+
+        Assert.False(_vm.CropCommand.CanExecute(null)); // V33・V42: 選択範囲が無いときは無効
+        document.Selection = new WebDeza.Imaging.PixelRect(1, 1, 5, 5);
+        Assert.True(_vm.CropCommand.CanExecute(null));
+        Assert.True(changed > 0); // メニューに知らせる
+
+        document.Selection = null;
+        Assert.False(_vm.CropCommand.CanExecute(null));
+        await _vm.CropCommand.ExecuteAsync(null); // 無効のときに呼ばれても何もしない
+        Assert.False(document.History.CanUndo);
+    }
+
+    [Fact]
+    public async Task Crop_FollowsActiveDocument()
+    {
+        await _vm.OpenPathsAsync([CreateFile("a.fake"), CreateFile("b.fake")]);
+        _vm.Documents[0].Selection = new WebDeza.Imaging.PixelRect(1, 1, 5, 5);
+
+        _vm.ActiveDocument = _vm.Documents[1];
+        Assert.False(_vm.CropCommand.CanExecute(null));
+        _vm.ActiveDocument = _vm.Documents[0];
+        Assert.True(_vm.CropCommand.CanExecute(null));
+
+        await _vm.CropCommand.ExecuteAsync(null);
+        Assert.Equal((5, 5), (_vm.Documents[0].ImageWidth, _vm.Documents[0].ImageHeight));
+        Assert.Equal((30, 20), (_vm.Documents[1].ImageWidth, _vm.Documents[1].ImageHeight)); // ほかの画像は変わらない
+        Assert.False(_vm.Documents[1].HasUnexportedEdits);
+    }
+
+    [Fact]
+    public async Task Editing_MakesAppBusy_UntilDone()
+    {
+        // 編集の確定中は、メニュー・ツールバー・編集パネルを無効にし、待機カーソルにする（設計書 4.2）
+        await _vm.OpenPathsAsync([CreateFile("a.fake"), CreateFile("b.fake")]);
+        var document = _vm.ActiveDocument!;
+        document.Selection = new WebDeza.Imaging.PixelRect(1, 1, 5, 5);
+        var gate = new ManualResetEventSlim();
+
+        var editing = document.ApplyEditAsync("編集", (image, _) => { gate.Wait(TimeSpan.FromSeconds(10)); return image; },
+            changedRegion: null, newSelection: document.Selection, resetView: false);
+
+        Assert.True(_vm.IsBusy);
+        Assert.False(_vm.IsEditPanelEnabled);
+        Assert.False(_vm.CropCommand.CanExecute(null));
+        Assert.False(_vm.OpenCommand.CanExecute(null));
+        Assert.False(_vm.CloseCommand.CanExecute(null));
+        Assert.False(_vm.CloseAllCommand.CanExecute(null));
+        Assert.False(_vm.ExitCommand.CanExecute(null));
+
+        // 確定中にほかの画像に切り替わっても、確定が終わるまでは確定中のまま
+        _vm.ActiveDocument = _vm.Documents.First(d => d != document);
+        Assert.True(_vm.IsBusy);
+
+        gate.Set();
+        await editing;
+
+        Assert.False(_vm.IsBusy);
+        Assert.True(_vm.OpenCommand.CanExecute(null));
+        Assert.Equal(1, document.History.UndoCount);
+    }
+
+    [Fact]
+    public async Task EditFailure_ShowsM28_AfterBusyEnds()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        var document = _vm.ActiveDocument!;
+        bool busyWhenShown = true;
+        _dialogs.OnShowError = _ => busyWhenShown = _vm.IsBusy;
+
+        await document.ApplyEditAsync("編集", (_, _) => throw new InvalidOperationException("x"),
+            changedRegion: null, newSelection: null, resetView: true);
+
+        Assert.Equal([Messages.M28_EditFailed("x")], _dialogs.Errors);
+        Assert.False(busyWhenShown); // 待機カーソルのままメッセージを出さない
+        Assert.False(_vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task ClosedDocument_NoLongerMakesAppBusy()
+    {
+        await _vm.OpenPathsAsync([CreateFile("a.fake"), CreateFile("b.fake")]);
+        var closed = _vm.Documents[0];
+        _vm.CloseCommand.Execute(closed);
+        var cleared = _vm.Documents[0];
+        _vm.CloseAllCommand.Execute(null);
+
+        // 閉じた画像を（参照が残っていて）編集しても、アプリは確定中にならない
+        var busy = new List<bool>();
+        _vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(MainViewModel.IsBusy)) busy.Add(_vm.IsBusy); };
+        await closed.ApplyEditAsync("編集", (image, _) => image, null, null, false);
+        await cleared.ApplyEditAsync("編集", (image, _) => image, null, null, false);
+
+        Assert.Empty(busy);
     }
 
     // ---------------------------------------------------------------- 選択範囲（8-5）
