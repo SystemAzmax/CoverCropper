@@ -27,6 +27,7 @@ public partial class MainWindow : Window
             if (e.PropertyName == nameof(FilterPanelViewModel.SelectedFilter)) UpdateFilterInputsTemplate();
         };
         UpdateFilterInputsTemplate();
+        BuildFilterMenu();
         WindowMenu.SubmenuClosed += OnWindowMenuClosed;
         RestorePlacement();
     }
@@ -107,6 +108,33 @@ public partial class MainWindow : Window
     /// <summary>キーボードでフォーカスが来たら、全体を選ぶ（打てば置き換わる）</summary>
     private void OnNumberInputGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
         => NumberInput.OnGotKeyboardFocus(sender, e);
+
+    // ---------------------------------------------------------------- メニュー［フィルター］（設計書 4.3・F-06）
+
+    /// <summary>
+    /// メニュー［フィルター］の先頭に、登録されたフィルターを登録順に並べる（「ぼかし…」の形）。
+    /// XAML に置いてある、まだ無いフィルター（将来）の無効の項目は、その後ろに残る
+    /// </summary>
+    private void BuildFilterMenu()
+    {
+        var filters = _vm.FilterPanel.Filters;
+        for (int i = 0; i < filters.Count; i++)
+        {
+            FilterMenu.Items.Insert(i, new MenuItem
+            {
+                Header = FilterMenuHeader(filters[i].DisplayName),
+                Command = _vm.SelectFilterCommand,
+                CommandParameter = filters[i],
+            });
+        }
+    }
+
+    /// <summary>メニュー［フィルター］の項目の文字（「ぼかし…」。「_」はアクセスキーの印と見なされないように「__」にする）</summary>
+    public static string FilterMenuHeader(string displayName)
+    {
+        ArgumentNullException.ThrowIfNull(displayName);
+        return displayName.Replace("_", "__") + "…";
+    }
 
     // ---------------------------------------------------------------- 編集パネルの「フィルター」の入力欄
 

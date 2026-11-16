@@ -92,11 +92,9 @@
                 <Separator />
                 <MenuItem Header="画像サイズ(_S)…" Command="{Binding ResizeImageCommand}" />
             </MenuItem>
-            <!-- サブメニューに分けない（設計書 F-06）。9-7 で、ぼかしと基本補正を、登録されたフィルター（登録順）の項目に
-                 置き換える。それより後ろは、まだ無いフィルター（将来）で、作って登録したら外す -->
-            <MenuItem Header="フィルター(_T)">
-                <MenuItem Header="ぼかし…" IsEnabled="False" />                                       <!-- 9-7 -->
-                <MenuItem Header="基本補正…" IsEnabled="False" />                                     <!-- 9-7 -->
+            <!-- サブメニューに分けない（設計書 F-06）。先頭に、登録されたフィルター（登録順）の項目を
+                 MainWindow.xaml.cs の BuildFilterMenu で入れる。ここに書いてあるのは、まだ無いフィルター（将来）で、作って登録したら外す -->
+            <MenuItem x:Name="FilterMenu" Header="フィルター(_T)">
                 <MenuItem Header="明度・コントラスト調整…" IsEnabled="False" />                       <!-- 将来 -->
                 <MenuItem Header="ガンマ・レベル補正…" IsEnabled="False" />                           <!-- 将来 -->
                 <MenuItem Header="色相・彩度調整…" IsEnabled="False" />                               <!-- 将来 -->
@@ -248,8 +246,8 @@
                         </StackPanel>
                     </Expander>
 
-                    <!-- 「フィルター」（設計書 4.1・F-06）。値を変えると、キャンバスにプレビューが出る。［適用］は 9-7 で足す -->
-                    <Expander x:Name="FilterSection" Header="フィルター" IsExpanded="True" Margin="0,8,0,0"
+                    <!-- 「フィルター」（設計書 4.1・F-06）。値を変えると、キャンバスにプレビューが出る。［適用］で確定する -->
+                    <Expander x:Name="FilterSection" Header="フィルター" IsExpanded="{Binding IsExpanded}" Margin="0,8,0,0"
                               DataContext="{Binding FilterPanel}">
                         <Expander.Resources>
                             <!-- 入力欄は、パラメーターの記述から自動で作る（ParameterTemplates.xaml）。
@@ -267,6 +265,8 @@
                                             ContentTemplate="{StaticResource FilterParametersTemplate}" />
                             <TextBlock x:Name="FilterTargetText" Text="{Binding TargetText}" Margin="0,6,0,0" />
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button x:Name="FilterApplyButton" Content="適用" Command="{Binding ApplyCommand}"
+                                        ToolTip="フィルターをかける（元に戻せる）" />
                                 <Button x:Name="FilterResetButton" Content="リセット" Command="{Binding ResetCommand}"
                                         ToolTip="すべての値を既定値に戻す" />
                             </StackPanel>

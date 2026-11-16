@@ -9,7 +9,7 @@ using WebDeza.ViewModels;
 
 namespace WebDeza.Tests.ViewModels;
 
-/// <summary>編集パネルの「フィルター」: フィルターの選択とプレビュー（設計書 F-06・5.8、V36。実装計画書 9-6）</summary>
+/// <summary>編集パネルの「フィルター」: フィルターの選択とプレビュー、適用（設計書 F-06・5.8、V36・V37。実装計画書 9-6・9-7）</summary>
 public sealed class FilterPanelViewModelTests : IDisposable
 {
     private readonly TempFolder _temp = new();
@@ -363,6 +363,137 @@ public sealed class FilterPanelViewModelTests : IDisposable
         Assert.True(document.IsPreviewing);
     }
 
+    // ---------------------------------------------------------------- 適用（V36・V37。9-7）
+
+    /// <summary>(x, y) の画素の青（今の画像）</summary>
+    private static byte At(ImageBuffer image, int x, int y) => image.Pixels[(y * image.Width + x) * 4];
+
+    [Fact]
+    public async Task Apply_WholeImage_PushesOneStep_AndResetsValues()
+    {
+        // V36: ［適用］ → 履歴が 1 段増え、値は既定値に戻る
+        var document = CreateDocument();
+        var panel = CreatePanel(document);
+        Amount(panel).SliderValue = 77;
+        await panel.PreviewTask;
+        Assert.True(panel.ApplyCommand.CanExecute(null));
+
+        await panel.ApplyCommand.ExecuteAsync(null);
+        await panel.PreviewTask;
+
+        Assert.Equal(1, document.History.UndoCount);
+        Assert.Equal(_filter.DisplayName, document.UndoName); // 操作の名前はフィルターの名前
+        Assert.All(document.Image.Pixels, p => Assert.Equal(77, p));
+        Assert.Equal((60, 40, 77, 1.0), _filter.Calls[^1]); // フル解像度の画像に PixelScale 1 でかける
+        Assert.True(Amount(panel).IsDefault);
+        Assert.False(panel.ApplyCommand.CanExecute(null));
+        Assert.False(document.IsPreviewing);
+        Assert.Equal(77, At(document.Display, 30, 20)); // 確定した画像の表示
+        Assert.True(document.HasUnexportedEdits);
+        Assert.Equal(0, document.ResetViewRequest); // 大きさは変わらないので、表示はそのまま
+
+        await document.UndoAsync();
+        Assert.All(document.Image.Pixels, p => Assert.Equal(0, p));
+    }
+
+    [Fact]
+    public async Task Apply_ToSelection_ChangesOnlyInside_AndKeepsSelection()
+    {
+        // V37: 選択範囲がある状態で適用 → 範囲の外の画素は変わらない。対象の表示が「選択範囲」
+        var document = CreateDocument(600, 400);
+        var selection = new PixelRect(100, 50, 200, 100);
+        document.Selection = selection;
+        var panel = CreatePanel(document);
+        Assert.Equal("対象: 選択範囲", panel.TargetText);
+        Amount(panel).SliderValue = 9;
+
+        await panel.ApplyCommand.ExecuteAsync(null);
+
+        var image = document.Image;
+        Assert.Equal(9, At(image, 100, 50));
+        Assert.Equal(9, At(image, 299, 149));
+        Assert.Equal(0, At(image, 99, 50));
+        Assert.Equal(0, At(image, 300, 149));
+        Assert.Equal(0, At(image, 100, 49));
+        Assert.Equal(0, At(image, 299, 150));
+        Assert.Equal(selection, document.Selection); // 選択範囲はそのまま
+        Assert.Equal((200, 100, 9, 1.0), _filter.Calls[^1]); // 範囲の中の画素だけを材料にする
+        // 履歴は範囲の画素だけを持つ（前後で 200×100×4×2 バイト）
+        Assert.Equal(200L * 100 * 4 * 2, document.History.StoredBytes);
+    }
+
+    [Fact]
+    public void Apply_DisabledWithDefaultsOrWithoutDocument()
+    {
+        // V37: 値がすべて既定値 → ［適用］が無効
+        var panel = CreatePanel(CreateDocument());
+        Assert.False(panel.ApplyCommand.CanExecute(null));
+
+        var changed = 0;
+        panel.ApplyCommand.CanExecuteChanged += (_, _) => changed++;
+        Amount(panel).SliderValue = 1;
+        Assert.True(panel.ApplyCommand.CanExecute(null));
+        Assert.True(changed > 0);
+
+        panel.Document = null; // 画像が無ければ無効（値も既定値に戻る）
+        Amount(panel).SliderValue = 1;
+        Assert.False(panel.ApplyCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Apply_DisabledWhileDocumentIsBusy()
+    {
+        var document = CreateDocument();
+        var panel = CreatePanel(document);
+        Amount(panel).SliderValue = 5;
+        await panel.PreviewTask;
+        var gate = new ManualResetEventSlim();
+
+        var editing = document.ApplyEditAsync("編集", (image, _) => { gate.Wait(TimeSpan.FromSeconds(10)); return image; },
+            changedRegion: null, newSelection: null, resetView: false);
+        Assert.False(panel.ApplyCommand.CanExecute(null));
+        gate.Set();
+        await editing;
+    }
+
+    [Fact]
+    public async Task Apply_Failure_KeepsValuesAndImage_AndShowsM28()
+    {
+        var document = CreateDocument();
+        var panel = CreatePanel(document);
+        Amount(panel).SliderValue = 77;
+        await panel.PreviewTask;
+        _filter.Throw = () => new InvalidOperationException("壊れた");
+
+        await panel.ApplyCommand.ExecuteAsync(null);
+
+        Assert.Equal([Messages.M28_EditFailed("壊れた")], _dialogs.Errors);
+        Assert.False(document.CanUndo);
+        Assert.All(document.Image.Pixels, p => Assert.Equal(0, p));
+        Assert.Equal(77L, Amount(panel).Value); // 値はそのまま（やり直せる）
+        Assert.True(document.IsPreviewing);
+        Assert.True(panel.ApplyCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Apply_GoesThroughGivenEditApplier()
+    {
+        // MainViewModel は、確定中かを確かめる入り口を渡す
+        var calls = new List<(string Name, PixelRect? Region, PixelRect? Selection, bool ResetView)>();
+        var document = CreateDocument();
+        document.Selection = new PixelRect(1, 2, 3, 4);
+        var panel = new FilterPanelViewModel(_filters, new AppLog(LogFile), applyEdit: (doc, name, edit, region, selection, resetView) =>
+        {
+            calls.Add((name, region, selection, resetView));
+            return doc.ApplyEditAsync(name, edit, region, selection, resetView);
+        }) { Document = document };
+        Amount(panel).SliderValue = 3;
+
+        await panel.ApplyCommand.ExecuteAsync(null);
+
+        Assert.Equal((_filter.DisplayName, new PixelRect(1, 2, 3, 4), new PixelRect(1, 2, 3, 4), false), Assert.Single(calls));
+    }
+
     // ---------------------------------------------------------------- MainViewModel との組み合わせ
 
     [Fact]
@@ -405,6 +536,17 @@ public sealed class FilterPanelViewModelTests : IDisposable
         Assert.Equal((10, 10), (document.ImageWidth, document.ImageHeight));
         Assert.All(document.Image.Pixels, p => Assert.Equal(0, p));
         Assert.True(Amount(panel).IsDefault);
+
+        // 適用は MainViewModel の入り口を通る（前の操作の知らせを消し、確定中にする）
+        vm.StatusMessage = "前の知らせ";
+        var busy = new List<bool>();
+        vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(MainViewModel.IsBusy)) busy.Add(vm.IsBusy); };
+        Amount(panel).SliderValue = 20;
+        await panel.ApplyCommand.ExecuteAsync(null);
+        Assert.Null(vm.StatusMessage);
+        Assert.Equal([true, false], busy);
+        Assert.All(document.Image.Pixels, p => Assert.Equal(20, p));
+        Assert.Equal($"元に戻す: {_filter.DisplayName}(_U)", vm.UndoHeader);
 
         // 閉じると、パネルの対象も無くなる
         vm.CloseAllCommand.Execute(null);

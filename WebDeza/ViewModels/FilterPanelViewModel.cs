@@ -11,7 +11,7 @@ namespace WebDeza.ViewModels;
 
 /// <summary>
 /// 編集パネルの「フィルター」（設計書 F-06・5.6）。フィルターの一覧と選んでいるフィルター、パラメーターの入力欄、
-/// 対象の表示、プレビュー、［リセット］を持つ。対象は、アクティブな画像の選択範囲（無ければ画像全体）。
+/// 対象の表示、プレビュー、［適用］［リセット］を持つ。対象は、アクティブな画像の選択範囲（無ければ画像全体）。
 /// </summary>
 /// <remarks>
 /// プレビュー（設計書 5.8）: 値が既定値（IsIdentity）でない間、表示用画像（フィルター前）の対象の範囲にフィルターをかけ、
@@ -20,6 +20,8 @@ namespace WebDeza.ViewModels;
 /// （スライダーの操作中は間引かれ、止まったら必ず最後の値になる）。
 /// プレビューをやめるのは、［リセット］・ほかのフィルターを選ぶ・ほかの画像に切り替える・その画像を編集する
 /// （確定・元に戻す・やり直し）で、どれも値を既定値に戻す。
+/// ［適用］は、フル解像度の画像に RegionFilter でかけて履歴に 1 段積む（ApplyEditAsync）。確定して画像が変わると、
+/// 上と同じくプレビューをやめて値を既定値に戻す。
 /// UI のスレッドだけから使う。
 /// </remarks>
 public sealed partial class FilterPanelViewModel : ObservableObject
@@ -27,8 +29,16 @@ public sealed partial class FilterPanelViewModel : ObservableObject
     /// <summary>プレビューを更新する間隔（設計書 F-06）</summary>
     public static readonly TimeSpan DefaultPreviewInterval = TimeSpan.FromMilliseconds(50);
 
+    /// <summary>
+    /// 画像に編集を確定させる入り口（DocumentViewModel.ApplyEditAsync と同じ引数）。
+    /// MainViewModel は、確定中かを確かめ、ステータスバーの知らせを消してから確定させるものを渡す
+    /// </summary>
+    public delegate Task EditApplier(DocumentViewModel document, string name, Func<ImageBuffer, CancellationToken, ImageBuffer> edit,
+        PixelRect? changedRegion, PixelRect? newSelection, bool resetView);
+
     private readonly AppLog _log;
     private readonly TimeSpan _previewInterval;
+    private readonly EditApplier _applyEdit;
 
     private IImageFilter? _selectedFilter;
     private IReadOnlyList<ParameterViewModel> _parameters = [];
@@ -46,12 +56,15 @@ public sealed partial class FilterPanelViewModel : ObservableObject
     /// <param name="filters">登録されたフィルター（登録順に並べ、最初のものを選んでおく）</param>
     /// <param name="log">プレビューの計算に失敗したときに書くログ</param>
     /// <param name="previewInterval">プレビューを更新する間隔（null なら DefaultPreviewInterval）</param>
-    public FilterPanelViewModel(FilterRegistry filters, AppLog log, TimeSpan? previewInterval = null)
+    /// <param name="applyEdit">［適用］で編集を確定させる入り口（null なら DocumentViewModel.ApplyEditAsync を直に呼ぶ）</param>
+    public FilterPanelViewModel(FilterRegistry filters, AppLog log, TimeSpan? previewInterval = null, EditApplier? applyEdit = null)
     {
         ArgumentNullException.ThrowIfNull(filters);
         ArgumentNullException.ThrowIfNull(log);
         _log = log;
         _previewInterval = previewInterval ?? DefaultPreviewInterval;
+        _applyEdit = applyEdit ?? ((document, name, edit, changedRegion, newSelection, resetView)
+            => document.ApplyEditAsync(name, edit, changedRegion, newSelection, resetView));
         Filters = filters.All.ToList();
         SelectedFilter = Filters.FirstOrDefault();
     }
@@ -83,6 +96,10 @@ public sealed partial class FilterPanelViewModel : ObservableObject
     /// <summary>今の値</summary>
     public ParameterValues Values => ParameterViewModel.ToValues(_parameters);
 
+    /// <summary>編集パネルの「フィルター」を開いているか（メニュー［フィルター］で選んだら開く）</summary>
+    [ObservableProperty]
+    private bool _isExpanded = true;
+
     /// <summary>値がすべて既定値で、画像を変えないか（プレビューをしない）</summary>
     public bool IsIdentity => _selectedFilter is null || _selectedFilter.IsIdentity(Values.Normalize(_selectedFilter.Parameters));
 
@@ -102,6 +119,7 @@ public sealed partial class FilterPanelViewModel : ObservableObject
             if (_document is not null) _document.PropertyChanged += OnDocumentPropertyChanged;
             OnPropertyChanged();
             OnPropertyChanged(nameof(TargetText));
+            ApplyCommand.NotifyCanExecuteChanged();
             ResetValues();
         }
     }
@@ -113,6 +131,25 @@ public sealed partial class FilterPanelViewModel : ObservableObject
     /// プレビューの計算（頼まれた分が終わると完了する。何もしていなければ完了済み）。テストで、プレビューが出るのを待つのに使う
     /// </summary>
     public Task PreviewTask => _previewTask;
+
+    private bool CanApply() => _document is { IsBusy: false } && !IsIdentity;
+
+    /// <summary>
+    /// ［適用］（設計書 F-06）: フル解像度の画像の対象（選択範囲。無ければ画像全体）にフィルターをかけ、履歴に 1 段積む。
+    /// 選択範囲にかけたときは、履歴はその範囲の画素だけを持つ。選択範囲はそのまま。値が既定値のときは無効。
+    /// 確定して画像が変わると、値は既定値に戻る（失敗したときは、値もプレビューもそのまま）
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanApply))]
+    private Task ApplyAsync()
+    {
+        if (!CanApply() || _selectedFilter is not { } filter) return Task.CompletedTask;
+        var document = _document!;
+        var values = Values;
+        var selection = document.Selection;
+        return _applyEdit(document, filter.DisplayName,
+            (image, token) => RegionFilter.Apply(image, selection, filter, values, FilterContext.ForExport(token)),
+            changedRegion: selection, newSelection: selection, resetView: false);
+    }
 
     private bool CanReset() => _parameters.Any(p => !p.IsDefault);
 
@@ -145,6 +182,7 @@ public sealed partial class FilterPanelViewModel : ObservableObject
         OnPropertyChanged(nameof(Values));
         OnPropertyChanged(nameof(IsIdentity));
         ResetCommand.NotifyCanExecuteChanged();
+        ApplyCommand.NotifyCanExecuteChanged();
         RequestPreview();
     }
 
@@ -161,6 +199,9 @@ public sealed partial class FilterPanelViewModel : ObservableObject
                 // その画像を編集した（確定・元に戻す・やり直し）ら、プレビューをやめる
                 EndPreview();
                 ResetValues();
+                break;
+            case nameof(DocumentViewModel.IsBusy):
+                ApplyCommand.NotifyCanExecuteChanged();
                 break;
         }
     }

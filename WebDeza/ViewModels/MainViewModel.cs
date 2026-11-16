@@ -50,7 +50,7 @@ public sealed partial class MainViewModel : ObservableObject
         _dialogs = dialogs;
         _log = log;
         _collector = new FileCollector(formats);
-        FilterPanel = new FilterPanelViewModel(filters ?? new FilterRegistry(), log);
+        FilterPanel = new FilterPanelViewModel(filters ?? new FilterRegistry(), log, applyEdit: ApplyEditAsync);
 
         var loaded = settingsService.Load();
         Settings = loaded.Settings;
@@ -86,7 +86,7 @@ public sealed partial class MainViewModel : ObservableObject
         nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand), nameof(SelectToolCommand),
         nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand), nameof(CropCommand),
         nameof(UndoCommand), nameof(RedoCommand), nameof(RotateRightCommand), nameof(RotateLeftCommand),
-        nameof(FlipHorizontalCommand), nameof(FlipVerticalCommand), nameof(ResizeImageCommand))]
+        nameof(FlipHorizontalCommand), nameof(FlipVerticalCommand), nameof(ResizeImageCommand), nameof(SelectFilterCommand))]
     private DocumentViewModel? _activeDocument;
 
     /// <summary>読み込み中・編集の確定中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
@@ -96,7 +96,7 @@ public sealed partial class MainViewModel : ObservableObject
         nameof(ZoomInCommand), nameof(ZoomOutCommand), nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand),
         nameof(SelectToolCommand), nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand),
         nameof(CropCommand), nameof(UndoCommand), nameof(RedoCommand), nameof(RotateRightCommand), nameof(RotateLeftCommand),
-        nameof(FlipHorizontalCommand), nameof(FlipVerticalCommand), nameof(ResizeImageCommand))]
+        nameof(FlipHorizontalCommand), nameof(FlipVerticalCommand), nameof(ResizeImageCommand), nameof(SelectFilterCommand))]
     private bool _isBusy;
 
     partial void OnIsBusyChanged(bool value) => NotifyDocumentCommandsChanged();
@@ -668,6 +668,22 @@ public sealed partial class MainViewModel : ObservableObject
 
         return ApplyEditAsync(document, ResizeEditName, (image, token) => Resize.Apply(image, size.Width, size.Height, token),
             changedRegion: null, newSelection: null, resetView: true);
+    }
+
+    // ---------------------------------------------------------------- メニュー［フィルター］（設計書 F-06）
+
+    private bool CanSelectFilter(IImageFilter? filter) => CanEditImage && filter is not null;
+
+    /// <summary>
+    /// メニュー［フィルター］の項目（登録されたフィルター）: 編集パネルの「フィルター」をそのフィルターにして開く。
+    /// かけるのは、編集パネルで値を変えて［適用］したとき
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanSelectFilter))]
+    private void SelectFilter(IImageFilter? filter)
+    {
+        if (!CanSelectFilter(filter)) return;
+        FilterPanel.SelectedFilter = filter;
+        FilterPanel.IsExpanded = true;
     }
 
     /// <summary>

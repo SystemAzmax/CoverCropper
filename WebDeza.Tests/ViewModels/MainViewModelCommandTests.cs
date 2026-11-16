@@ -65,7 +65,39 @@ public sealed class MainViewModelCommandTests : IDisposable
         Assert.False(_vm.FlipHorizontalCommand.CanExecute(null));
         Assert.False(_vm.FlipVerticalCommand.CanExecute(null));
         Assert.False(_vm.ResizeImageCommand.CanExecute(null));
+        Assert.False(_vm.SelectFilterCommand.CanExecute(new FakeFilter()));
     }
+
+    // ---------------------------------------------------------------- メニュー［フィルター］（9-7）
+
+    [Fact]
+    public async Task SelectFilter_SwitchesPanel_AndExpandsIt()
+    {
+        var filters = new WebDeza.Imaging.Filters.FilterRegistry();
+        var first = new FakeFilter("first");
+        var second = new FakeFilter("second");
+        filters.Register(first);
+        filters.Register(second);
+        var vm = new MainViewModel(_formats, new SettingsService(_formats, _temp.Combine("settings2.json")),
+            _dialogs, new AppLog(_temp.Combine("logs", "app.log")), filters: filters);
+        Assert.False(vm.SelectFilterCommand.CanExecute(second)); // 画像が無いときは無効
+        await vm.LoadAsync(CreateFile("a.fake"));
+        vm.FilterPanel.IsExpanded = false;
+
+        Assert.True(vm.SelectFilterCommand.CanExecute(second));
+        Assert.False(vm.SelectFilterCommand.CanExecute(null));
+        vm.SelectFilterCommand.Execute(second);
+
+        Assert.Same(second, vm.FilterPanel.SelectedFilter);
+        Assert.True(vm.FilterPanel.IsExpanded); // 閉じていたら開く
+        Assert.False(vm.ActiveDocument!.CanUndo); // 選ぶだけで、かけない
+    }
+
+    [Theory]
+    [InlineData("ぼかし", "ぼかし…")]
+    [InlineData("a_b", "a__b…")] // 「_」はアクセスキーの印にしない
+    public void FilterMenuHeader_AddsEllipsis(string name, string expected)
+        => Assert.Equal(expected, WebDeza.Views.MainWindow.FilterMenuHeader(name));
 
     // ---------------------------------------------------------------- 画像サイズの変更（9-4）
 
@@ -455,6 +487,7 @@ public sealed class MainViewModelCommandTests : IDisposable
         Assert.False(_vm.FlipHorizontalCommand.CanExecute(null));
         Assert.False(_vm.FlipVerticalCommand.CanExecute(null));
         Assert.False(_vm.ResizeImageCommand.CanExecute(null));
+        Assert.False(_vm.SelectFilterCommand.CanExecute(new FakeFilter()));
         Assert.False(_vm.OpenCommand.CanExecute(null));
         Assert.False(_vm.CloseCommand.CanExecute(null));
         Assert.False(_vm.CloseAllCommand.CanExecute(null));
