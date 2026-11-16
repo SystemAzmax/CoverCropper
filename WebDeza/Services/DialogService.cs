@@ -13,6 +13,9 @@ public interface IDialogService
     /// <summary>エラーを出す</summary>
     void ShowError(string message);
 
+    /// <summary>確認する（［はい］［いいえ］。既定のボタンは［いいえ］）。［はい］なら true</summary>
+    bool Confirm(string message);
+
     /// <summary>「開く」のダイアログ（複数選択可）。選んだファイルのパス、やめたときは null</summary>
     /// <param name="initialDirectory">最初に開くフォルダ（無ければ既定）</param>
     /// <param name="filter">種類の一覧（OpenFileDialog.Filter の書き方）</param>
@@ -28,6 +31,10 @@ public sealed class DialogService : IDialogService
 
     public void ShowError(string message)
         => Show(message, MessageBoxButton.OK, MessageBoxImage.Error);
+
+    /// <summary>既定のボタンは［いいえ］（Enter を押しただけで、保存していない編集を捨てないように）</summary>
+    public bool Confirm(string message)
+        => Show(message, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
 
     public IReadOnlyList<string>? ShowOpenImageDialog(string? initialDirectory, string filter)
     {
@@ -51,12 +58,13 @@ public sealed class DialogService : IDialogService
         return dialog.ShowDialog() == true;
     }
 
-    private static MessageBoxResult Show(string message, MessageBoxButton button, MessageBoxImage image)
+    private static MessageBoxResult Show(string message, MessageBoxButton button, MessageBoxImage image,
+        MessageBoxResult defaultResult = MessageBoxResult.None)
     {
         var owner = Owner;
         return owner is { IsLoaded: true }
-            ? MessageBox.Show(owner, message, AppInfo.ProductName, button, image)
-            : MessageBox.Show(message, AppInfo.ProductName, button, image);
+            ? MessageBox.Show(owner, message, AppInfo.ProductName, button, image, defaultResult)
+            : MessageBox.Show(message, AppInfo.ProductName, button, image, defaultResult);
     }
 }
 

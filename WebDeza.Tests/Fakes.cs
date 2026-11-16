@@ -81,6 +81,18 @@ internal sealed class FakeDialogs : IDialogService
         return OnImageSizeDialog?.Invoke(viewModel) ?? false;
     }
 
+    /// <summary>確認したときの文（順に）</summary>
+    public List<string> Confirmations { get; } = new();
+
+    /// <summary>確認への答え（true なら［はい］）</summary>
+    public bool ConfirmAnswer { get; set; } = true;
+
+    public bool Confirm(string message)
+    {
+        Confirmations.Add(message);
+        return ConfirmAnswer;
+    }
+
     public void ShowError(string message)
     {
         OnShowError?.Invoke(message);

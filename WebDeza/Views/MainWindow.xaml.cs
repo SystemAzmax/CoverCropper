@@ -240,10 +240,19 @@ public partial class MainWindow : Window
         if (_vm.Settings.WindowMaximized) WindowState = WindowState.Maximized;
     }
 
+    /// <summary>
+    /// 終了（メニュー［終了］・［×］・Alt+F4。設計書 F-13）: 保存していない編集があれば M17 で確認し、
+    /// ［いいえ］ならやめる。終了するときは、ウィンドウの位置などを設定に保存する
+    /// </summary>
     protected override void OnClosing(CancelEventArgs e)
     {
         base.OnClosing(e);
         if (e.Cancel) return;
+        if (!_vm.ConfirmExit())
+        {
+            e.Cancel = true;
+            return;
+        }
 
         var normal = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
         WindowPlacement.Save(_vm.Settings, WindowState, normal);

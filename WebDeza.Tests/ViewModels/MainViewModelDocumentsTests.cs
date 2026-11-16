@@ -343,6 +343,101 @@ public sealed class MainViewModelDocumentsTests : IDisposable
         Assert.Equal("画像: 7×3 ／ 選択範囲: (0, 0) 2×2 ／ " + Messages.M09_Opened(1, 0), _vm.StatusText);
     }
 
+    // ---------------------------------------------------------------- V39: 保存していない編集がある画像を閉じる（9-8）
+
+    /// <summary>画像に編集を 1 つ確定させる（保存していない編集がある状態にする）</summary>
+    private static Task EditAsync(DocumentViewModel document)
+        => document.ApplyEditAsync("編集", (image, _) => WebDeza.Imaging.ImageBuffer.Create(image.Width, image.Height,
+            new byte[image.Pixels.Length]), changedRegion: null, newSelection: null, resetView: false);
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CloseEdited_AsksM16_AndClosesOnlyOnYes(bool answer)
+    {
+        // V39: 編集のある画像を閉じる（はい / いいえ）→ 閉じる / 閉じない（M16）
+        await _vm.OpenPathsAsync(CreateFiles("a.fake", "b.fake"));
+        var edited = _vm.Documents[0];
+        await EditAsync(edited);
+        _dialogs.ConfirmAnswer = answer;
+
+        _vm.CloseCommand.Execute(edited);
+
+        Assert.Equal([Messages.M16_ConfirmClose("a.fake")], _dialogs.Confirmations);
+        Assert.Equal(answer ? ["b.fake"] : ["a.fake", "b.fake"], FileNames);
+    }
+
+    [Fact]
+    public async Task CloseUnedited_DoesNotAsk()
+    {
+        await _vm.OpenPathsAsync(CreateFiles("a.fake"));
+        var document = _vm.ActiveDocument!;
+        await EditAsync(document);
+        await document.UndoAsync(); // 開いた時点の状態に戻れば、保存していない編集は無い
+
+        _vm.CloseCommand.Execute(null);
+
+        Assert.Empty(_dialogs.Confirmations);
+        Assert.Empty(_vm.Documents);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CloseAll_AsksOnceWithCount(bool answer)
+    {
+        await _vm.OpenPathsAsync(CreateFiles("a.fake", "b.fake", "c.fake"));
+        await EditAsync(_vm.Documents[0]);
+        await EditAsync(_vm.Documents[2]);
+        _dialogs.ConfirmAnswer = answer;
+
+        _vm.CloseAllCommand.Execute(null);
+
+        Assert.Equal([Messages.M16_ConfirmCloseAll(2)], _dialogs.Confirmations); // まとめて 1 回
+        Assert.Equal(answer ? [] : ["a.fake", "b.fake", "c.fake"], FileNames);  // いいえなら 1 枚も閉じない
+        Assert.Equal(answer ? null : "c.fake", _vm.ActiveDocument?.FileName);
+    }
+
+    [Fact]
+    public async Task CloseAll_WithoutEdits_DoesNotAsk()
+    {
+        await _vm.OpenPathsAsync(CreateFiles("a.fake", "b.fake"));
+
+        _vm.CloseAllCommand.Execute(null);
+
+        Assert.Empty(_dialogs.Confirmations);
+        Assert.Empty(_vm.Documents);
+    }
+
+    // ---------------------------------------------------------------- V44: 終了の確認（9-8）
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ConfirmExit_WithEdits_AsksM17(bool answer)
+    {
+        // V44: 編集のある画像がある → M17 で確認する
+        await _vm.OpenPathsAsync(CreateFiles("a.fake", "b.fake"));
+        await EditAsync(_vm.Documents[0]);
+        _vm.ActiveDocument = _vm.Documents[1]; // アクティブでない画像の編集も数える
+        _dialogs.ConfirmAnswer = answer;
+
+        Assert.Equal(answer, _vm.ConfirmExit());
+        Assert.Equal([Messages.M17_ConfirmExit], _dialogs.Confirmations);
+        Assert.Equal(2, _vm.Documents.Count); // 確認するだけで、閉じない
+    }
+
+    [Fact]
+    public async Task ConfirmExit_WithoutEdits_DoesNotAsk()
+    {
+        // V44: 編集のある画像が無い → 確認しない
+        Assert.True(_vm.ConfirmExit()); // 画像が無い
+        await _vm.OpenPathsAsync(CreateFiles("a.fake"));
+        Assert.True(_vm.ConfirmExit());
+
+        Assert.Empty(_dialogs.Confirmations);
+    }
+
     // ---------------------------------------------------------------- V39 の一部: アクティブな画像を閉じる
 
     [Fact]

@@ -862,9 +862,9 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>
     /// 画像を閉じる（設計書 F-02）。メニュー［ファイル］→［閉じる］ / Ctrl+W はアクティブな画像を（引数は null）、
     /// 子ウィンドウの［閉じる］はその画像を閉じる。ファイルは削除しない。
-    /// 閉じた画像への参照はすべて外す（画像・表示用画像・履歴を手放すため。設計書 5.10-11）
+    /// 閉じた画像への参照はすべて外す（画像・表示用画像・履歴を手放すため。設計書 5.10-11）。
+    /// 保存していない編集があれば、M16 で確認する（［いいえ］なら閉じない）
     /// </summary>
-    /// <remarks>書き出していない編集があるときの確認（M16）は 9-8 で足す</remarks>
     [RelayCommand(CanExecute = nameof(CanClose))]
     private void Close(DocumentViewModel? document)
     {
@@ -873,6 +873,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         int index = Documents.IndexOf(document);
         if (index < 0) return;
+        if (document.HasUnexportedEdits && !_dialogs.Confirm(Messages.M16_ConfirmClose(document.FileName))) return;
 
         StatusMessage = null; // 前の操作の知らせ（M09 など）を残さない
         Documents.RemoveAt(index);
@@ -884,13 +885,15 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// ［ファイル］→［すべて閉じる］（設計書 F-02）。開いている画像をすべて閉じ、参照をすべて外す。ファイルは削除しない
+    /// ［ファイル］→［すべて閉じる］（設計書 F-02）。開いている画像をすべて閉じ、参照をすべて外す。ファイルは削除しない。
+    /// 保存していない編集がある画像があれば、M16（すべて閉じる）で枚数を出して 1 回だけ確認する（［いいえ］なら 1 枚も閉じない）
     /// </summary>
-    /// <remarks>書き出していない編集があるときのまとめての確認（M16）は 9-8 で足す</remarks>
     [RelayCommand(CanExecute = nameof(HasDocumentsAndIdle))]
     private void CloseAll()
     {
         if (!HasDocumentsAndIdle) return;
+        int unexported = Documents.Count(d => d.HasUnexportedEdits);
+        if (unexported > 0 && !_dialogs.Confirm(Messages.M16_ConfirmCloseAll(unexported))) return;
         StatusMessage = null;
         ActiveDocument = null;
         foreach (var document in Documents) document.PropertyChanged -= OnDocumentPropertyChanged; // Clear は外した画像を知らせない
@@ -904,9 +907,19 @@ public sealed partial class MainViewModel : ObservableObject
 
     private bool CanExit => !IsBusy;
 
-    /// <summary>メニュー［ファイル］→［終了］（設計書 F-13。M17 の確認は 9-8 で足す）</summary>
+    /// <summary>
+    /// メニュー［ファイル］→［終了］（設計書 F-13）。メインウィンドウを閉じるだけで、確認（M17）は、
+    /// ［×］・Alt+F4 と同じく、ウィンドウの Closing から ConfirmExit で行う
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanExit))]
     private void Exit() => ExitRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>
+    /// 終了してよいか（設計書 F-13）。保存していない編集がある画像が 1 枚でもあれば M17 で確認し、［はい］なら true。
+    /// 無ければ確認せずに true。メインウィンドウの Closing から呼ぶ（終了の操作はどれもここを通る）
+    /// </summary>
+    public bool ConfirmExit()
+        => !Documents.Any(d => d.HasUnexportedEdits) || _dialogs.Confirm(Messages.M17_ConfirmExit);
 
     // ---------------------------------------------------------------- 設定
 
