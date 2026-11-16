@@ -60,7 +60,107 @@ public sealed class MainViewModelCommandTests : IDisposable
         Assert.False(_vm.RedoCommand.CanExecute(null));
         Assert.Equal("元に戻す(_U)", _vm.UndoHeader);
         Assert.Equal("やり直し(_R)", _vm.RedoHeader);
+        Assert.False(_vm.RotateRightCommand.CanExecute(null));
+        Assert.False(_vm.RotateLeftCommand.CanExecute(null));
+        Assert.False(_vm.FlipHorizontalCommand.CanExecute(null));
+        Assert.False(_vm.FlipVerticalCommand.CanExecute(null));
     }
+
+    // ---------------------------------------------------------------- 回転・反転（V34。9-3）
+
+    /// <summary>(x, y) の画素の 4 バイト</summary>
+    private static byte[] PixelAt(WebDeza.Imaging.ImageBuffer image, int x, int y)
+        => image.Pixels.AsSpan((y * image.Width + x) * 4, 4).ToArray();
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Rotate_SwapsSize_ClearsSelection_AndResetsView(bool right)
+    {
+        var source = Pattern(30, 20);
+        _fake.Image = source;
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        var document = _vm.ActiveDocument!;
+        document.Selection = new WebDeza.Imaging.PixelRect(5, 2, 10, 8);
+        Assert.True((right ? _vm.RotateRightCommand : _vm.RotateLeftCommand).CanExecute(null));
+
+        await (right ? _vm.RotateRightCommand : _vm.RotateLeftCommand).ExecuteAsync(null);
+
+        var image = document.Image;
+        Assert.Equal((20, 30), (image.Width, image.Height)); // 幅と高さが入れ替わる
+        // 右に 90°（時計回り）なら元の左上が右上に、左に 90° なら左下に来る
+        Assert.Equal(PixelAt(source, 0, 0), right ? PixelAt(image, 19, 0) : PixelAt(image, 0, 29));
+        Assert.Equal(PixelAt(source, 29, 0), right ? PixelAt(image, 19, 29) : PixelAt(image, 0, 0));
+        Assert.Null(document.Selection); // 選択範囲は無くなる
+        Assert.Equal(1, document.ResetViewRequest); // 全体表示に戻す
+        Assert.Equal((20, 30), (document.Display.ImageWidth, document.Display.ImageHeight));
+        Assert.Equal(right ? MainViewModel.RotateRightEditName : MainViewModel.RotateLeftEditName, document.UndoName);
+        Assert.Equal(right ? "元に戻す: 右に 90° 回転(_U)" : "元に戻す: 左に 90° 回転(_U)", _vm.UndoHeader);
+        Assert.True(document.HasUnexportedEdits);
+
+        await _vm.UndoCommand.ExecuteAsync(null);
+        Assert.Same(source, document.Image);
+        Assert.Equal(2, document.ResetViewRequest);
+    }
+
+    [Fact]
+    public async Task FlipHorizontal_MirrorsImageAndSelection()
+    {
+        var source = Pattern(30, 20);
+        _fake.Image = source;
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        var document = _vm.ActiveDocument!;
+        document.Selection = new WebDeza.Imaging.PixelRect(5, 2, 10, 8);
+
+        await _vm.FlipHorizontalCommand.ExecuteAsync(null);
+
+        var image = document.Image;
+        Assert.Equal((30, 20), (image.Width, image.Height));
+        for (int x = 0; x < 30; x++) Assert.Equal(PixelAt(source, x, 3), PixelAt(image, 29 - x, 3));
+        Assert.Equal(new WebDeza.Imaging.PixelRect(15, 2, 10, 8), document.Selection); // X が W − X − 幅 になる
+        Assert.Equal(0, document.ResetViewRequest); // 大きさが変わらないので、表示はそのまま
+        Assert.Equal(MainViewModel.FlipHorizontalEditName, document.UndoName);
+    }
+
+    [Fact]
+    public async Task FlipVertical_MirrorsImageAndSelection()
+    {
+        var source = Pattern(30, 20);
+        _fake.Image = source;
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        var document = _vm.ActiveDocument!;
+        document.Selection = new WebDeza.Imaging.PixelRect(5, 2, 10, 8);
+
+        await _vm.FlipVerticalCommand.ExecuteAsync(null);
+
+        var image = document.Image;
+        for (int y = 0; y < 20; y++) Assert.Equal(PixelAt(source, 4, y), PixelAt(image, 4, 19 - y));
+        Assert.Equal(new WebDeza.Imaging.PixelRect(5, 10, 10, 8), document.Selection); // Y が H − Y − 高さ になる
+        Assert.Equal(0, document.ResetViewRequest);
+        Assert.Equal(MainViewModel.FlipVerticalEditName, document.UndoName);
+    }
+
+    [Fact]
+    public async Task Flip_WithoutSelection_StaysWithoutSelection()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        var document = _vm.ActiveDocument!;
+
+        Assert.True(_vm.FlipHorizontalCommand.CanExecute(null)); // 回転・反転は選択範囲が無くてもできる（画像全体が対象）
+        await _vm.FlipHorizontalCommand.ExecuteAsync(null);
+
+        Assert.Null(document.Selection);
+        Assert.Equal(1, document.History.UndoCount);
+    }
+
+    [Theory]
+    [InlineData(true, 0, 0, 10, 5, 20, 0)]
+    [InlineData(true, 20, 3, 10, 5, 0, 3)]
+    [InlineData(false, 4, 0, 10, 5, 4, 15)]
+    [InlineData(false, 4, 15, 10, 5, 4, 0)]
+    public void MirrorSelection_MovesToOppositeSide(bool horizontal, int x, int y, int w, int h, int expectedX, int expectedY)
+        => Assert.Equal(new WebDeza.Imaging.PixelRect(expectedX, expectedY, w, h),
+            MainViewModel.MirrorSelection(new WebDeza.Imaging.PixelRect(x, y, w, h), 30, 20, horizontal));
 
     // ---------------------------------------------------------------- 元に戻す・やり直し（V29・V42。9-2）
 
@@ -266,6 +366,10 @@ public sealed class MainViewModelCommandTests : IDisposable
         Assert.True(_vm.IsBusy);
         Assert.False(_vm.IsEditPanelEnabled);
         Assert.False(_vm.CropCommand.CanExecute(null));
+        Assert.False(_vm.RotateRightCommand.CanExecute(null));
+        Assert.False(_vm.RotateLeftCommand.CanExecute(null));
+        Assert.False(_vm.FlipHorizontalCommand.CanExecute(null));
+        Assert.False(_vm.FlipVerticalCommand.CanExecute(null));
         Assert.False(_vm.OpenCommand.CanExecute(null));
         Assert.False(_vm.CloseCommand.CanExecute(null));
         Assert.False(_vm.CloseAllCommand.CanExecute(null));

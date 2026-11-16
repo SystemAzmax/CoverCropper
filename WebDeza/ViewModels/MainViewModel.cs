@@ -10,6 +10,7 @@ using WebDeza.Core;
 using WebDeza.Imaging;
 using WebDeza.Imaging.Editing;
 using WebDeza.Imaging.Formats;
+using WebDeza.Imaging.Geometry;
 using WebDeza.Imaging.Operations;
 using WebDeza.Models;
 using WebDeza.Services;
@@ -81,7 +82,8 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(CloseCommand), nameof(ZoomInCommand), nameof(ZoomOutCommand),
         nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand), nameof(SelectToolCommand),
         nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand), nameof(CropCommand),
-        nameof(UndoCommand), nameof(RedoCommand))]
+        nameof(UndoCommand), nameof(RedoCommand), nameof(RotateRightCommand), nameof(RotateLeftCommand),
+        nameof(FlipHorizontalCommand), nameof(FlipVerticalCommand))]
     private DocumentViewModel? _activeDocument;
 
     /// <summary>読み込み中・編集の確定中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
@@ -90,7 +92,8 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(OpenCommand), nameof(CloseCommand), nameof(ExitCommand),
         nameof(ZoomInCommand), nameof(ZoomOutCommand), nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand),
         nameof(SelectToolCommand), nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand),
-        nameof(CropCommand), nameof(UndoCommand), nameof(RedoCommand))]
+        nameof(CropCommand), nameof(UndoCommand), nameof(RedoCommand), nameof(RotateRightCommand), nameof(RotateLeftCommand),
+        nameof(FlipHorizontalCommand), nameof(FlipVerticalCommand))]
     private bool _isBusy;
 
     partial void OnIsBusyChanged(bool value) => NotifyDocumentCommandsChanged();
@@ -585,6 +588,68 @@ public sealed partial class MainViewModel : ObservableObject
         return ApplyEditAsync(ActiveDocument, CropEditName, (image, token) => Crop.Apply(image, selection, token),
             changedRegion: null, newSelection: null, resetView: true);
     }
+
+    /// <summary>右に 90° 回転の、元に戻す・やり直しのメニューに出す名前（メニューの項目と同じ）</summary>
+    public const string RotateRightEditName = "右に 90° 回転";
+
+    /// <summary>左に 90° 回転の名前</summary>
+    public const string RotateLeftEditName = "左に 90° 回転";
+
+    /// <summary>左右反転の名前</summary>
+    public const string FlipHorizontalEditName = "左右反転";
+
+    /// <summary>上下反転の名前</summary>
+    public const string FlipVerticalEditName = "上下反転";
+
+    private bool CanEditImage => !IsBusy && ActiveDocument is not null;
+
+    /// <summary>［画像］→［右に 90° 回転］ / Ctrl+R（設計書 F-05。選択範囲は解除し、全体表示に戻す）</summary>
+    [RelayCommand(CanExecute = nameof(CanEditImage))]
+    private Task RotateRightAsync() => RotateAsync(RotateRightEditName, new ImageOrientation(90, false));
+
+    /// <summary>［画像］→［左に 90° 回転］ / Ctrl+Shift+R</summary>
+    [RelayCommand(CanExecute = nameof(CanEditImage))]
+    private Task RotateLeftAsync() => RotateAsync(RotateLeftEditName, new ImageOrientation(270, false));
+
+    /// <summary>［画像］→［左右反転］（設計書 F-05。選択範囲は、反転に合わせて位置を移す）</summary>
+    [RelayCommand(CanExecute = nameof(CanEditImage))]
+    private Task FlipHorizontalAsync() => FlipAsync(FlipHorizontalEditName, horizontal: true);
+
+    /// <summary>［画像］→［上下反転］</summary>
+    [RelayCommand(CanExecute = nameof(CanEditImage))]
+    private Task FlipVerticalAsync() => FlipAsync(FlipVerticalEditName, horizontal: false);
+
+    /// <summary>回転（幅と高さが入れ替わるので、選択範囲は解除し、全体表示に戻す）</summary>
+    private Task RotateAsync(string name, ImageOrientation orientation)
+    {
+        if (!CanEditImage) return Task.CompletedTask;
+        return ApplyEditAsync(ActiveDocument!, name, (image, token) => Orientation.Apply(image, orientation, token),
+            changedRegion: null, newSelection: null, resetView: true);
+    }
+
+    /// <summary>
+    /// 反転（設計書 5.7: 左右反転は (0, true)、上下反転は (180, true)）。
+    /// 大きさは変わらないので、表示倍率と位置はそのままにし、選択範囲は反転した位置に移す
+    /// </summary>
+    private Task FlipAsync(string name, bool horizontal)
+    {
+        if (!CanEditImage) return Task.CompletedTask;
+        var document = ActiveDocument!;
+        var orientation = horizontal ? new ImageOrientation(0, true) : new ImageOrientation(180, true);
+        var selection = document.Selection is { } s
+            ? MirrorSelection(s, document.ImageWidth, document.ImageHeight, horizontal)
+            : (PixelRect?)null;
+        return ApplyEditAsync(document, name, (image, token) => Orientation.Apply(image, orientation, token),
+            changedRegion: null, newSelection: selection, resetView: false);
+    }
+
+    /// <summary>
+    /// 反転した画像での選択範囲: 左右反転なら X を W − X − 幅 に、上下反転なら Y を H − Y − 高さ にする（大きさは変えない）
+    /// </summary>
+    public static PixelRect MirrorSelection(PixelRect selection, int imageWidth, int imageHeight, bool horizontal)
+        => horizontal
+            ? selection with { X = imageWidth - selection.X - selection.Width }
+            : selection with { Y = imageHeight - selection.Y - selection.Height };
 
     /// <summary>
     /// アクティブな画像に編集を確定させる（メニューのコマンドの共通の入り口）。前の操作の知らせ（M09 など）は消す。

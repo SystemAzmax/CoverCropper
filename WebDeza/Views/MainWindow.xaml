@@ -25,6 +25,8 @@
         <KeyBinding Modifiers="Control" Key="A" Command="{Binding SelectAllCommand}" />
         <KeyBinding Modifiers="Control" Key="D" Command="{Binding DeselectCommand}" />
         <KeyBinding Modifiers="Control+Shift" Key="X" Command="{Binding CropCommand}" />
+        <KeyBinding Modifiers="Control" Key="R" Command="{Binding RotateRightCommand}" />
+        <KeyBinding Modifiers="Control+Shift" Key="R" Command="{Binding RotateLeftCommand}" />
         <KeyBinding Modifiers="Control" Key="Z" Command="{Binding UndoCommand}" />
         <KeyBinding Modifiers="Control" Key="Y" Command="{Binding RedoCommand}" />
         <KeyBinding Modifiers="Control+Shift" Key="Z" Command="{Binding RedoCommand}" />
@@ -82,10 +84,10 @@
             <MenuItem Header="画像(_I)">
                 <MenuItem Header="選択範囲で切り抜き(_P)" InputGestureText="Ctrl+Shift+X" Command="{Binding CropCommand}" />
                 <Separator />
-                <MenuItem Header="右に 90° 回転(_R)" InputGestureText="Ctrl+R" IsEnabled="False" />   <!-- 9-3 -->
-                <MenuItem Header="左に 90° 回転(_L)" InputGestureText="Ctrl+Shift+R" IsEnabled="False" /> <!-- 9-3 -->
-                <MenuItem Header="左右反転(_H)" IsEnabled="False" />                                  <!-- 9-3 -->
-                <MenuItem Header="上下反転(_V)" IsEnabled="False" />                                  <!-- 9-3 -->
+                <MenuItem Header="右に 90° 回転(_R)" InputGestureText="Ctrl+R" Command="{Binding RotateRightCommand}" />
+                <MenuItem Header="左に 90° 回転(_L)" InputGestureText="Ctrl+Shift+R" Command="{Binding RotateLeftCommand}" />
+                <MenuItem Header="左右反転(_H)" Command="{Binding FlipHorizontalCommand}" />
+                <MenuItem Header="上下反転(_V)" Command="{Binding FlipVerticalCommand}" />
                 <MenuItem Header="回転(_T)…" IsEnabled="False" />                                     <!-- 将来（任意角度） -->
                 <Separator />
                 <MenuItem Header="画像サイズ(_S)…" IsEnabled="False" />                               <!-- 9-4 -->
