@@ -2,6 +2,8 @@ using System.IO;
 using System.Windows;
 using Microsoft.Win32;
 using WebDeza.Imaging.Formats;
+using WebDeza.ViewModels;
+using WebDeza.Views.Dialogs;
 
 namespace WebDeza.Services;
 
@@ -15,6 +17,9 @@ public interface IDialogService
     /// <param name="initialDirectory">最初に開くフォルダ（無ければ既定）</param>
     /// <param name="filter">種類の一覧（OpenFileDialog.Filter の書き方）</param>
     IReadOnlyList<string>? ShowOpenImageDialog(string? initialDirectory, string filter);
+
+    /// <summary>画像サイズのダイアログ（モーダル）。OK なら true（変更後の大きさは viewModel.NewSize）</summary>
+    bool ShowImageSizeDialog(ImageSizeDialogViewModel viewModel);
 }
 
 public sealed class DialogService : IDialogService
@@ -37,6 +42,13 @@ public sealed class DialogService : IDialogService
             dialog.InitialDirectory = initialDirectory;
 
         return dialog.ShowDialog(Owner) == true ? dialog.FileNames : null;
+    }
+
+    public bool ShowImageSizeDialog(ImageSizeDialogViewModel viewModel)
+    {
+        var dialog = new ImageSizeDialog(viewModel);
+        if (Owner is { IsLoaded: true } owner) dialog.Owner = owner;
+        return dialog.ShowDialog() == true;
     }
 
     private static MessageBoxResult Show(string message, MessageBoxButton button, MessageBoxImage image)

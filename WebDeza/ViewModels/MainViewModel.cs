@@ -83,7 +83,7 @@ public sealed partial class MainViewModel : ObservableObject
         nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand), nameof(SelectToolCommand),
         nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand), nameof(CropCommand),
         nameof(UndoCommand), nameof(RedoCommand), nameof(RotateRightCommand), nameof(RotateLeftCommand),
-        nameof(FlipHorizontalCommand), nameof(FlipVerticalCommand))]
+        nameof(FlipHorizontalCommand), nameof(FlipVerticalCommand), nameof(ResizeImageCommand))]
     private DocumentViewModel? _activeDocument;
 
     /// <summary>読み込み中・編集の確定中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
@@ -93,7 +93,7 @@ public sealed partial class MainViewModel : ObservableObject
         nameof(ZoomInCommand), nameof(ZoomOutCommand), nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand),
         nameof(SelectToolCommand), nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand),
         nameof(CropCommand), nameof(UndoCommand), nameof(RedoCommand), nameof(RotateRightCommand), nameof(RotateLeftCommand),
-        nameof(FlipHorizontalCommand), nameof(FlipVerticalCommand))]
+        nameof(FlipHorizontalCommand), nameof(FlipVerticalCommand), nameof(ResizeImageCommand))]
     private bool _isBusy;
 
     partial void OnIsBusyChanged(bool value) => NotifyDocumentCommandsChanged();
@@ -641,6 +641,26 @@ public sealed partial class MainViewModel : ObservableObject
             : (PixelRect?)null;
         return ApplyEditAsync(document, name, (image, token) => Orientation.Apply(image, orientation, token),
             changedRegion: null, newSelection: selection, resetView: false);
+    }
+
+    /// <summary>画像サイズの変更の、元に戻す・やり直しのメニューに出す名前</summary>
+    public const string ResizeEditName = "画像サイズの変更";
+
+    /// <summary>
+    /// ［画像］→［画像サイズ…］（設計書 F-05）。ダイアログで幅と高さを決め、OK なら Lanczos3 で大きさを変える。
+    /// 選択範囲は解除し、全体表示に戻す。今と同じ大きさで OK したときは、何もしない（履歴に積まない）
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanEditImage))]
+    private Task ResizeImageAsync()
+    {
+        if (!CanEditImage) return Task.CompletedTask;
+        var document = ActiveDocument!;
+        var dialog = new ImageSizeDialogViewModel(document.ImageWidth, document.ImageHeight);
+        if (!_dialogs.ShowImageSizeDialog(dialog) || dialog.NewSize is not { } size) return Task.CompletedTask;
+        if (size == (document.ImageWidth, document.ImageHeight)) return Task.CompletedTask;
+
+        return ApplyEditAsync(document, ResizeEditName, (image, token) => Resize.Apply(image, size.Width, size.Height, token),
+            changedRegion: null, newSelection: null, resetView: true);
     }
 
     /// <summary>

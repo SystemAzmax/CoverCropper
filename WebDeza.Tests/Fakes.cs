@@ -3,6 +3,7 @@ using WebDeza.Imaging;
 using WebDeza.Imaging.Formats;
 using WebDeza.Imaging.Parameters;
 using WebDeza.Services;
+using WebDeza.ViewModels;
 
 namespace WebDeza.Tests;
 
@@ -67,6 +68,18 @@ internal sealed class FakeDialogs : IDialogService
 
     /// <summary>「開く」に渡された（最初のフォルダ, 種類の一覧）</summary>
     public List<(string? InitialDirectory, string Filter)> OpenRequests { get; } = new();
+
+    /// <summary>画像サイズのダイアログで行うこと（入力欄を変えて、OK なら true を返す）。null ならキャンセル</summary>
+    public Func<ImageSizeDialogViewModel, bool>? OnImageSizeDialog { get; set; }
+
+    /// <summary>出した画像サイズのダイアログ</summary>
+    public List<ImageSizeDialogViewModel> ImageSizeDialogs { get; } = new();
+
+    public bool ShowImageSizeDialog(ImageSizeDialogViewModel viewModel)
+    {
+        ImageSizeDialogs.Add(viewModel);
+        return OnImageSizeDialog?.Invoke(viewModel) ?? false;
+    }
 
     public void ShowError(string message)
     {

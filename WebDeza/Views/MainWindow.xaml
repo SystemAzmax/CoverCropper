@@ -90,7 +90,7 @@
                 <MenuItem Header="上下反転(_V)" Command="{Binding FlipVerticalCommand}" />
                 <MenuItem Header="回転(_T)…" IsEnabled="False" />                                     <!-- 将来（任意角度） -->
                 <Separator />
-                <MenuItem Header="画像サイズ(_S)…" IsEnabled="False" />                               <!-- 9-4 -->
+                <MenuItem Header="画像サイズ(_S)…" Command="{Binding ResizeImageCommand}" />
             </MenuItem>
             <!-- サブメニューに分けない（設計書 F-06）。9-7 で、ぼかしと基本補正を、登録されたフィルター（登録順）の項目に
                  置き換える。それより後ろは、まだ無いフィルター（将来）で、作って登録したら外す -->

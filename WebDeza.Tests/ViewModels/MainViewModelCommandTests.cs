@@ -64,6 +64,90 @@ public sealed class MainViewModelCommandTests : IDisposable
         Assert.False(_vm.RotateLeftCommand.CanExecute(null));
         Assert.False(_vm.FlipHorizontalCommand.CanExecute(null));
         Assert.False(_vm.FlipVerticalCommand.CanExecute(null));
+        Assert.False(_vm.ResizeImageCommand.CanExecute(null));
+    }
+
+    // ---------------------------------------------------------------- 画像サイズの変更（9-4）
+
+    [Fact]
+    public async Task ResizeImage_Ok_ResizesAndPushesOneStep()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake")); // 30×20
+        var document = _vm.ActiveDocument!;
+        document.Selection = new WebDeza.Imaging.PixelRect(1, 1, 10, 10);
+        _dialogs.OnImageSizeDialog = dialog =>
+        {
+            dialog.WidthText = "15"; // 縦横比を保つので、高さは 10
+            return true;
+        };
+
+        Assert.True(_vm.ResizeImageCommand.CanExecute(null)); // 選択範囲が無くても使える（画像全体が対象）
+        await _vm.ResizeImageCommand.ExecuteAsync(null);
+
+        var shown = Assert.Single(_dialogs.ImageSizeDialogs);
+        Assert.Equal((30, 20), (shown.CurrentWidth, shown.CurrentHeight)); // 今の大きさを出す
+        Assert.Equal((15, 10), (document.ImageWidth, document.ImageHeight));
+        Assert.Equal((15, 10), (document.Display.ImageWidth, document.Display.ImageHeight));
+        Assert.Equal(1, document.History.UndoCount); // 履歴に 1 段積む
+        Assert.Equal(MainViewModel.ResizeEditName, document.UndoName);
+        Assert.Equal("元に戻す: 画像サイズの変更(_U)", _vm.UndoHeader);
+        Assert.Null(document.Selection); // 選択範囲は解除する
+        Assert.Equal(1, document.ResetViewRequest); // 全体表示に戻す
+        Assert.True(document.HasUnexportedEdits);
+
+        await _vm.UndoCommand.ExecuteAsync(null);
+        Assert.Equal((30, 20), (document.ImageWidth, document.ImageHeight));
+    }
+
+    [Fact]
+    public async Task ResizeImage_Cancel_DoesNothing()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        var document = _vm.ActiveDocument!;
+        document.Selection = new WebDeza.Imaging.PixelRect(1, 1, 10, 10);
+        _dialogs.OnImageSizeDialog = dialog =>
+        {
+            dialog.WidthText = "15";
+            return false;
+        };
+
+        await _vm.ResizeImageCommand.ExecuteAsync(null);
+
+        Assert.Equal((30, 20), (document.ImageWidth, document.ImageHeight));
+        Assert.False(document.CanUndo);
+        Assert.Equal(new WebDeza.Imaging.PixelRect(1, 1, 10, 10), document.Selection);
+    }
+
+    [Fact]
+    public async Task ResizeImage_SameSize_DoesNotPushHistory()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        var document = _vm.ActiveDocument!;
+        _dialogs.OnImageSizeDialog = _ => true; // そのまま OK
+
+        await _vm.ResizeImageCommand.ExecuteAsync(null);
+
+        Assert.False(document.CanUndo);
+        Assert.False(document.HasUnexportedEdits);
+        Assert.Equal(0, document.ResetViewRequest);
+    }
+
+    [Fact]
+    public async Task ResizeImage_WithoutKeepAspect_UsesBothSides()
+    {
+        await _vm.LoadAsync(CreateFile("a.fake"));
+        var document = _vm.ActiveDocument!;
+        _dialogs.OnImageSizeDialog = dialog =>
+        {
+            dialog.KeepAspect = false;
+            dialog.WidthText = "60";
+            dialog.HeightText = "7";
+            return true;
+        };
+
+        await _vm.ResizeImageCommand.ExecuteAsync(null);
+
+        Assert.Equal((60, 7), (document.ImageWidth, document.ImageHeight));
     }
 
     // ---------------------------------------------------------------- 回転・反転（V34。9-3）
@@ -370,6 +454,7 @@ public sealed class MainViewModelCommandTests : IDisposable
         Assert.False(_vm.RotateLeftCommand.CanExecute(null));
         Assert.False(_vm.FlipHorizontalCommand.CanExecute(null));
         Assert.False(_vm.FlipVerticalCommand.CanExecute(null));
+        Assert.False(_vm.ResizeImageCommand.CanExecute(null));
         Assert.False(_vm.OpenCommand.CanExecute(null));
         Assert.False(_vm.CloseCommand.CanExecute(null));
         Assert.False(_vm.CloseAllCommand.CanExecute(null));

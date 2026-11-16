@@ -1,0 +1,79 @@
+<!-- 画像サイズのダイアログ（設計書 F-05・4.6）。DataContext は ImageSizeDialogViewModel -->
+<Window x:Class="WebDeza.Views.Dialogs.ImageSizeDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:WebDeza.ViewModels"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=vm:ImageSizeDialogViewModel}"
+        Title="画像サイズ"
+        SizeToContent="WidthAndHeight"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        UseLayoutRounding="True"
+        Loaded="OnLoaded">
+
+    <Grid Margin="16">
+        <Grid.Resources>
+            <Style TargetType="TextBlock">
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Margin" Value="0,0,8,0" />
+            </Style>
+            <!-- 幅・高さ: 打つたびに当てはめる（縦横比を保つなら、もう片方がすぐ決まる） -->
+            <Style x:Key="SizeInputStyle" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                <Setter Property="Width" Value="96" />
+                <Setter Property="Margin" Value="0,3,6,3" />
+                <Setter Property="TextAlignment" Value="Right" />
+                <Setter Property="MaxLength" Value="6" />
+                <Setter Property="InputMethod.IsInputMethodEnabled" Value="False" />
+                <EventSetter Event="GotKeyboardFocus" Handler="OnInputGotKeyboardFocus" />
+            </Style>
+            <!-- ダイアログのボタンは、メインウィンドウと違ってフォーカスを取ってよい（Tab で選べるように） -->
+            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Focusable" Value="True" />
+                <Setter Property="MinWidth" Value="88" />
+                <Setter Property="Margin" Value="8,0,0,0" />
+            </Style>
+        </Grid.Resources>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="今の大きさ" Margin="0,0,16,6" />
+        <TextBlock Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="3" x:Name="CurrentSizeText" Text="{Binding CurrentSizeText}" Margin="0,0,0,6" />
+
+        <TextBlock Grid.Row="1" Grid.Column="0" Text="幅" />
+        <TextBox Grid.Row="1" Grid.Column="1" x:Name="WidthInput" Style="{StaticResource SizeInputStyle}"
+                 Text="{Binding WidthText, UpdateSourceTrigger=PropertyChanged}" ToolTip="幅 (1〜30000 px)" />
+        <TextBlock Grid.Row="1" Grid.Column="2" Text="px" />
+
+        <TextBlock Grid.Row="2" Grid.Column="0" Text="高さ" />
+        <TextBox Grid.Row="2" Grid.Column="1" x:Name="HeightInput" Style="{StaticResource SizeInputStyle}"
+                 Text="{Binding HeightText, UpdateSourceTrigger=PropertyChanged}" ToolTip="高さ (1〜30000 px)" />
+        <TextBlock Grid.Row="2" Grid.Column="2" Text="px" />
+        <CheckBox Grid.Row="2" Grid.Column="3" x:Name="KeepAspectCheck" Content="縦横比を保つ" IsChecked="{Binding KeepAspect}"
+                  VerticalAlignment="Center" Margin="8,0,0,0" />
+
+        <!-- 入力が正しくないときは、その理由を出す。打つたびにダイアログの大きさが変わらないよう、幅を決めて 2 行分の高さを取っておく -->
+        <TextBlock Grid.Row="3" Grid.Column="0" Text="変更後" Margin="0,6,16,0" VerticalAlignment="Top" />
+        <TextBlock Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" x:Name="ResultText" Text="{Binding ResultText}"
+                   Margin="0,6,0,0" Width="300" MinHeight="48" TextWrapping="Wrap" VerticalAlignment="Top" />
+
+        <StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="OkButton" Content="OK" IsDefault="True" IsEnabled="{Binding CanAccept}" Click="OnOkClick" />
+            <Button x:Name="CancelButton" Content="キャンセル" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

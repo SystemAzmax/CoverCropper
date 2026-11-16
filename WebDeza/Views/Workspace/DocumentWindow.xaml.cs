@@ -12,7 +12,7 @@ namespace WebDeza.Views.Workspace;
 /// 置くのは DocumentWorkspace が行う。
 /// </summary>
 /// <remarks>
-/// どこをクリックしても、その画像がアクティブになる。書き出していない編集の印「*」は 9-1 で足す。
+/// どこをクリックしても、その画像がアクティブになる。タイトルバーには、書き出していない編集の印「*」も出す（DocumentViewModel.Title）。
 /// </remarks>
 public partial class DocumentWindow : UserControl
 {
