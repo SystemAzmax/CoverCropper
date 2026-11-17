@@ -49,6 +49,10 @@ public sealed class ExportService
         _createPath = createPath ?? new OutputFileNamer().CreatePath;
     }
 
+    /// <summary>保存できる形式（登録順。Encode ができ、エンコーダーと拡張子がある形式。保存のダイアログの形式の一覧）</summary>
+    public IReadOnlyList<IImageFormat> EncodableFormats
+        => _formats.Encodable.Where(f => f.Encoder is not null && f.Extensions.Count > 0).ToList();
+
     /// <summary>
     /// 保存できる形式を探す（登録されていて、Encode ができる形式）
     /// </summary>

@@ -10,7 +10,7 @@ using WebDeza.ViewModels;
 
 namespace WebDeza.Tests.ViewModels;
 
-/// <summary>保存のダイアログ: 出力先と保存（設計書 F-08・F-10。実装計画書 10-2）</summary>
+/// <summary>保存のダイアログ: 出力先と保存、形式とオプション（設計書 F-08・F-10、V23。実装計画書 10-2・10-3）</summary>
 public sealed class ExportDialogViewModelTests : IDisposable
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 17, 10, 30, 0, TimeSpan.Zero);
@@ -57,7 +57,7 @@ public sealed class ExportDialogViewModelTests : IDisposable
         var dialog = CreateDialog(CreateDocument(), _output);
 
         Assert.Equal("保存: photo.png", dialog.Title);
-        Assert.Equal("JPEG", dialog.FormatText);
+        Assert.Equal("JPEG", dialog.SelectedFormat!.DisplayName);
         Assert.Equal("40 × 30 px", dialog.SizeText); // 今の画像の大きさのまま保存する
         Assert.Equal(_output, dialog.OutputFolder);
         Assert.Equal(_output, dialog.OutputFolderText);
@@ -80,6 +80,140 @@ public sealed class ExportDialogViewModelTests : IDisposable
         Assert.Equal("（未設定）", unset.OutputFolderText);
         Assert.Equal("photo_20261117_103000.jpg", unset.FileName); // 出力先が無くても、名前は出す
         Assert.False(unset.OpenFolderCommand.CanExecute(null));
+    }
+
+    // ---------------------------------------------------------------- 形式とオプション（10-3）
+
+    private static NumericParameterViewModel Quality(ExportDialogViewModel dialog)
+        => (NumericParameterViewModel)dialog.Options.Single(o => o.Key == WicFormats.QualityKey);
+
+    private static IImageFormat Format(ExportDialogViewModel dialog, string id) => dialog.Formats.Single(f => f.Id == id);
+
+    [Fact]
+    public void Formats_AreEncodableOnes_InRegistrationOrder()
+    {
+        var dialog = CreateDialog(CreateDocument(), _output);
+
+        Assert.Equal([WicFormats.JpegId, WicFormats.PngId, WicFormats.BmpId, WicFormats.TiffId], dialog.Formats.Select(f => f.Id));
+        Assert.Equal(["品質"], dialog.Options.Select(o => o.DisplayName)); // JPEG のオプション
+        Assert.Equal(85L, Quality(dialog).Value); // 既定値
+        Assert.False(dialog.HasNoOptions);
+    }
+
+    [Fact]
+    public void SwitchingFormat_KeepsEachFormatsOptions()
+    {
+        // V23: 形式を JPEG → PNG → JPEG → JPEG の品質が保たれている
+        var dialog = CreateDialog(CreateDocument(), _output);
+        Quality(dialog).SliderValue = 60;
+
+        dialog.SelectedFormat = Format(dialog, WicFormats.PngId);
+        Assert.Equal(["インターレース"], dialog.Options.Select(o => o.DisplayName));
+        Assert.Equal("photo_20261117_103000.png", dialog.FileName); // 拡張子が形式に合わせて変わる
+        ((BooleanParameterViewModel)dialog.Options[0]).IsChecked = true;
+
+        dialog.SelectedFormat = Format(dialog, WicFormats.BmpId);
+        Assert.Empty(dialog.Options);
+        Assert.True(dialog.HasNoOptions);
+
+        dialog.SelectedFormat = Format(dialog, WicFormats.JpegId);
+        Assert.Equal(60L, Quality(dialog).Value);
+        Assert.Equal("photo_20261117_103000.jpg", dialog.FileName);
+
+        dialog.SelectedFormat = Format(dialog, WicFormats.PngId);
+        Assert.Equal(true, dialog.Options[0].Value);
+
+        // 保存の設定には、今の形式と、ほかの形式の覚えた値が入る
+        var settings = dialog.Settings;
+        Assert.Equal(WicFormats.PngId, settings.FormatId);
+        Assert.Equal(60, settings.GetOptions(WicFormats.JpegId).Get<int>(WicFormats.QualityKey));
+        Assert.True(settings.GetOptions(WicFormats.PngId).Get<bool>(WicFormats.InterlaceKey));
+    }
+
+    [Fact]
+    public void Settings_ReflectOptionChanges_AndKeepLimitAndBackground()
+    {
+        var initial = new ExportSettings(WicFormats.TiffId,
+            new Dictionary<string, ParameterValues> { [WicFormats.JpegId] = ParameterValues.Empty.With(WicFormats.QualityKey, 40L) },
+            300 * 1024, new RgbColor(1, 2, 3));
+        var dialog = CreateDialog(CreateDocument(), _output, initial);
+        var changed = new List<string?>();
+        dialog.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        Assert.Equal(WicFormats.TiffId, dialog.SelectedFormat!.Id); // 前回の形式で開く
+        var compression = (ChoiceParameterViewModel)dialog.Options[0];
+        Assert.Equal(WicFormats.CompressionLzw, compression.Value);
+        compression.SelectedChoice = compression.Choices.Single(c => c.Value == WicFormats.CompressionZip);
+
+        Assert.Contains(nameof(ExportDialogViewModel.Settings), changed); // 値を変えると、設定が変わったことを知らせる
+        var settings = dialog.Settings;
+        Assert.Equal(WicFormats.CompressionZip, settings.GetOptions(WicFormats.TiffId).Get<string>(WicFormats.CompressionKey));
+        Assert.Equal(40, settings.GetOptions(WicFormats.JpegId).Get<int>(WicFormats.QualityKey)); // 開いていない形式の値も保つ
+        Assert.Equal(300 * 1024, settings.SizeLimitBytes);
+        Assert.Equal(new RgbColor(1, 2, 3), settings.Background);
+
+        dialog.SelectedFormat = Format(dialog, WicFormats.JpegId);
+        Assert.Equal(40L, Quality(dialog).Value); // 覚えていた値で入力欄を作る
+    }
+
+    [Fact]
+    public void UnknownFormatInSettings_FallsBackToFirst()
+    {
+        var dialog = CreateDialog(CreateDocument(), _output,
+            new ExportSettings("unknown", new Dictionary<string, ParameterValues>(), null, new RgbColor(255, 255, 255)));
+
+        Assert.Equal(WicFormats.JpegId, dialog.SelectedFormat!.Id);
+        Assert.Equal(WicFormats.JpegId, dialog.Settings.FormatId);
+    }
+
+    [Fact]
+    public void SelectedFormat_IgnoresNullAndUnknown()
+    {
+        var dialog = CreateDialog(CreateDocument(), _output);
+        var jpeg = dialog.SelectedFormat;
+
+        dialog.SelectedFormat = null;
+        dialog.SelectedFormat = _formats.FindById(WicFormats.GifId); // 読めるが保存できない
+        Assert.Same(jpeg, dialog.SelectedFormat);
+    }
+
+    [Theory]
+    [InlineData(WicFormats.PngId, ".png", true)]   // T06: PNG で保存すると透過が残る
+    [InlineData(WicFormats.TiffId, ".tif", true)]
+    [InlineData(WicFormats.JpegId, ".jpg", false)] // JPEG では背景色で塗られる
+    [InlineData(WicFormats.BmpId, ".bmp", false)]
+    public async Task Save_WithSelectedFormat(string formatId, string extension, bool keepsAlpha)
+    {
+        var pixels = new byte[40 * 30 * 4];
+        for (int i = 0; i < pixels.Length; i += 4) { pixels[i] = 200; pixels[i + 1] = 100; pixels[i + 2] = 50; pixels[i + 3] = 255; }
+        pixels[3] = 0; // 左上だけ透明
+        var image = ImageBuffer.Create(40, 30, pixels);
+        var document = new DocumentViewModel(_source, image, DisplayImage.Create(image), 3, (_, _) => null, _dialogs, new AppLog(LogFile));
+        var dialog = CreateDialog(document, _output);
+        dialog.SelectedFormat = Format(dialog, formatId);
+
+        await dialog.SaveCommand.ExecuteAsync(null);
+
+        Assert.EndsWith(extension, dialog.Result!.Path);
+        var decoded = _formats.Decode(dialog.Result.Path).Image;
+        Assert.Equal(keepsAlpha ? 0 : 255, decoded.Pixels[3]);
+        if (formatId == WicFormats.BmpId) Assert.Equal(new byte[] { 255, 255, 255 }, decoded.Pixels[0..3]); // 背景色（白。JPEG は非可逆なので見ない）
+    }
+
+    [Fact]
+    public async Task Save_UsesOptionValues()
+    {
+        var dialog = CreateDialog(CreateDocument(200, 150), _output);
+        Quality(dialog).SliderValue = 10;
+        await dialog.SaveCommand.ExecuteAsync(null);
+        long low = dialog.Result!.FileSize;
+
+        var high = CreateDialog(CreateDocument(200, 150), _output);
+        Quality(high).SliderValue = 100;
+        await high.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(10, dialog.Result.Encoded.UsedOptions.Get<int>(WicFormats.QualityKey));
+        Assert.True(high.Result!.FileSize > low); // 品質が高いほど大きい
     }
 
     // ---------------------------------------------------------------- 出力先

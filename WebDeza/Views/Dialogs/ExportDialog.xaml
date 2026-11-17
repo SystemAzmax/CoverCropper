@@ -1,6 +1,6 @@
 <!--
     保存のダイアログ（設計書 F-08・F-10・4.6）。DataContext は ExportDialogViewModel。
-    設計書 4.6 の図の右側（設定）にあたる。左のプレビュー（10-8・10-9）、形式とオプション（10-3）、背景色（10-4）、
+    設計書 4.6 の図の右側（設定）にあたる。左のプレビュー（10-8・10-9）、背景色（10-4）、品質の決め方（10-7）、
     保存サイズ（10-6）は、それぞれのステップで足す
 -->
 <Window x:Class="WebDeza.Views.Dialogs.ExportDialog"
@@ -20,6 +20,7 @@
 
     <Grid Margin="16">
         <Grid.Resources>
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
             <Style TargetType="TextBlock">
                 <Setter Property="VerticalAlignment" Value="Center" />
             </Style>
@@ -47,8 +48,17 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Style="{StaticResource LabelStyle}" Text="形式" />
-        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="FormatText" Text="{Binding FormatText}" VerticalAlignment="Top" Margin="0,0,0,10" />
+        <!-- 形式（保存できる形式の一覧）と、形式ごとのオプションの入力欄（記述から自動で作る。ParameterTemplates.xaml） -->
+        <TextBlock Grid.Row="0" Style="{StaticResource LabelStyle}" Text="形式" Margin="0,6,16,10" />
+        <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
+            <ComboBox x:Name="FormatCombo" ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}"
+                      DisplayMemberPath="DisplayName" ToolTip="保存する形式" />
+            <ItemsControl x:Name="OptionsList" ItemsSource="{Binding Options}" Focusable="False" Margin="0,6,0,0"
+                          Grid.IsSharedSizeScope="True" />
+            <TextBlock x:Name="NoOptionsText" Text="この形式にはオプションがありません" Margin="0,4,0,0"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Visibility="{Binding HasNoOptions, Converter={StaticResource BoolToVisibility}}" />
+        </StackPanel>
 
         <TextBlock Grid.Row="1" Style="{StaticResource LabelStyle}" Text="大きさ" />
         <TextBlock Grid.Row="1" Grid.Column="1" x:Name="SizeText" Text="{Binding SizeText}" VerticalAlignment="Top" Margin="0,0,0,10"

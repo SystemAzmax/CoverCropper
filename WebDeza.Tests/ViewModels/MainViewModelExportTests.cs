@@ -8,7 +8,7 @@ using WebDeza.ViewModels;
 
 namespace WebDeza.Tests.ViewModels;
 
-/// <summary>保存のダイアログを開き、保存した後（設計書 F-08・F-10、V32。実装計画書 10-2）</summary>
+/// <summary>保存のダイアログを開き、保存した後（設計書 F-08・F-10、V23・V32。実装計画書 10-2・10-3）</summary>
 public sealed class MainViewModelExportTests : IDisposable
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 17, 10, 30, 0, TimeSpan.Zero);
@@ -127,6 +127,54 @@ public sealed class MainViewModelExportTests : IDisposable
         Assert.True(document.HasUnexportedEdits);
         Assert.Empty(Directory.GetFiles(_output));
         Assert.Empty(Directory.GetFiles(original));
+    }
+
+    [Fact]
+    public async Task FormatAndOptions_AreRecordedOnSave_AndUsedNextTime()
+    {
+        // T13: 各形式とオプションが、次に開いたとき・再起動した後も保たれる
+        _vm.Settings.OutputFolder = _output;
+        await OpenAsync();
+        var dialog = OpenDialog();
+        ((NumericParameterViewModel)dialog.Options[0]).SliderValue = 60; // JPEG の品質
+        dialog.SelectedFormat = dialog.Formats.Single(f => f.Id == WicFormats.PngId);
+        ((BooleanParameterViewModel)dialog.Options[0]).IsChecked = true;
+
+        await dialog.SaveCommand.ExecuteAsync(null);
+
+        var next = OpenDialog(); // 次に開いたとき
+        Assert.Equal(WicFormats.PngId, next.SelectedFormat!.Id);
+        Assert.Equal(true, next.Options[0].Value);
+        next.SelectedFormat = next.Formats.Single(f => f.Id == WicFormats.JpegId);
+        Assert.Equal(60L, next.Options[0].Value);
+
+        var reloaded = new SettingsService(_formats, _settingsPath).Load().Settings.Export; // 再起動した後
+        Assert.Equal(WicFormats.PngId, reloaded.FormatId);
+        Assert.Equal(60, reloaded.FormatOptions[WicFormats.JpegId]!.Get<int>(WicFormats.QualityKey));
+        Assert.True(reloaded.FormatOptions[WicFormats.PngId]!.Get<bool>(WicFormats.InterlaceKey));
+    }
+
+    [Fact]
+    public async Task FormatAndOptions_CancelChangesNothing()
+    {
+        // V23: キャンセル → 設定が変わらない
+        _vm.Settings.OutputFolder = _output;
+        _vm.SaveSettingsQuietly();
+        var before = File.ReadAllText(_settingsPath);
+        await OpenAsync();
+        var dialog = OpenDialog();
+        ((NumericParameterViewModel)dialog.Options[0]).SliderValue = 30;
+        dialog.SelectedFormat = dialog.Formats.Single(f => f.Id == WicFormats.TiffId);
+        // 保存せずに閉じた
+
+        Assert.Equal(WicFormats.JpegId, _vm.Settings.Export.FormatId);
+        // 設定の JPEG の品質は既定値（85）のまま（読み込むときの検証で、形式ごとの既定値が補われている）
+        Assert.Equal(85, _vm.Settings.Export.ToExportSettings().GetOptions(WicFormats.JpegId).Get<int>(WicFormats.QualityKey));
+        Assert.Equal(before, File.ReadAllText(_settingsPath));
+
+        var next = OpenDialog();
+        Assert.Equal(WicFormats.JpegId, next.SelectedFormat!.Id);
+        Assert.Equal(85L, next.Options[0].Value);
     }
 
     [Fact]

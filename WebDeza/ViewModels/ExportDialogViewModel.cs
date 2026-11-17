@@ -2,7 +2,10 @@ using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WebDeza.Core;
+using WebDeza.Imaging;
 using WebDeza.Imaging.Editing;
+using WebDeza.Imaging.Formats;
+using WebDeza.Imaging.Parameters;
 using WebDeza.Services;
 
 namespace WebDeza.ViewModels;
@@ -14,7 +17,9 @@ namespace WebDeza.ViewModels;
 /// <remarks>
 /// 出力先は［変更…］で選び直せ、［開く］でエクスプローラーに出す。変えた出力先と設定は、保存できたときだけ
 /// MainViewModel が設定に記録する（Saved を受けて）。［キャンセル］では何も記録しない（設計書 F-08）。
-/// 形式・オプション・背景色の入力欄は 10-3 以降で足す（今は、渡された保存の設定のまま保存する）。
+/// 形式は保存できる形式の一覧から選び、オプションの入力欄は形式の記述から作る（ParameterViewModel）。
+/// 形式を切り替えても、それぞれの形式のオプションの値は覚えておく。
+/// 品質の決め方（上限）と背景色は、渡された保存の設定のまま使う（入力欄は 10-4・10-7 で足す）。
 /// </remarks>
 public sealed partial class ExportDialogViewModel : ObservableObject
 {
@@ -22,6 +27,15 @@ public sealed partial class ExportDialogViewModel : ObservableObject
     private readonly ExportService _exporter;
     private readonly IDialogService _dialogs;
     private readonly AppLog _log;
+
+    /// <summary>形式の Id → オプション（形式を切り替えたときに、前の形式の値をここに覚える）</summary>
+    private readonly Dictionary<string, ParameterValues> _formatOptions;
+    private readonly string _initialFormatId;
+    private readonly long? _sizeLimitBytes;
+    private readonly RgbColor _background;
+
+    private IImageFormat? _selectedFormat;
+    private IReadOnlyList<ParameterViewModel> _options = [];
 
     /// <param name="document">保存する画像</param>
     /// <param name="outputFolder">出力先（設定のもの。未設定なら null）</param>
@@ -42,8 +56,15 @@ public sealed partial class ExportDialogViewModel : ObservableObject
         _dialogs = dialogs;
         _log = log;
         _outputFolder = string.IsNullOrWhiteSpace(outputFolder) ? null : outputFolder;
-        Settings = settings;
-        RefreshFileName();
+
+        _formatOptions = new Dictionary<string, ParameterValues>(settings.FormatOptions, StringComparer.Ordinal);
+        _initialFormatId = settings.FormatId;
+        _sizeLimitBytes = settings.SizeLimitBytes;
+        _background = settings.Background;
+        Formats = exporter.EncodableFormats;
+        // 設定の形式が無ければ（登録が変わったなど）、一覧の最初の形式にする
+        SelectFormat(Formats.FirstOrDefault(f => string.Equals(f.Id, settings.FormatId, StringComparison.Ordinal))
+            ?? Formats.FirstOrDefault());
     }
 
     /// <summary>保存する画像</summary>
@@ -52,27 +73,68 @@ public sealed partial class ExportDialogViewModel : ObservableObject
     /// <summary>ダイアログのタイトル: 「保存: {ファイル名}」</summary>
     public string Title => $"保存: {_document.FileName}";
 
-    /// <summary>保存の設定（保存できたら、MainViewModel が設定に記録する）</summary>
-    public ExportSettings Settings { get; }
-
-    /// <summary>保存する大きさ（今の画像の大きさのまま保存する。設計書 F-08）</summary>
-    public string SizeText => $"{_document.ImageWidth} × {_document.ImageHeight} px";
-
-    /// <summary>保存する形式の名前（形式の選択は 10-3 で足す）</summary>
-    public string FormatText
+    /// <summary>
+    /// 今の入力から作った保存の設定（保存できたら、MainViewModel が設定に記録する）。
+    /// FormatOptions には、今の形式の値と、切り替える前に覚えたほかの形式の値が入る
+    /// </summary>
+    public ExportSettings Settings
     {
         get
         {
-            try
-            {
-                return _exporter.GetEncodableFormat(Settings.FormatId).DisplayName;
-            }
-            catch (NotSupportedException)
-            {
-                return Settings.FormatId;
-            }
+            var options = new Dictionary<string, ParameterValues>(_formatOptions, StringComparer.Ordinal);
+            if (_selectedFormat is { } format) options[format.Id] = ParameterViewModel.ToValues(_options);
+            return new ExportSettings(_selectedFormat?.Id ?? _initialFormatId, options, _sizeLimitBytes, _background);
         }
     }
+
+    // ---------------------------------------------------------------- 形式とオプション（設計書 F-08）
+
+    /// <summary>保存できる形式（登録順。標準は JPEG / PNG / BMP / TIFF）</summary>
+    public IReadOnlyList<IImageFormat> Formats { get; }
+
+    /// <summary>
+    /// 選んでいる形式。変えると、今の形式のオプションの値を覚えてから、その形式の入力欄を（覚えている値で）作る。
+    /// ファイル名の拡張子も変わる
+    /// </summary>
+    public IImageFormat? SelectedFormat
+    {
+        get => _selectedFormat;
+        set
+        {
+            if (value is null || ReferenceEquals(value, _selectedFormat) || !Formats.Contains(value)) return;
+            SelectFormat(value);
+        }
+    }
+
+    /// <summary>選んでいる形式のオプションの入力欄（画面は ParameterTemplates.xaml が作る）</summary>
+    public IReadOnlyList<ParameterViewModel> Options => _options;
+
+    /// <summary>選んでいる形式にオプションが無いか（BMP など。「オプションはありません」を出す）</summary>
+    public bool HasNoOptions => _selectedFormat is not null && _options.Count == 0;
+
+    private void SelectFormat(IImageFormat? format)
+    {
+        if (_selectedFormat is { } previous) _formatOptions[previous.Id] = ParameterViewModel.ToValues(_options);
+        foreach (var option in _options) option.ValueChanged -= OnOptionValueChanged;
+
+        _selectedFormat = format;
+        _options = format?.Encoder is { } encoder
+            ? ParameterViewModel.CreateAll(encoder.Options, _formatOptions.GetValueOrDefault(format.Id))
+            : [];
+        foreach (var option in _options) option.ValueChanged += OnOptionValueChanged;
+
+        OnPropertyChanged(nameof(SelectedFormat));
+        OnPropertyChanged(nameof(Options));
+        OnPropertyChanged(nameof(HasNoOptions));
+        OnPropertyChanged(nameof(Settings));
+        SaveCommand.NotifyCanExecuteChanged();
+        RefreshFileName();
+    }
+
+    private void OnOptionValueChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(Settings));
+
+    /// <summary>保存する大きさ（今の画像の大きさのまま保存する。設計書 F-08）</summary>
+    public string SizeText => $"{_document.ImageWidth} × {_document.ImageHeight} px";
 
     /// <summary>出力先のフォルダ（未設定なら null）</summary>
     [ObservableProperty]
@@ -114,7 +176,9 @@ public sealed partial class ExportDialogViewModel : ObservableObject
     {
         try
         {
-            FileName = _exporter.CreateOutputFileName(OutputFolder, _document.Path, Settings.FormatId);
+            FileName = _selectedFormat is { } format
+                ? _exporter.CreateOutputFileName(OutputFolder, _document.Path, format.Id)
+                : "";
         }
         catch (Exception ex) when (ex is NotSupportedException or IOException or UnauthorizedAccessException or ArgumentException)
         {
@@ -171,7 +235,7 @@ public sealed partial class ExportDialogViewModel : ObservableObject
 
     // ---------------------------------------------------------------- 保存（設計書 F-10）
 
-    private bool CanSave() => !IsSaving;
+    private bool CanSave() => !IsSaving && _selectedFormat is not null;
 
     /// <summary>
     /// ［保存］: 今の画像を保存の設定で出力先に保存する（バックグラウンド）。保存できたら、その画像の
