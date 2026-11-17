@@ -219,9 +219,17 @@ internal sealed class FakeEncoderFormat : IImageFormat, IImageEncoder
     /// <summary>エンコードを呼ばれたときの（画像, オプション）</summary>
     public List<(ImageBuffer Image, ParameterValues Options)> Calls { get; } = new();
 
+    /// <summary>エンコードの最初に呼ぶ処理（計算中の状態を確かめるために、止めておくのに使う）</summary>
+    public Action? OnEncode { get; set; }
+
+    /// <summary>エンコードしたときに投げる例外（null なら投げない）</summary>
+    public Func<Exception>? Throw { get; set; }
+
     public void Encode(ImageBuffer image, ParameterValues options, Stream output, CancellationToken cancellationToken)
     {
-        Calls.Add((image, options));
+        lock (Calls) Calls.Add((image, options));
+        OnEncode?.Invoke();
+        if (Throw is not null) throw Throw();
         var text = $"FAKE {image.Width}x{image.Height} q={options.Get<int>(QualityKey)}";
         var bytes = System.Text.Encoding.ASCII.GetBytes(text);
         output.Write(bytes);
