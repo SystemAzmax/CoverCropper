@@ -874,18 +874,23 @@ public sealed partial class MainViewModel : ObservableObject
         if (!CanExport) return;
         var dialog = CreateExportDialog(ActiveDocument!);
         _dialogs.ShowExportDialog(dialog);
-        RememberExportDialogSize(dialog);
+        RememberExportDialogView(dialog);
     }
 
     /// <summary>
-    /// 保存のダイアログの大きさを覚える（［キャンセル］で閉じたときも。ウィンドウの見た目の状態で、保存の設定ではないため）。
-    /// 変わっていなければ、設定ファイルを書かない
+    /// 保存のダイアログの大きさと、プレビューの比較のしかたを覚える（［キャンセル］で閉じたときも。
+    /// 画面の見た目の状態で、保存の設定ではないため）。変わっていなければ、設定ファイルを書かない
     /// </summary>
-    private void RememberExportDialogSize(ExportDialogViewModel dialog)
+    private void RememberExportDialogView(ExportDialogViewModel dialog)
     {
-        if (dialog.DialogWidth == Settings.ExportDialogWidth && dialog.DialogHeight == Settings.ExportDialogHeight) return;
+        if (dialog.DialogWidth == Settings.ExportDialogWidth && dialog.DialogHeight == Settings.ExportDialogHeight
+            && dialog.IsSideBySide == Settings.ExportPreviewSideBySide)
+        {
+            return;
+        }
         Settings.ExportDialogWidth = dialog.DialogWidth;
         Settings.ExportDialogHeight = dialog.DialogHeight;
+        Settings.ExportPreviewSideBySide = dialog.IsSideBySide;
         SaveSettingsQuietly();
     }
 
@@ -897,6 +902,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             DialogWidth = Settings.ExportDialogWidth,
             DialogHeight = Settings.ExportDialogHeight,
+            IsSideBySide = Settings.ExportPreviewSideBySide,
         };
         dialog.Saved += OnExported;
         return dialog;

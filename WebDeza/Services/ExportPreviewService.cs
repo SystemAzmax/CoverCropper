@@ -30,6 +30,11 @@ public sealed record ExportPreviewResult(
     /// </summary>
     public BitmapSource? DecodedBitmap { get; init; }
 
+    /// <summary>
+    /// 圧縮前（保存する画像）を描画用にしたもの（Freeze 済み。「並べて比較」の左に出す）。保存する画像を使い回すときは、これも使い回す
+    /// </summary>
+    public BitmapSource? RenderedBitmap { get; init; }
+
     /// <summary>保存したときのファイルのバイト数（保存するときはこのバイト列をそのまま書くので一致する）</summary>
     public long FileSize => Encoded.Bytes.LongLength;
 
@@ -59,7 +64,7 @@ public sealed class ExportPreviewService
     private readonly Lock _cacheLock = new();
 
     /// <summary>覚えている保存する画像と、その条件</summary>
-    private (ImageBuffer Source, RgbColor Background, bool KeepsAlpha, ImageBuffer Rendered)? _rendered;
+    private (ImageBuffer Source, RgbColor Background, bool KeepsAlpha, ImageBuffer Rendered, BitmapSource RenderedBitmap)? _rendered;
 
     private CancellationTokenSource? _cancellation;
     private long _version;
@@ -159,7 +164,7 @@ public sealed class ExportPreviewService
             throw new UnsupportedImageFormatException($"保存できない形式です: {settings.FormatId}", settings.FormatId, null);
 
         bool keepsAlpha = format.Capabilities.HasFlag(FormatCapabilities.Alpha);
-        var rendered = GetRendered(image, settings, keepsAlpha, token);
+        var (rendered, renderedBitmap) = GetRendered(image, settings, keepsAlpha, token);
 
         Interlocked.Increment(ref _encodeCount);
         var encoded = _encoder.Encode(rendered, settings, token);
@@ -171,25 +176,32 @@ public sealed class ExportPreviewService
         return new ExportPreviewResult(encoded, rendered.Width, rendered.Height, rendered, decoded, image, settings)
         {
             DecodedBitmap = decodedBitmap,
+            RenderedBitmap = renderedBitmap,
         };
     }
 
-    /// <summary>保存する画像: 条件（元の画像・背景色・透過を保てるか）が前回と同じなら使い回す</summary>
-    private ImageBuffer GetRendered(ImageBuffer image, ExportSettings settings, bool keepsAlpha, CancellationToken token)
+    /// <summary>
+    /// 保存する画像と、その描画用のもの: 条件（元の画像・背景色・透過を保てるか）が前回と同じなら使い回す
+    /// （品質のスライダーを動かしている間に、大きな画像の描画用データを作り直さないように）
+    /// </summary>
+    private (ImageBuffer Rendered, BitmapSource RenderedBitmap) GetRendered(ImageBuffer image, ExportSettings settings,
+        bool keepsAlpha, CancellationToken token)
     {
         lock (_cacheLock)
         {
             if (_rendered is { } cached && ReferenceEquals(cached.Source, image)
                 && cached.Background == settings.Background && cached.KeepsAlpha == keepsAlpha)
             {
-                return cached.Rendered;
+                return (cached.Rendered, cached.RenderedBitmap);
             }
         }
 
         Interlocked.Increment(ref _renderCount);
         var rendered = ExportRenderer.Render(image, settings, keepsAlpha, token);
-        lock (_cacheLock) _rendered = (image, settings.Background, keepsAlpha, rendered);
-        return rendered;
+        token.ThrowIfCancellationRequested();
+        var bitmap = BitmapSourceConverter.ToBitmapSource(rendered);
+        lock (_cacheLock) _rendered = (image, settings.Background, keepsAlpha, rendered, bitmap);
+        return (rendered, bitmap);
     }
 
     /// <summary>エンコードした中身を、同じ形式のデコーダーで読み直す。デコーダーが無い・読めないときは null（M27）</summary>

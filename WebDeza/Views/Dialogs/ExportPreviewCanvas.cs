@@ -22,15 +22,35 @@ public sealed class PreviewViewport
     /// <summary>まだ最初の 100% の位置を決めていないか</summary>
     public bool IsInitial { get; private set; } = true;
 
+    /// <summary>Zoomed を計算したときのキャンバスの大きさ（DIP）</summary>
+    public Size Area { get; private set; }
+
     /// <summary>倍率か位置が変わった（共有しているキャンバスが描き直す）</summary>
     public event EventHandler? Changed;
 
-    /// <summary>倍率と位置を変える（null なら全体表示）</summary>
-    public void Set(ViewTransform? view)
+    /// <summary>倍率と位置を変える（null なら全体表示）。area はそれを計算したキャンバスの大きさ</summary>
+    public void Set(ViewTransform? view, Size area)
     {
         IsInitial = false;
         Zoomed = view;
+        Area = area;
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// キャンバスの大きさが newArea になった: ズーム中なら、倍率と表示の中心を保つ（設計書 F-03）。
+    /// 共有しているキャンバスが同じ大きさで続けて呼んでも、計算は 1 回だけ（既に newArea で計算してあれば何もしない）。
+    /// 大きさが 0 のとき（隠したキャンバス）は何もしない
+    /// </summary>
+    public void Resize(Size newArea, int imageWidth, int imageHeight)
+    {
+        if (newArea.Width <= 0 || newArea.Height <= 0 || newArea == Area) return;
+        if (IsInitial || Zoomed is not { } zoomed || Area.Width <= 0 || Area.Height <= 0)
+        {
+            Area = newArea;
+            return;
+        }
+        Set(zoomed.Resized(Area, newArea).ClampPan(newArea, imageWidth, imageHeight), newArea);
     }
 
     /// <summary>最初の状態（100% で中央）に戻す（画像の大きさが変わったとき）</summary>
@@ -59,6 +79,9 @@ public sealed class ExportPreviewCanvas : FrameworkElement
     public static readonly DependencyProperty ViewportProperty = DependencyProperty.Register(
         nameof(Viewport), typeof(PreviewViewport), typeof(ExportPreviewCanvas),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender, OnViewportChanged));
+
+    public static readonly DependencyProperty OwnsViewportProperty = DependencyProperty.Register(
+        nameof(OwnsViewport), typeof(bool), typeof(ExportPreviewCanvas), new FrameworkPropertyMetadata(true));
 
     private static readonly DependencyPropertyKey ZoomTextPropertyKey = DependencyProperty.RegisterReadOnly(
         nameof(ZoomText), typeof(string), typeof(ExportPreviewCanvas), new PropertyMetadata(""));
@@ -97,6 +120,17 @@ public sealed class ExportPreviewCanvas : FrameworkElement
     {
         get => (PreviewViewport)GetValue(ViewportProperty);
         set => SetValue(ViewportProperty, value);
+    }
+
+    /// <summary>
+    /// 表示（Viewport）の大きさの変化と最初の 100% の位置を、このキャンバスが決めるか（既定は true）。
+    /// 表示を共有するキャンバスは幅がレイアウトの丸めで 1 DIP 違うことがあるので、決めるのは 1 つだけにする
+    /// （「並べて比較」では圧縮後のキャンバス。圧縮前は false にして、共有した表示に従う）
+    /// </summary>
+    public bool OwnsViewport
+    {
+        get => (bool)GetValue(OwnsViewportProperty);
+        set => SetValue(OwnsViewportProperty, value);
     }
 
     /// <summary>表示倍率の文字（例: 「100%」。画像が無ければ空）</summary>
@@ -164,8 +198,9 @@ public sealed class ExportPreviewCanvas : FrameworkElement
         var viewport = Viewport;
         if (viewport.IsInitial)
         {
-            if (RenderSize.Width > 0 && RenderSize.Height > 0 && Image is not null) viewport.Set(ActualSizeView());
-            else return FitView();
+            if (RenderSize.Width <= 0 || RenderSize.Height <= 0 || Image is null) return FitView();
+            if (!OwnsViewport) return ActualSizeView(); // 決めるのは表示を持つキャンバス（描いたら知らせが来る）
+            viewport.Set(ActualSizeView(), RenderSize);
         }
         return viewport.Zoomed ?? FitView();
     }
@@ -183,7 +218,7 @@ public sealed class ExportPreviewCanvas : FrameworkElement
                 ZoomAt(ViewCenter, 1 / ViewTransform.ZoomStep);
                 break;
             case ZoomAction.Fit:
-                Viewport.Set(null);
+                Viewport.Set(null, RenderSize);
                 break;
             case ZoomAction.ActualSize:
                 ZoomAt(ViewCenter, 1 / DpiScale / CurrentView().Scale);
@@ -198,7 +233,7 @@ public sealed class ExportPreviewCanvas : FrameworkElement
         var (min, max) = ViewTransform.ScaleRange(FitView().Scale, DpiScale);
         var view = CurrentView().ZoomAt(viewPoint, factor, min, max).ClampPan(RenderSize, ImageWidth, ImageHeight);
         if (_pan is { } pan) _pan = (Mouse.GetPosition(this), view, pan.Button);
-        Viewport.Set(view);
+        Viewport.Set(view, RenderSize);
     }
 
     protected override void OnMouseWheel(MouseWheelEventArgs e)
@@ -230,7 +265,7 @@ public sealed class ExportPreviewCanvas : FrameworkElement
         base.OnMouseMove(e);
         if (_pan is not { } pan) return;
         e.Handled = true;
-        Viewport.Set(pan.View.Pan(e.GetPosition(this) - pan.Start).ClampPan(RenderSize, ImageWidth, ImageHeight));
+        Viewport.Set(pan.View.Pan(e.GetPosition(this) - pan.Start).ClampPan(RenderSize, ImageWidth, ImageHeight), RenderSize);
     }
 
     protected override void OnMouseUp(MouseButtonEventArgs e)
@@ -253,13 +288,9 @@ public sealed class ExportPreviewCanvas : FrameworkElement
     protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
     {
         base.OnRenderSizeChanged(sizeInfo);
-        // ズーム中は、倍率と表示の中心を保つ（全体表示のときは、描くときに全体表示し直す）
-        if (Viewport is { IsInitial: false, Zoomed: { } zoomed } viewport && Image is not null
-            && sizeInfo.PreviousSize.Width > 0 && sizeInfo.PreviousSize.Height > 0)
-        {
-            viewport.Set(zoomed.Resized(sizeInfo.PreviousSize, sizeInfo.NewSize)
-                .ClampPan(sizeInfo.NewSize, ImageWidth, ImageHeight));
-        }
+        // ズーム中は、倍率と表示の中心を保つ（全体表示のときは、描くときに全体表示し直す）。
+        // 表示を共有しているキャンバスが同じ大きさで続けて呼んでも、計算は 1 回だけ（PreviewViewport.Resize）
+        if (Image is not null && OwnsViewport) Viewport?.Resize(sizeInfo.NewSize, ImageWidth, ImageHeight);
         InvalidateVisual();
     }
 

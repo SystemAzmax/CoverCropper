@@ -1,8 +1,8 @@
 <!--
     保存のダイアログ（設計書 F-08・F-10・4.6）。DataContext は ExportDialogViewModel。
-    設計書 4.6 の図のとおり、左にプレビュー（圧縮後の画像と見出し。ズーム・パンができる）、右に設定と保存サイズ、
-    下に［保存］［キャンセル］。大きさを変えられ、大きさは覚えておく（設定の ExportDialogWidth / Height）。
-    圧縮前と並べて比較する形は 10-9 で足す
+    設計書 4.6 の図のとおり、左にプレビュー（並べて比較 / 結果のみ。ズーム・パンができる）、右に設定と保存サイズ、
+    下に［保存］［キャンセル］。大きさを変えられ、大きさと比較のしかたは覚えておく（設定の ExportDialogWidth / Height・
+    ExportPreviewSideBySide）
 -->
 <Window x:Class="WebDeza.Views.Dialogs.ExportDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -47,43 +47,73 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- プレビュー（設計書 F-09）: 上にズームのボタン・倍率・見出し、その下に圧縮後の画像（保存するファイルを読み直したもの） -->
+        <!--
+            プレビュー（設計書 F-09）: 上に比較のしかたとズームのボタン・倍率。その下に、左に圧縮前（保存する画像。背景色で塗った後）、
+            右に圧縮後（保存するファイルを読み直したもの）。2 つのキャンバスは表示（倍率と位置）を共有し、ズーム・パンが連動する。
+            「結果のみ」のときは圧縮後だけを広げて出す（左の列の幅は、ExportDialog.xaml.cs の UpdatePreviewLayout で切り替える）
+        -->
         <DockPanel Grid.Column="0" Margin="0,0,16,0">
-            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6" LastChildFill="True">
-                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
-                    <StackPanel.Resources>
-                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                            <Setter Property="Focusable" Value="False" />
-                            <Setter Property="MinWidth" Value="0" />
-                            <Setter Property="Padding" Value="10,3" />
-                            <Setter Property="Margin" Value="0,0,4,0" />
-                        </Style>
-                    </StackPanel.Resources>
-                    <Button x:Name="PreviewFitButton" Content="全体" Click="OnPreviewFitClick" ToolTip="全体表示" />
-                    <Button x:Name="PreviewActualSizeButton" Content="100%" Click="OnPreviewActualSizeClick" ToolTip="100%" />
-                    <Button x:Name="PreviewZoomOutButton" Content="－" Click="OnPreviewZoomOutClick" ToolTip="縮小" />
-                    <Button x:Name="PreviewZoomInButton" Content="＋" Click="OnPreviewZoomInClick" ToolTip="拡大" />
-                    <TextBlock x:Name="PreviewZoomText" Text="{Binding ZoomText, ElementName=PreviewCanvas}" MinWidth="48"
-                               Margin="6,0,0,0" />
-                </StackPanel>
-                <!-- 見出し: 圧縮後（形式・使った品質・サイズ） -->
-                <TextBlock x:Name="PreviewHeadlineText" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis" Margin="12,0,0,0">
-                    <Run Text="圧縮後" FontWeight="SemiBold" /><Run Text="  " /><Run Text="{Binding PreviewHeadline, Mode=OneWay}" />
-                </TextBlock>
-            </DockPanel>
-            <Border Background="{StaticResource CanvasBackgroundBrush}">
-                <Grid>
-                    <local:ExportPreviewCanvas x:Name="PreviewCanvas" Image="{Binding PreviewImage}"
-                                               CheckerLightColor="{StaticResource CheckerLightColor}"
-                                               CheckerDarkColor="{StaticResource CheckerDarkColor}"
-                                               ToolTip="ホイールでズーム、ドラッグで移動" />
-                    <!-- M27: 読み直せない形式（サイズは出す） -->
-                    <TextBlock x:Name="PreviewMessageText" Text="{Binding PreviewMessage}" TextWrapping="Wrap" TextAlignment="Center"
-                               Foreground="{StaticResource CanvasPlaceholderBrush}" Margin="24" HorizontalAlignment="Center"
-                               IsHitTestVisible="False"
-                               Visibility="{Binding HasPreviewMessage, Converter={StaticResource BoolToVisibility}}" />
-                </Grid>
-            </Border>
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
+                <StackPanel.Resources>
+                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                        <Setter Property="Focusable" Value="False" />
+                        <Setter Property="MinWidth" Value="0" />
+                        <Setter Property="Padding" Value="10,3" />
+                        <Setter Property="Margin" Value="0,0,4,0" />
+                    </Style>
+                </StackPanel.Resources>
+                <RadioButton x:Name="SideBySideRadio" Content="並べて比較" IsChecked="{Binding IsSideBySide}" GroupName="PreviewMode"
+                             VerticalAlignment="Center" ToolTip="左に圧縮前、右に圧縮後" />
+                <RadioButton x:Name="ResultOnlyRadio" Content="結果のみ" IsChecked="{Binding IsResultOnly}" GroupName="PreviewMode"
+                             VerticalAlignment="Center" Margin="4,0,16,0" ToolTip="圧縮後だけを大きく出す" />
+                <Button x:Name="PreviewFitButton" Content="全体" Click="OnPreviewFitClick" ToolTip="全体表示" />
+                <Button x:Name="PreviewActualSizeButton" Content="100%" Click="OnPreviewActualSizeClick" ToolTip="100%" />
+                <Button x:Name="PreviewZoomOutButton" Content="－" Click="OnPreviewZoomOutClick" ToolTip="縮小" />
+                <Button x:Name="PreviewZoomInButton" Content="＋" Click="OnPreviewZoomInClick" ToolTip="拡大" />
+                <TextBlock x:Name="PreviewZoomText" Text="{Binding ZoomText, ElementName=PreviewCanvas}" MinWidth="48"
+                           Margin="6,0,0,0" />
+            </StackPanel>
+            <Grid x:Name="PreviewArea">
+                <!-- 左右の幅をそろえる（表示を共有するので、幅が違うと左右で位置がずれる）。間は独立した列にする -->
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="RenderedColumn" Width="*" />
+                    <ColumnDefinition x:Name="PreviewGapColumn" Width="8" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 圧縮前（並べて比較のときだけ） -->
+                <DockPanel Grid.Column="0" x:Name="RenderedPane"
+                           Visibility="{Binding IsSideBySide, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock DockPanel.Dock="Top" Text="圧縮前" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <Border Background="{StaticResource CanvasBackgroundBrush}">
+                        <!-- 表示は圧縮後のキャンバスのものを共有する（大きさの変化と最初の位置は、圧縮後のキャンバスが決める） -->
+                        <local:ExportPreviewCanvas x:Name="RenderedCanvas" Image="{Binding RenderedImage}" OwnsViewport="False"
+                                                   CheckerLightColor="{StaticResource CheckerLightColor}"
+                                                   CheckerDarkColor="{StaticResource CheckerDarkColor}"
+                                                   ToolTip="ホイールでズーム、ドラッグで移動（圧縮後と連動）" />
+                    </Border>
+                </DockPanel>
+
+                <!-- 圧縮後（見出し: 形式・使った品質・サイズ） -->
+                <DockPanel Grid.Column="2">
+                    <TextBlock DockPanel.Dock="Top" x:Name="PreviewHeadlineText" TextTrimming="CharacterEllipsis" Margin="0,0,0,4">
+                        <Run Text="圧縮後" FontWeight="SemiBold" /><Run Text="  " /><Run Text="{Binding PreviewHeadline, Mode=OneWay}" />
+                    </TextBlock>
+                    <Border Background="{StaticResource CanvasBackgroundBrush}">
+                        <Grid>
+                            <local:ExportPreviewCanvas x:Name="PreviewCanvas" Image="{Binding PreviewImage}"
+                                                       CheckerLightColor="{StaticResource CheckerLightColor}"
+                                                       CheckerDarkColor="{StaticResource CheckerDarkColor}"
+                                                       ToolTip="ホイールでズーム、ドラッグで移動" />
+                            <!-- M27: 読み直せない形式（サイズは出す） -->
+                            <TextBlock x:Name="PreviewMessageText" Text="{Binding PreviewMessage}" TextWrapping="Wrap" TextAlignment="Center"
+                                       Foreground="{StaticResource CanvasPlaceholderBrush}" Margin="24" HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" IsHitTestVisible="False"
+                                       Visibility="{Binding HasPreviewMessage, Converter={StaticResource BoolToVisibility}}" />
+                        </Grid>
+                    </Border>
+                </DockPanel>
+            </Grid>
         </DockPanel>
 
         <!-- 設定（設計書 4.6 の図の右側）。ダイアログが低いときはスクロールする -->

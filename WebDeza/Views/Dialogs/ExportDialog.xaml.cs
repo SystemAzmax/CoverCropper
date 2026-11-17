@@ -23,6 +23,10 @@ public partial class ExportDialog : Window
         viewModel.CloseRequested += OnCloseRequested;
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
         ApplyRememberedSize();
+
+        // 圧縮前と圧縮後のキャンバスは、表示（倍率と位置）を共有して、ズーム・パンを連動させる（設計書 F-09）
+        RenderedCanvas.Viewport = PreviewCanvas.Viewport;
+        UpdatePreviewLayout();
         Closed += (_, _) =>
         {
             viewModel.OnClosed(); // 保存サイズの計算をやめる
@@ -41,6 +45,14 @@ public partial class ExportDialog : Window
             Width = Math.Clamp(width, MinWidth, Math.Max(MinWidth, area.Width));
         if (_vm.DialogHeight is { } height && double.IsFinite(height))
             Height = Math.Clamp(height, MinHeight, Math.Max(MinHeight, area.Height));
+    }
+
+    /// <summary>「並べて比較」なら左右に同じ幅ずつ（間は 8 DIP）、「結果のみ」なら圧縮後だけを広げる</summary>
+    private void UpdatePreviewLayout()
+    {
+        bool side = _vm.IsSideBySide;
+        RenderedColumn.Width = side ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        PreviewGapColumn.Width = new GridLength(side ? 8 : 0);
     }
 
     // ---------------------------------------------------------------- プレビューのズーム（設計書 F-09）
@@ -62,6 +74,8 @@ public partial class ExportDialog : Window
     {
         if (e.PropertyName == nameof(ExportDialogViewModel.IsSaving))
             Mouse.OverrideCursor = _vm.IsSaving ? Cursors.Wait : null;
+        else if (e.PropertyName == nameof(ExportDialogViewModel.IsSideBySide))
+            UpdatePreviewLayout();
     }
 
     /// <summary>保存の処理をしている間は閉じない（Esc・［×］）。閉じるときは、今の大きさを覚える</summary>

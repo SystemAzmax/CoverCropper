@@ -73,6 +73,23 @@ public sealed class ExportPreviewServiceTests
     }
 
     [Fact]
+    public async Task RenderedBitmap_IsReusedWithRenderedImage()
+    {
+        // 圧縮前の描画用データも、保存する画像を使い回すときは使い回す（品質のスライダーで作り直さない）
+        var image = Translucent();
+        var first = await _service.RequestAsync(image, Settings(_fake.Id, 80));
+        var second = await _service.RequestAsync(image, Settings(_fake.Id, 40));
+
+        Assert.NotNull(first!.RenderedBitmap);
+        Assert.True(first.RenderedBitmap.IsFrozen);
+        Assert.Equal((16, 8), (first.RenderedBitmap.PixelWidth, first.RenderedBitmap.PixelHeight));
+        Assert.Same(first.RenderedBitmap, second!.RenderedBitmap);
+
+        var black = await _service.RequestAsync(image, Settings(_fake.Id, 40, new RgbColor(0, 0, 0)));
+        Assert.NotSame(first.RenderedBitmap, black!.RenderedBitmap); // 背景色が変われば作り直す
+    }
+
+    [Fact]
     public async Task ImageOrAlphaSupportChange_RendersAgain()
     {
         var image = Translucent();

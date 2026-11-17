@@ -256,6 +256,26 @@ public sealed class MainViewModelExportTests : IDisposable
     }
 
     [Fact]
+    public async Task CompareMode_IsRemembered_EvenWhenCancelled()
+    {
+        // 追加: 比較のしかたの切り替えと保存（既定は並べて比較）
+        await OpenAsync();
+        Assert.True(OpenDialog().IsSideBySide);
+
+        _dialogs.OnExportDialogShown = d => d.IsResultOnly = true; // 「結果のみ」にして、保存せずに閉じた
+        OpenDialog();
+
+        Assert.False(_vm.Settings.ExportPreviewSideBySide);
+        Assert.False(new SettingsService(_formats, _settingsPath).Load().Settings.ExportPreviewSideBySide);
+        _dialogs.OnExportDialogShown = null;
+        Assert.True(OpenDialog().IsResultOnly); // 次は結果のみで開く
+
+        var before = File.ReadAllText(_settingsPath);
+        OpenDialog(); // 変えずに閉じた → 書かない
+        Assert.Equal(before, File.ReadAllText(_settingsPath));
+    }
+
+    [Fact]
     public async Task HasUnexportedEdits_FollowsSave()
     {
         // V32: 開いた直後 → 編集 → 保存 → 元に戻す → やり直し: false → true → false → true → false

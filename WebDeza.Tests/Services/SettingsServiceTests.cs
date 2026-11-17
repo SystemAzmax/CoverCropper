@@ -202,6 +202,16 @@ public class SettingsServiceTests
         Assert.True(s.WindowMaximized);
     }
 
+    [Theory]
+    [InlineData("{}", true)]                                   // 既定は並べて比較
+    [InlineData("""{ "ExportPreviewSideBySide": false }""", false)]
+    public void Load_ExportPreviewSideBySide(string json, bool expected)
+    {
+        using var temp = new TempFolder();
+
+        Assert.Equal(expected, LoadJson(temp, json).Settings.ExportPreviewSideBySide);
+    }
+
     [Fact]
     public void Load_ExportDialogSize_IsKeptOrDropped()
     {

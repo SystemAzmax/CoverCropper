@@ -354,6 +354,25 @@ public sealed partial class ExportDialogViewModel : ObservableObject
     [ObservableProperty]
     private BitmapSource? _previewImage;
 
+    /// <summary>圧縮前の画像（保存する画像。背景色で塗った後）。「並べて比較」の左に出す。まだ無い・失敗したときは null</summary>
+    [ObservableProperty]
+    private BitmapSource? _renderedImage;
+
+    /// <summary>
+    /// 比較のしかたが「並べて比較」（左に圧縮前、右に圧縮後。ズーム・パンは連動する）か（false は「結果のみ」）。
+    /// 既定は並べて比較。MainViewModel が設定から入れ、ダイアログを閉じたら設定に記録する（設計書 F-09）
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsResultOnly))]
+    private bool _isSideBySide = true;
+
+    /// <summary>比較のしかたが「結果のみ」か（IsSideBySide の逆。ラジオボタンに使う）</summary>
+    public bool IsResultOnly
+    {
+        get => !IsSideBySide;
+        set => IsSideBySide = !value;
+    }
+
     /// <summary>
     /// 圧縮後の見出し: 形式・使った品質・サイズ（例: 「JPEG 品質 72 ／ 198.6 KB」。品質の無い形式は「PNG ／ 1.20 MB」）。
     /// 計算中は「計算中…」、失敗したら「—」
@@ -464,6 +483,7 @@ public sealed partial class ExportDialogViewModel : ObservableObject
             : null;
         PreviewHeadline = FormatPreviewHeadline(_selectedFormat?.DisplayName ?? result.Encoded.FormatId, usedQuality, result.FileSize);
         PreviewImage = result.DecodedBitmap;
+        RenderedImage = result.RenderedBitmap;
         PreviewMessage = result.DecodedBitmap is null ? Messages.M27_CannotDecodeResult : null;
 
         // 上限のときは、探した品質を品質の入力欄に出し、収まらなければ M26 を出す（設計書 F-09）
@@ -488,6 +508,7 @@ public sealed partial class ExportDialogViewModel : ObservableObject
         FileSizeToolTip = null;
         PreviewHeadline = UnknownSizeText;
         PreviewImage = null;
+        RenderedImage = null;
         PreviewMessage = null;
     }
 

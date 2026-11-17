@@ -34,6 +34,9 @@ public sealed class AppSettings
 
     /// <summary>保存のダイアログの高さ（DIP）</summary>
     public double? ExportDialogHeight { get; set; }
+
+    /// <summary>保存のダイアログのプレビューの比較のしかた: true は「並べて比較」（既定）、false は「結果のみ」（設計書 F-09）</summary>
+    public bool ExportPreviewSideBySide { get; set; } = true;
 }
 
 /// <summary>書き出しの設定の保存する形。大きさは持たない（今の画像の大きさのまま書き出す。設計書 F-08）</summary>

@@ -11,7 +11,7 @@ using WebDeza.ViewModels;
 
 namespace WebDeza.Tests.ViewModels;
 
-/// <summary>保存のダイアログの保存サイズの表示とプレビュー（設計書 F-09、V04。実装計画書 10-6・10-8）</summary>
+/// <summary>保存のダイアログの保存サイズの表示とプレビュー（設計書 F-09、V04。実装計画書 10-6・10-8・10-9）</summary>
 public sealed class ExportDialogSizeTests : IDisposable
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 17, 10, 30, 0, TimeSpan.Zero);
@@ -188,6 +188,46 @@ public sealed class ExportDialogSizeTests : IDisposable
     }
 
     [Fact]
+    public async Task Preview_SideBySide_ShowsRenderedImage()
+    {
+        // 並べて比較: 左に圧縮前（保存する画像）、右に圧縮後
+        var dialog = CreateDialog(CreateDocument(), WicFormats.JpegId);
+        Assert.True(dialog.IsSideBySide); // 既定は並べて比較
+        Assert.False(dialog.IsResultOnly);
+        await dialog.WaitForSizeAsync();
+
+        Assert.NotNull(dialog.RenderedImage);
+        Assert.Same(dialog.SizeResult!.RenderedBitmap, dialog.RenderedImage);
+        Assert.Equal((40, 30), (dialog.RenderedImage.PixelWidth, dialog.RenderedImage.PixelHeight));
+        Assert.NotSame(dialog.PreviewImage, dialog.RenderedImage);
+
+        // 品質だけを変えると、圧縮前はそのまま、圧縮後は作り直す
+        var rendered = dialog.RenderedImage;
+        var decoded = dialog.PreviewImage;
+        Quality(dialog).SliderValue = 10;
+        await dialog.WaitForSizeAsync();
+        Assert.Same(rendered, dialog.RenderedImage);
+        Assert.NotSame(decoded, dialog.PreviewImage);
+    }
+
+    [Fact]
+    public void Preview_ResultOnly_IsTheOppositeOfSideBySide()
+    {
+        var dialog = CreateDialog(CreateDocument(), WicFormats.JpegId);
+        var changed = new List<string?>();
+        dialog.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        dialog.IsResultOnly = true;
+
+        Assert.False(dialog.IsSideBySide);
+        Assert.Contains(nameof(ExportDialogViewModel.IsSideBySide), changed);
+        Assert.Contains(nameof(ExportDialogViewModel.IsResultOnly), changed);
+        dialog.IsSideBySide = true;
+        Assert.False(dialog.IsResultOnly);
+        dialog.OnClosed();
+    }
+
+    [Fact]
     public async Task Preview_FormatWithoutQuality_HasNoQualityInHeadline()
     {
         var dialog = CreateDialog(CreateDocument(), WicFormats.PngId);
@@ -244,6 +284,7 @@ public sealed class ExportDialogSizeTests : IDisposable
 
         Assert.Equal(ExportDialogViewModel.UnknownSizeText, dialog.PreviewHeadline);
         Assert.Null(dialog.PreviewImage);
+        Assert.Null(dialog.RenderedImage);
         Assert.Null(dialog.PreviewMessage);
     }
 
