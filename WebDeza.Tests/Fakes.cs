@@ -149,3 +149,43 @@ internal sealed class FakeFilter : WebDeza.Imaging.Filters.IImageFilter
         return ImageBuffer.Create(source.Width, source.Height, pixels);
     }
 }
+
+/// <summary>
+/// テスト用の保存できる形式。オプションは「品質」（1〜100、既定 85。SizeTuning）。
+/// エンコードすると「FAKE」と画素数・品質を書いたバイト列を作り、渡された画像とオプションを覚える
+/// </summary>
+internal sealed class FakeEncoderFormat : IImageFormat, IImageEncoder
+{
+    public const string QualityKey = "quality";
+
+    public FakeEncoderFormat(string id, bool alpha, params string[] extensions)
+    {
+        Id = id;
+        Extensions = extensions;
+        Capabilities = FormatCapabilities.Encode | (alpha ? FormatCapabilities.Alpha : FormatCapabilities.None);
+    }
+
+    public string Id { get; }
+    public string DisplayName => "Fake " + Id;
+    public IReadOnlyList<string> Extensions { get; }
+    public FormatCapabilities Capabilities { get; }
+    public string? Requirement => null;
+    public IImageDecoder? Decoder => null;
+    public IImageEncoder? Encoder => this;
+
+    public IReadOnlyList<ParameterDescriptor> Options { get; } =
+        [new ParameterDescriptor(QualityKey, "品質", ParameterKind.Integer, 85, Min: 1, Max: 100)];
+
+    public SizeTuning? SizeTuning { get; } = new(QualityKey);
+
+    /// <summary>エンコードを呼ばれたときの（画像, オプション）</summary>
+    public List<(ImageBuffer Image, ParameterValues Options)> Calls { get; } = new();
+
+    public void Encode(ImageBuffer image, ParameterValues options, Stream output, CancellationToken cancellationToken)
+    {
+        Calls.Add((image, options));
+        var text = $"FAKE {image.Width}x{image.Height} q={options.Get<int>(QualityKey)}";
+        var bytes = System.Text.Encoding.ASCII.GetBytes(text);
+        output.Write(bytes);
+    }
+}
