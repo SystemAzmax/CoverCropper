@@ -202,6 +202,19 @@ public class SettingsServiceTests
         Assert.True(s.WindowMaximized);
     }
 
+    [Fact]
+    public void Load_ExportDialogSize_IsKeptOrDropped()
+    {
+        using var temp = new TempFolder();
+
+        var kept = LoadJson(temp, """{ "ExportDialogWidth": 1200, "ExportDialogHeight": 800 }""").Settings;
+        Assert.Equal((1200.0, 800.0), (kept.ExportDialogWidth, kept.ExportDialogHeight));
+
+        var dropped = LoadJson(temp, """{ "ExportDialogWidth": 0, "ExportDialogHeight": -5 }""").Settings;
+        Assert.Null(dropped.ExportDialogWidth);
+        Assert.Null(dropped.ExportDialogHeight);
+    }
+
     // ---------------------------------------------------------------- V18: 保存して読み直す
 
     [Fact]

@@ -1,6 +1,8 @@
 <!--
     保存のダイアログ（設計書 F-08・F-10・4.6）。DataContext は ExportDialogViewModel。
-    設計書 4.6 の図の右側（設定）にあたる。左のプレビュー（10-8・10-9）は、そのステップで足す
+    設計書 4.6 の図のとおり、左にプレビュー（圧縮後の画像と見出し。ズーム・パンができる）、右に設定と保存サイズ、
+    下に［保存］［キャンセル］。大きさを変えられ、大きさは覚えておく（設定の ExportDialogWidth / Height）。
+    圧縮前と並べて比較する形は 10-9 で足す
 -->
 <Window x:Class="WebDeza.Views.Dialogs.ExportDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -8,11 +10,12 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:WebDeza.ViewModels"
+        xmlns:local="clr-namespace:WebDeza.Views.Dialogs"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:ExportDialogViewModel}"
         Title="{Binding Title}"
-        SizeToContent="WidthAndHeight"
-        ResizeMode="NoResize"
+        Width="1100" Height="760" MinWidth="820" MinHeight="560"
+        ResizeMode="CanResizeWithGrip"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         UseLayoutRounding="True">
@@ -36,92 +39,145 @@
             </Style>
         </Grid.Resources>
         <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" MinWidth="320" />
             <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="320" />
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- 形式（保存できる形式の一覧）と、形式ごとのオプションの入力欄（記述から自動で作る。ParameterTemplates.xaml） -->
-        <TextBlock Grid.Row="0" Style="{StaticResource LabelStyle}" Text="形式" Margin="0,6,16,10" />
-        <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
-            <ComboBox x:Name="FormatCombo" ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}"
-                      DisplayMemberPath="DisplayName" ToolTip="保存する形式" />
-            <!-- 品質の決め方（形式がサイズを調整できるときだけ。設計書 F-08・F-09）。上限のときは、品質の入力欄が読み取り専用になり、
-                 探した品質が出る -->
-            <StackPanel x:Name="QualityModeArea" Margin="0,8,0,0"
-                        Visibility="{Binding CanUseSizeLimit, Converter={StaticResource BoolToVisibility}}">
-                <RadioButton x:Name="UseQualityRadio" Content="品質を指定" IsChecked="{Binding UseQuality}" GroupName="QualityMode" />
-                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                    <RadioButton x:Name="UseSizeLimitRadio" Content="上限を指定" IsChecked="{Binding UseSizeLimit}" GroupName="QualityMode"
-                                 VerticalAlignment="Center" />
-                    <TextBox x:Name="SizeLimitInput" Text="{Binding SizeLimitText}" Width="96" MaxLength="9" Margin="8,0,6,0"
-                             TextAlignment="Right" VerticalAlignment="Center" InputMethod.IsInputMethodEnabled="False"
-                             IsEnabled="{Binding UseSizeLimit}" ToolTip="ファイルサイズの上限 (1〜1,000,000 KB)"
-                             KeyDown="OnNumberInputKeyDown" GotKeyboardFocus="OnNumberInputGotKeyboardFocus" />
-                    <TextBlock Text="KB" />
+        <!-- プレビュー（設計書 F-09）: 上にズームのボタン・倍率・見出し、その下に圧縮後の画像（保存するファイルを読み直したもの） -->
+        <DockPanel Grid.Column="0" Margin="0,0,16,0">
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6" LastChildFill="True">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                    <StackPanel.Resources>
+                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                            <Setter Property="Focusable" Value="False" />
+                            <Setter Property="MinWidth" Value="0" />
+                            <Setter Property="Padding" Value="10,3" />
+                            <Setter Property="Margin" Value="0,0,4,0" />
+                        </Style>
+                    </StackPanel.Resources>
+                    <Button x:Name="PreviewFitButton" Content="全体" Click="OnPreviewFitClick" ToolTip="全体表示" />
+                    <Button x:Name="PreviewActualSizeButton" Content="100%" Click="OnPreviewActualSizeClick" ToolTip="100%" />
+                    <Button x:Name="PreviewZoomOutButton" Content="－" Click="OnPreviewZoomOutClick" ToolTip="縮小" />
+                    <Button x:Name="PreviewZoomInButton" Content="＋" Click="OnPreviewZoomInClick" ToolTip="拡大" />
+                    <TextBlock x:Name="PreviewZoomText" Text="{Binding ZoomText, ElementName=PreviewCanvas}" MinWidth="48"
+                               Margin="6,0,0,0" />
                 </StackPanel>
-            </StackPanel>
-            <ItemsControl x:Name="OptionsList" ItemsSource="{Binding Options}" Focusable="False" Margin="0,6,0,0"
-                          Grid.IsSharedSizeScope="True" />
-            <TextBlock x:Name="NoOptionsText" Text="この形式にはオプションがありません" Margin="0,4,0,0"
-                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                       Visibility="{Binding HasNoOptions, Converter={StaticResource BoolToVisibility}}" />
-        </StackPanel>
+                <!-- 見出し: 圧縮後（形式・使った品質・サイズ） -->
+                <TextBlock x:Name="PreviewHeadlineText" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis" Margin="12,0,0,0">
+                    <Run Text="圧縮後" FontWeight="SemiBold" /><Run Text="  " /><Run Text="{Binding PreviewHeadline, Mode=OneWay}" />
+                </TextBlock>
+            </DockPanel>
+            <Border Background="{StaticResource CanvasBackgroundBrush}">
+                <Grid>
+                    <local:ExportPreviewCanvas x:Name="PreviewCanvas" Image="{Binding PreviewImage}"
+                                               CheckerLightColor="{StaticResource CheckerLightColor}"
+                                               CheckerDarkColor="{StaticResource CheckerDarkColor}"
+                                               ToolTip="ホイールでズーム、ドラッグで移動" />
+                    <!-- M27: 読み直せない形式（サイズは出す） -->
+                    <TextBlock x:Name="PreviewMessageText" Text="{Binding PreviewMessage}" TextWrapping="Wrap" TextAlignment="Center"
+                               Foreground="{StaticResource CanvasPlaceholderBrush}" Margin="24" HorizontalAlignment="Center"
+                               IsHitTestVisible="False"
+                               Visibility="{Binding HasPreviewMessage, Converter={StaticResource BoolToVisibility}}" />
+                </Grid>
+            </Border>
+        </DockPanel>
 
-        <TextBlock Grid.Row="1" Style="{StaticResource LabelStyle}" Text="大きさ" />
-        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="SizeText" Text="{Binding SizeText}" VerticalAlignment="Top" Margin="0,0,0,10"
-                   ToolTip="今の画像の大きさのまま保存します（大きさは［画像］→［画像サイズ…］で変えます）" />
+        <!-- 設定（設計書 4.6 の図の右側）。ダイアログが低いときはスクロールする -->
+        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+            <Grid x:Name="SettingsGrid" Margin="0,0,4,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="320" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-        <!-- 背景色（色見本・今の色・#RRGGBB。入力部分は ParameterTemplates.xaml の ColorInputTemplate）。
-             透過を保てない形式を選んでいるときは M24 を出す -->
-        <TextBlock Grid.Row="2" Style="{StaticResource LabelStyle}" Text="背景色" Margin="0,4,16,10" />
-        <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,0,0,10">
-            <ContentControl x:Name="BackgroundInput" Content="{Binding Background}" Focusable="False"
-                            ContentTemplate="{StaticResource ColorInputTemplate}"
-                            ToolTip="透過を保てない形式で保存するとき、透過部分をこの色で塗ります" />
-            <TextBlock x:Name="AlphaNoticeText" Text="{Binding AlphaNotice}" TextWrapping="Wrap" Margin="0,4,0,0"
-                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                       Visibility="{Binding HasAlphaNotice, Converter={StaticResource BoolToVisibility}}" />
-        </StackPanel>
+                <!-- 形式（保存できる形式の一覧）と、形式ごとのオプションの入力欄（記述から自動で作る。ParameterTemplates.xaml） -->
+                <TextBlock Grid.Row="0" Style="{StaticResource LabelStyle}" Text="形式" Margin="0,6,16,10" />
+                <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
+                    <ComboBox x:Name="FormatCombo" ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}"
+                              DisplayMemberPath="DisplayName" ToolTip="保存する形式" />
+                    <!-- 品質の決め方（形式がサイズを調整できるときだけ。設計書 F-08・F-09）。上限のときは、品質の入力欄が読み取り専用になり、
+                         探した品質が出る -->
+                    <StackPanel x:Name="QualityModeArea" Margin="0,8,0,0"
+                                Visibility="{Binding CanUseSizeLimit, Converter={StaticResource BoolToVisibility}}">
+                        <RadioButton x:Name="UseQualityRadio" Content="品質を指定" IsChecked="{Binding UseQuality}" GroupName="QualityMode" />
+                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                            <RadioButton x:Name="UseSizeLimitRadio" Content="上限を指定" IsChecked="{Binding UseSizeLimit}" GroupName="QualityMode"
+                                         VerticalAlignment="Center" />
+                            <TextBox x:Name="SizeLimitInput" Text="{Binding SizeLimitText}" Width="96" MaxLength="9" Margin="8,0,6,0"
+                                     TextAlignment="Right" VerticalAlignment="Center" InputMethod.IsInputMethodEnabled="False"
+                                     IsEnabled="{Binding UseSizeLimit}" ToolTip="ファイルサイズの上限 (1〜1,000,000 KB)"
+                                     KeyDown="OnNumberInputKeyDown" GotKeyboardFocus="OnNumberInputGotKeyboardFocus" />
+                            <TextBlock Text="KB" />
+                        </StackPanel>
+                    </StackPanel>
+                    <ItemsControl x:Name="OptionsList" ItemsSource="{Binding Options}" Focusable="False" Margin="0,6,0,0"
+                                  Grid.IsSharedSizeScope="True" />
+                    <TextBlock x:Name="NoOptionsText" Text="この形式にはオプションがありません" Margin="0,4,0,0"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Visibility="{Binding HasNoOptions, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
 
-        <!-- 保存サイズ（設計書 F-09）: 実際に保存するのと同じ処理で作ったバイト数。ツールチップにバイト数 -->
-        <TextBlock Grid.Row="3" Style="{StaticResource LabelStyle}" Text="保存サイズ" />
-        <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,0,0,10">
-            <TextBlock x:Name="FileSizeText" Text="{Binding FileSizeText}" ToolTip="{Binding FileSizeToolTip}"
-                       FontWeight="SemiBold" VerticalAlignment="Top" />
-            <!-- M26: 品質をいちばん低くしても上限を超える（いちばん低い品質で保存する） -->
-            <TextBlock x:Name="SizeLimitWarningText" Text="{Binding SizeLimitWarning}" TextWrapping="Wrap" Margin="0,4,0,0"
-                       Foreground="{DynamicResource SystemFillColorCautionBrush}"
-                       Visibility="{Binding HasSizeLimitWarning, Converter={StaticResource BoolToVisibility}}" />
-        </StackPanel>
+                <TextBlock Grid.Row="1" Style="{StaticResource LabelStyle}" Text="大きさ" />
+                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="SizeText" Text="{Binding SizeText}" VerticalAlignment="Top" Margin="0,0,0,10"
+                           ToolTip="今の画像の大きさのまま保存します（大きさは［画像］→［画像サイズ…］で変えます）" />
 
-        <!-- 出力先: パスは長いので折り返し、全体をツールチップにも出す -->
-        <TextBlock Grid.Row="4" Style="{StaticResource LabelStyle}" Text="出力先" />
-        <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,0,0,10">
-            <TextBlock x:Name="OutputFolderText" Text="{Binding OutputFolderText}" ToolTip="{Binding OutputFolderText}"
-                       TextWrapping="Wrap" />
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                <Button x:Name="ChangeFolderButton" Content="変更…" Command="{Binding ChangeFolderCommand}" Margin="0"
-                        ToolTip="出力先のフォルダを選ぶ" />
-                <Button x:Name="OpenFolderButton" Content="開く" Command="{Binding OpenFolderCommand}"
-                        ToolTip="出力先のフォルダをエクスプローラーで開く" />
-            </StackPanel>
-        </StackPanel>
+                <!-- 背景色（色見本・今の色・#RRGGBB。入力部分は ParameterTemplates.xaml の ColorInputTemplate）。
+                     透過を保てない形式を選んでいるときは M24 を出す -->
+                <TextBlock Grid.Row="2" Style="{StaticResource LabelStyle}" Text="背景色" Margin="0,4,16,10" />
+                <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,0,0,10">
+                    <ContentControl x:Name="BackgroundInput" Content="{Binding Background}" Focusable="False"
+                                    ContentTemplate="{StaticResource ColorInputTemplate}"
+                                    ToolTip="透過を保てない形式で保存するとき、透過部分をこの色で塗ります" />
+                    <TextBlock x:Name="AlphaNoticeText" Text="{Binding AlphaNotice}" TextWrapping="Wrap" Margin="0,4,0,0"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Visibility="{Binding HasAlphaNotice, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
 
-        <TextBlock Grid.Row="5" Style="{StaticResource LabelStyle}" Text="ファイル名" />
-        <TextBlock Grid.Row="5" Grid.Column="1" x:Name="FileNameText" Text="{Binding FileName}" TextWrapping="Wrap"
-                   VerticalAlignment="Top" Margin="0,0,0,10"
-                   ToolTip="日時の部分は、保存したときの日時になります。同じ名前があれば _2, _3 … を付けます" />
+                <!-- 保存サイズ（設計書 F-09）: 実際に保存するのと同じ処理で作ったバイト数。ツールチップにバイト数 -->
+                <TextBlock Grid.Row="3" Style="{StaticResource LabelStyle}" Text="保存サイズ" />
+                <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,0,0,10">
+                    <TextBlock x:Name="FileSizeText" Text="{Binding FileSizeText}" ToolTip="{Binding FileSizeToolTip}"
+                               FontWeight="SemiBold" VerticalAlignment="Top" />
+                    <!-- M26: 品質をいちばん低くしても上限を超える（いちばん低い品質で保存する） -->
+                    <TextBlock x:Name="SizeLimitWarningText" Text="{Binding SizeLimitWarning}" TextWrapping="Wrap" Margin="0,4,0,0"
+                               Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                               Visibility="{Binding HasSizeLimitWarning, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
 
-        <StackPanel Grid.Row="6" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                <!-- 出力先: パスは長いので折り返し、全体をツールチップにも出す -->
+                <TextBlock Grid.Row="4" Style="{StaticResource LabelStyle}" Text="出力先" />
+                <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,0,0,10">
+                    <TextBlock x:Name="OutputFolderText" Text="{Binding OutputFolderText}" ToolTip="{Binding OutputFolderText}"
+                               TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <Button x:Name="ChangeFolderButton" Content="変更…" Command="{Binding ChangeFolderCommand}" Margin="0"
+                                ToolTip="出力先のフォルダを選ぶ" />
+                        <Button x:Name="OpenFolderButton" Content="開く" Command="{Binding OpenFolderCommand}"
+                                ToolTip="出力先のフォルダをエクスプローラーで開く" />
+                    </StackPanel>
+                </StackPanel>
+
+                <TextBlock Grid.Row="5" Style="{StaticResource LabelStyle}" Text="ファイル名" />
+                <TextBlock Grid.Row="5" Grid.Column="1" x:Name="FileNameText" Text="{Binding FileName}" TextWrapping="Wrap"
+                           VerticalAlignment="Top" Margin="0,0,0,10"
+                           ToolTip="日時の部分は、保存したときの日時になります。同じ名前があれば _2, _3 … を付けます" />
+
+            </Grid>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
             <Button x:Name="SaveButton" Content="保存" IsDefault="True" Command="{Binding SaveCommand}" />
             <Button x:Name="CancelButton" Content="キャンセル" IsCancel="True" IsEnabled="{Binding IsIdle}" />
         </StackPanel>

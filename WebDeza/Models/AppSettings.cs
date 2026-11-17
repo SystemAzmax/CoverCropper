@@ -28,6 +28,12 @@ public sealed class AppSettings
     public double? WindowWidth { get; set; }
     public double? WindowHeight { get; set; }
     public bool WindowMaximized { get; set; }
+
+    /// <summary>保存のダイアログの大きさ（DIP。設計書 F-08「大きさは覚えておく」）。まだ無ければ null</summary>
+    public double? ExportDialogWidth { get; set; }
+
+    /// <summary>保存のダイアログの高さ（DIP）</summary>
+    public double? ExportDialogHeight { get; set; }
 }
 
 /// <summary>書き出しの設定の保存する形。大きさは持たない（今の画像の大きさのまま書き出す。設計書 F-08）</summary>

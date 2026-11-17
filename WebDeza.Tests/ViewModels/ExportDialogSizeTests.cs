@@ -11,7 +11,7 @@ using WebDeza.ViewModels;
 
 namespace WebDeza.Tests.ViewModels;
 
-/// <summary>保存のダイアログの保存サイズの表示（設計書 F-09、V04。実装計画書 10-6）</summary>
+/// <summary>保存のダイアログの保存サイズの表示とプレビュー（設計書 F-09、V04。実装計画書 10-6・10-8）</summary>
 public sealed class ExportDialogSizeTests : IDisposable
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 17, 10, 30, 0, TimeSpan.Zero);
@@ -157,6 +157,94 @@ public sealed class ExportDialogSizeTests : IDisposable
 
         Assert.Equal(shown, dialog.FileSizeText);
         Assert.Equal(before, _fake.Calls.Count); // 閉じた後は計算しない
+    }
+
+    // ---------------------------------------------------------------- プレビュー（10-8）
+
+    [Theory] // 追加: 見出しの文
+    [InlineData("JPEG", 72, 203_366, "JPEG 品質 72 ／ 198.6 KB")]
+    [InlineData("PNG", null, 1_258_291, "PNG ／ 1.20 MB")]
+    [InlineData("BMP", null, 900, "BMP ／ 900 B")]
+    public void FormatPreviewHeadline_ShowsFormatQualityAndSize(string format, int? quality, long bytes, string expected)
+        => Assert.Equal(expected, ExportDialogViewModel.FormatPreviewHeadline(format, quality, bytes));
+
+    [Fact]
+    public async Task Preview_ShowsDecodedImage_AndHeadline()
+    {
+        var dialog = CreateDialog(CreateDocument(), WicFormats.JpegId);
+        Assert.Equal(ExportDialogViewModel.CalculatingText, dialog.PreviewHeadline);
+        Assert.Null(dialog.PreviewImage);
+
+        await dialog.WaitForSizeAsync();
+
+        var result = dialog.SizeResult!;
+        Assert.Equal($"JPEG 品質 85 ／ {FileSizeFormatter.Format(result.FileSize)}", dialog.PreviewHeadline);
+        Assert.NotNull(dialog.PreviewImage);
+        Assert.Equal((40, 30), (dialog.PreviewImage.PixelWidth, dialog.PreviewImage.PixelHeight));
+        Assert.True(dialog.PreviewImage.IsFrozen); // バックグラウンドで作ったもの
+        Assert.Same(result.DecodedBitmap, dialog.PreviewImage);
+        Assert.Null(dialog.PreviewMessage);
+        Assert.False(dialog.HasPreviewMessage);
+    }
+
+    [Fact]
+    public async Task Preview_FormatWithoutQuality_HasNoQualityInHeadline()
+    {
+        var dialog = CreateDialog(CreateDocument(), WicFormats.PngId);
+        await dialog.WaitForSizeAsync();
+
+        Assert.Equal($"PNG ／ {FileSizeFormatter.Format(dialog.SizeResult!.FileSize)}", dialog.PreviewHeadline);
+        Assert.NotNull(dialog.PreviewImage);
+    }
+
+    [Fact]
+    public async Task Preview_UnreadableFormat_ShowsM27()
+    {
+        // 追加: 読み直せない形式は M27（サイズは出す）
+        var dialog = CreateDialog(CreateDocument(), _fake.Id);
+        await dialog.WaitForSizeAsync();
+
+        Assert.Null(dialog.PreviewImage);
+        Assert.Equal(Messages.M27_CannotDecodeResult, dialog.PreviewMessage);
+        Assert.True(dialog.HasPreviewMessage);
+        Assert.Equal("Fake fakejpeg 品質 85 ／ 15 B", dialog.PreviewHeadline);
+        Assert.Equal(ExportDialogViewModel.FormatFileSize(15, 1000), dialog.FileSizeText);
+
+        dialog.SelectedFormat = dialog.Formats.Single(f => f.Id == WicFormats.JpegId); // 読み直せる形式にすると消える
+        await dialog.WaitForSizeAsync();
+        Assert.Null(dialog.PreviewMessage);
+        Assert.NotNull(dialog.PreviewImage);
+    }
+
+    [Fact]
+    public async Task Preview_WhileRecalculating_KeepsPreviousImage()
+    {
+        var dialog = CreateDialog(CreateDocument(), WicFormats.JpegId);
+        await dialog.WaitForSizeAsync();
+        var image = dialog.PreviewImage;
+
+        Quality(dialog).SliderValue = 20;
+
+        Assert.Equal(ExportDialogViewModel.CalculatingText, dialog.PreviewHeadline);
+        Assert.Same(image, dialog.PreviewImage); // ちらつかないよう、新しい結果が出るまで前のものを出す
+        await dialog.WaitForSizeAsync();
+        Assert.NotSame(image, dialog.PreviewImage);
+        Assert.StartsWith("JPEG 品質 20 ／ ", dialog.PreviewHeadline);
+    }
+
+    [Fact]
+    public async Task Preview_Failure_ClearsImage()
+    {
+        var dialog = CreateDialog(CreateDocument(), WicFormats.JpegId);
+        await dialog.WaitForSizeAsync();
+        _fake.Throw = () => new InvalidOperationException("壊れた");
+
+        dialog.SelectedFormat = dialog.Formats.Single(f => f.Id == _fake.Id);
+        await dialog.WaitForSizeAsync();
+
+        Assert.Equal(ExportDialogViewModel.UnknownSizeText, dialog.PreviewHeadline);
+        Assert.Null(dialog.PreviewImage);
+        Assert.Null(dialog.PreviewMessage);
     }
 
     // ---------------------------------------------------------------- V04: 計算したバイト列をそのまま書く

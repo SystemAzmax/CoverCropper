@@ -1,7 +1,9 @@
 using System.IO;
+using System.Windows.Media.Imaging;
 using WebDeza.Imaging;
 using WebDeza.Imaging.Editing;
 using WebDeza.Imaging.Formats;
+using WebDeza.Imaging.Wic;
 
 namespace WebDeza.Services;
 
@@ -22,6 +24,12 @@ public sealed record ExportPreviewResult(
     ImageBuffer Source,
     ExportSettings Settings)
 {
+    /// <summary>
+    /// 圧縮後の画像を描画用にしたもの（Freeze 済みなので、どのスレッドからも使える）。Decoded が無ければ null。
+    /// 大きな画像でも UI のスレッドを止めないよう、計算と同じくバックグラウンドで作る
+    /// </summary>
+    public BitmapSource? DecodedBitmap { get; init; }
+
     /// <summary>保存したときのファイルのバイト数（保存するときはこのバイト列をそのまま書くので一致する）</summary>
     public long FileSize => Encoded.Bytes.LongLength;
 
@@ -158,7 +166,12 @@ public sealed class ExportPreviewService
         token.ThrowIfCancellationRequested();
 
         var decoded = TryDecode(format, encoded.Bytes, token);
-        return new ExportPreviewResult(encoded, rendered.Width, rendered.Height, rendered, decoded, image, settings);
+        token.ThrowIfCancellationRequested();
+        var decodedBitmap = decoded is null ? null : BitmapSourceConverter.ToBitmapSource(decoded);
+        return new ExportPreviewResult(encoded, rendered.Width, rendered.Height, rendered, decoded, image, settings)
+        {
+            DecodedBitmap = decodedBitmap,
+        };
     }
 
     /// <summary>保存する画像: 条件（元の画像・背景色・透過を保てるか）が前回と同じなら使い回す</summary>

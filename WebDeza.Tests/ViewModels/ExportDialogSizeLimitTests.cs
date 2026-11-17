@@ -109,6 +109,7 @@ public sealed class ExportDialogSizeLimitTests : IDisposable
         Assert.InRange(found, 1, 99);                     // 上限に収まる品質を探した
         Assert.True(result.FileSize <= 60 * 1024);
         Assert.Equal((long)found, Quality(dialog).Value);  // 探した品質を入力欄に出す
+        Assert.Equal(ExportDialogViewModel.FormatPreviewHeadline("JPEG", found, result.FileSize), dialog.PreviewHeadline); // 見出しにも
         Assert.Null(dialog.SizeLimitWarning);
         Assert.False(dialog.IsCalculatingSize);            // 探した品質を出しても、計算し直さない
         Assert.Equal(77, dialog.Settings.GetOptions(WicFormats.JpegId).Get<int>(WicFormats.QualityKey)); // 設定は決めた品質のまま

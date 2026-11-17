@@ -125,9 +125,13 @@ internal sealed class FakeDialogs : IDialogService
     /// <summary>出した保存のダイアログ（中で保存するときは、テストが SaveCommand を実行する）</summary>
     public List<ExportDialogViewModel> ExportDialogs { get; } = new();
 
+    /// <summary>保存のダイアログを出したときに行うこと（閉じるときに書き戻す値を入れるなど）</summary>
+    public Action<ExportDialogViewModel>? OnExportDialogShown { get; set; }
+
     public bool ShowExportDialog(ExportDialogViewModel viewModel)
     {
         ExportDialogs.Add(viewModel);
+        OnExportDialogShown?.Invoke(viewModel);
         return false;
     }
 

@@ -104,6 +104,8 @@ public sealed class SettingsService
         settings.WindowTop = FiniteOrNull(settings.WindowTop);
         settings.WindowWidth = PositiveOrNull(settings.WindowWidth);
         settings.WindowHeight = PositiveOrNull(settings.WindowHeight);
+        settings.ExportDialogWidth = PositiveOrNull(settings.ExportDialogWidth);
+        settings.ExportDialogHeight = PositiveOrNull(settings.ExportDialogHeight);
     }
 
     private void ValidateExport(ExportSettingsData export, ISet<string> reported, IList<string> messages)

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WebDeza.Core;
@@ -347,6 +348,47 @@ public sealed partial class ExportDialogViewModel : ObservableObject
     /// <summary>計算できなかったときの表示</summary>
     public const string UnknownSizeText = "—";
 
+    // ---------------------------------------------------------------- プレビュー（設計書 F-09。結果のみ）
+
+    /// <summary>圧縮後の画像（保存するファイルを読み直したもの）。まだ無い・読み直せない・失敗したときは null</summary>
+    [ObservableProperty]
+    private BitmapSource? _previewImage;
+
+    /// <summary>
+    /// 圧縮後の見出し: 形式・使った品質・サイズ（例: 「JPEG 品質 72 ／ 198.6 KB」。品質の無い形式は「PNG ／ 1.20 MB」）。
+    /// 計算中は「計算中…」、失敗したら「—」
+    /// </summary>
+    [ObservableProperty]
+    private string _previewHeadline = CalculatingText;
+
+    /// <summary>プレビューの領域に出す知らせ（M27: 読み直せない形式）。無ければ null</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPreviewMessage))]
+    private string? _previewMessage;
+
+    /// <summary>プレビューの領域に知らせを出すか</summary>
+    public bool HasPreviewMessage => PreviewMessage is not null;
+
+    /// <summary>
+    /// 圧縮後の見出しの文: 「{形式} 品質 {品質} ／ {サイズ}」。品質が無い（サイズを調整できない）形式は「{形式} ／ {サイズ}」
+    /// </summary>
+    public static string FormatPreviewHeadline(string formatName, int? quality, long bytes)
+    {
+        ArgumentNullException.ThrowIfNull(formatName);
+        var size = FileSizeFormatter.Format(bytes);
+        return quality is { } q
+            ? $"{formatName} 品質 {q.ToString(CultureInfo.InvariantCulture)} ／ {size}"
+            : $"{formatName} ／ {size}";
+    }
+
+    // ---------------------------------------------------------------- ダイアログの大きさ（設計書 F-08「大きさは覚えておく」）
+
+    /// <summary>ダイアログの幅（DIP）。MainViewModel が設定から入れ、ダイアログが閉じるときに今の幅を入れる。null なら既定</summary>
+    public double? DialogWidth { get; set; }
+
+    /// <summary>ダイアログの高さ（DIP）</summary>
+    public double? DialogHeight { get; set; }
+
     /// <summary>今の設定での保存サイズの計算結果（まだ無い・計算中・失敗なら null）</summary>
     public ExportPreviewResult? SizeResult { get; private set; }
 
@@ -374,6 +416,7 @@ public sealed partial class ExportDialogViewModel : ObservableObject
         SizeLimitWarning = null;
         IsCalculatingSize = true;
         FileSizeText = CalculatingText;
+        PreviewHeadline = CalculatingText; // 圧縮後の画像は、新しい結果が出るまで前のものを出しておく（ちらつかないように）
         FileSizeToolTip = null;
         if (_sizeScheduled) return;
 
@@ -414,6 +457,15 @@ public sealed partial class ExportDialogViewModel : ObservableObject
         FileSizeText = FormatFileSize(result.FileSize, _document.SourceFileSize);
         FileSizeToolTip = string.Format(CultureInfo.InvariantCulture, "{0:N0} バイト", result.FileSize);
 
+        // 圧縮後の画像と見出し。読み直せない形式は M27（サイズは出す）
+        var tuningKey = _selectedFormat?.Encoder?.SizeTuning?.ParameterKey;
+        int? usedQuality = tuningKey is not null && result.Encoded.UsedOptions.ContainsKey(tuningKey)
+            ? result.Encoded.UsedOptions.Get<int>(tuningKey)
+            : null;
+        PreviewHeadline = FormatPreviewHeadline(_selectedFormat?.DisplayName ?? result.Encoded.FormatId, usedQuality, result.FileSize);
+        PreviewImage = result.DecodedBitmap;
+        PreviewMessage = result.DecodedBitmap is null ? Messages.M27_CannotDecodeResult : null;
+
         // 上限のときは、探した品質を品質の入力欄に出し、収まらなければ M26 を出す（設計書 F-09）
         if (IsSizeLimitActive && TuningParameter is { } tuning && result.Encoded.UsedOptions.ContainsKey(tuning.Key))
         {
@@ -434,6 +486,9 @@ public sealed partial class ExportDialogViewModel : ObservableObject
         IsCalculatingSize = false;
         FileSizeText = UnknownSizeText;
         FileSizeToolTip = null;
+        PreviewHeadline = UnknownSizeText;
+        PreviewImage = null;
+        PreviewMessage = null;
     }
 
     /// <summary>

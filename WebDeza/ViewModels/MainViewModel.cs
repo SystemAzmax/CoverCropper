@@ -874,13 +874,30 @@ public sealed partial class MainViewModel : ObservableObject
         if (!CanExport) return;
         var dialog = CreateExportDialog(ActiveDocument!);
         _dialogs.ShowExportDialog(dialog);
+        RememberExportDialogSize(dialog);
+    }
+
+    /// <summary>
+    /// 保存のダイアログの大きさを覚える（［キャンセル］で閉じたときも。ウィンドウの見た目の状態で、保存の設定ではないため）。
+    /// 変わっていなければ、設定ファイルを書かない
+    /// </summary>
+    private void RememberExportDialogSize(ExportDialogViewModel dialog)
+    {
+        if (dialog.DialogWidth == Settings.ExportDialogWidth && dialog.DialogHeight == Settings.ExportDialogHeight) return;
+        Settings.ExportDialogWidth = dialog.DialogWidth;
+        Settings.ExportDialogHeight = dialog.DialogHeight;
+        SaveSettingsQuietly();
     }
 
     /// <summary>保存のダイアログの ViewModel を作る（保存できたら、OnExported で設定に記録する）</summary>
     private ExportDialogViewModel CreateExportDialog(DocumentViewModel document)
     {
         var dialog = new ExportDialogViewModel(document, Settings.OutputFolder, Settings.Export.ToExportSettings(),
-            _exporter, _dialogs, _log, rememberedSizeLimitKB: Settings.Export.SizeLimitKB);
+            _exporter, _dialogs, _log, rememberedSizeLimitKB: Settings.Export.SizeLimitKB)
+        {
+            DialogWidth = Settings.ExportDialogWidth,
+            DialogHeight = Settings.ExportDialogHeight,
+        };
         dialog.Saved += OnExported;
         return dialog;
     }

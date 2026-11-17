@@ -232,6 +232,30 @@ public sealed class MainViewModelExportTests : IDisposable
     }
 
     [Fact]
+    public async Task DialogSize_IsRemembered_EvenWhenCancelled()
+    {
+        // ダイアログの大きさは覚えておく（設計書 F-08）。ウィンドウの見た目の状態なので、［キャンセル］で閉じても覚える
+        await OpenAsync();
+        var first = OpenDialog();
+        Assert.Null(first.DialogWidth); // まだ無い（既定の大きさで開く）
+        var before = File.Exists(_settingsPath) ? File.ReadAllText(_settingsPath) : null;
+        // FakeDialogs はすぐ戻る（大きさを変えずに閉じた）→ 設定ファイルは書かない
+        Assert.Equal(before, File.Exists(_settingsPath) ? File.ReadAllText(_settingsPath) : null);
+
+        // 大きさを変えて閉じたことにする（ダイアログが閉じるときに書き戻す値）
+        _dialogs.OnExportDialogShown = d => { d.DialogWidth = 1234; d.DialogHeight = 777; };
+        OpenDialog();
+
+        Assert.Equal((1234.0, 777.0), (_vm.Settings.ExportDialogWidth, _vm.Settings.ExportDialogHeight));
+        var reloaded = new SettingsService(_formats, _settingsPath).Load().Settings;
+        Assert.Equal((1234.0, 777.0), (reloaded.ExportDialogWidth, reloaded.ExportDialogHeight));
+
+        _dialogs.OnExportDialogShown = null;
+        var next = OpenDialog(); // 次は覚えた大きさで開く
+        Assert.Equal((1234.0, 777.0), (next.DialogWidth, next.DialogHeight));
+    }
+
+    [Fact]
     public async Task HasUnexportedEdits_FollowsSave()
     {
         // V32: 開いた直後 → 編集 → 保存 → 元に戻す → やり直し: false → true → false → true → false
