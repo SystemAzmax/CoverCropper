@@ -1,6 +1,6 @@
 <!--
     保存のダイアログ（設計書 F-08・F-10・4.6）。DataContext は ExportDialogViewModel。
-    設計書 4.6 の図の右側（設定）にあたる。左のプレビュー（10-8・10-9）、背景色（10-4）、品質の決め方（10-7）、
+    設計書 4.6 の図の右側（設定）にあたる。左のプレビュー（10-8・10-9）、品質の決め方（10-7）、
     保存サイズ（10-6）は、それぞれのステップで足す
 -->
 <Window x:Class="WebDeza.Views.Dialogs.ExportDialog"
@@ -46,6 +46,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- 形式（保存できる形式の一覧）と、形式ごとのオプションの入力欄（記述から自動で作る。ParameterTemplates.xaml） -->
@@ -64,9 +65,21 @@
         <TextBlock Grid.Row="1" Grid.Column="1" x:Name="SizeText" Text="{Binding SizeText}" VerticalAlignment="Top" Margin="0,0,0,10"
                    ToolTip="今の画像の大きさのまま保存します（大きさは［画像］→［画像サイズ…］で変えます）" />
 
-        <!-- 出力先: パスは長いので折り返し、全体をツールチップにも出す -->
-        <TextBlock Grid.Row="2" Style="{StaticResource LabelStyle}" Text="出力先" />
+        <!-- 背景色（色見本・今の色・#RRGGBB。入力部分は ParameterTemplates.xaml の ColorInputTemplate）。
+             透過を保てない形式を選んでいるときは M24 を出す -->
+        <TextBlock Grid.Row="2" Style="{StaticResource LabelStyle}" Text="背景色" Margin="0,4,16,10" />
         <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,0,0,10">
+            <ContentControl x:Name="BackgroundInput" Content="{Binding Background}" Focusable="False"
+                            ContentTemplate="{StaticResource ColorInputTemplate}"
+                            ToolTip="透過を保てない形式で保存するとき、透過部分をこの色で塗ります" />
+            <TextBlock x:Name="AlphaNoticeText" Text="{Binding AlphaNotice}" TextWrapping="Wrap" Margin="0,4,0,0"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Visibility="{Binding HasAlphaNotice, Converter={StaticResource BoolToVisibility}}" />
+        </StackPanel>
+
+        <!-- 出力先: パスは長いので折り返し、全体をツールチップにも出す -->
+        <TextBlock Grid.Row="3" Style="{StaticResource LabelStyle}" Text="出力先" />
+        <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,0,0,10">
             <TextBlock x:Name="OutputFolderText" Text="{Binding OutputFolderText}" ToolTip="{Binding OutputFolderText}"
                        TextWrapping="Wrap" />
             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
@@ -77,12 +90,12 @@
             </StackPanel>
         </StackPanel>
 
-        <TextBlock Grid.Row="3" Style="{StaticResource LabelStyle}" Text="ファイル名" />
-        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="FileNameText" Text="{Binding FileName}" TextWrapping="Wrap"
+        <TextBlock Grid.Row="4" Style="{StaticResource LabelStyle}" Text="ファイル名" />
+        <TextBlock Grid.Row="4" Grid.Column="1" x:Name="FileNameText" Text="{Binding FileName}" TextWrapping="Wrap"
                    VerticalAlignment="Top" Margin="0,0,0,10"
                    ToolTip="日時の部分は、保存したときの日時になります。同じ名前があれば _2, _3 … を付けます" />
 
-        <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+        <StackPanel Grid.Row="5" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
             <Button x:Name="SaveButton" Content="保存" IsDefault="True" Command="{Binding SaveCommand}" />
             <Button x:Name="CancelButton" Content="キャンセル" IsCancel="True" IsEnabled="{Binding IsIdle}" />
         </StackPanel>

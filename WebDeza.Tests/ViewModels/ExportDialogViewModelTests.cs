@@ -10,7 +10,7 @@ using WebDeza.ViewModels;
 
 namespace WebDeza.Tests.ViewModels;
 
-/// <summary>保存のダイアログ: 出力先と保存、形式とオプション（設計書 F-08・F-10、V23。実装計画書 10-2・10-3）</summary>
+/// <summary>保存のダイアログ: 出力先と保存、形式とオプション、背景色（設計書 F-08・F-10、V23。実装計画書 10-2〜10-4）</summary>
 public sealed class ExportDialogViewModelTests : IDisposable
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 17, 10, 30, 0, TimeSpan.Zero);
@@ -214,6 +214,127 @@ public sealed class ExportDialogViewModelTests : IDisposable
 
         Assert.Equal(10, dialog.Result.Encoded.UsedOptions.Get<int>(WicFormats.QualityKey));
         Assert.True(high.Result!.FileSize > low); // 品質が高いほど大きい
+    }
+
+    // ---------------------------------------------------------------- 背景色（10-4）
+
+    /// <summary>左上だけ透明で、ほかは不透明な画像</summary>
+    private DocumentViewModel CreateTransparentDocument()
+    {
+        var pixels = new byte[40 * 30 * 4];
+        for (int i = 0; i < pixels.Length; i += 4) { pixels[i] = 200; pixels[i + 1] = 100; pixels[i + 2] = 50; pixels[i + 3] = 255; }
+        pixels[3] = 0;
+        var image = ImageBuffer.Create(40, 30, pixels);
+        return new DocumentViewModel(_source, image, DisplayImage.Create(image), 3, (_, _) => null, _dialogs, new AppLog(LogFile));
+    }
+
+    [Fact]
+    public void Background_StartsFromSettings()
+    {
+        var dialog = CreateDialog(CreateDocument(), _output,
+            new ExportSettings(WicFormats.JpegId, new Dictionary<string, ParameterValues>(), null, new RgbColor(0x12, 0x34, 0x56)));
+
+        Assert.Equal("#123456", dialog.Background.Text);
+        Assert.Equal("背景色", dialog.Background.DisplayName);
+        Assert.Equal(new RgbColor(0x12, 0x34, 0x56), dialog.Settings.Background);
+        Assert.Equal("#FFFFFF", dialog.Background.DefaultValue); // 既定は白
+    }
+
+    [Fact]
+    public void Background_ChangesSettings()
+    {
+        var dialog = CreateDialog(CreateDocument(), _output);
+        var changed = new List<string?>();
+        dialog.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        dialog.Background.SelectSwatchCommand.Execute("#000000");
+        Assert.Equal(new RgbColor(0, 0, 0), dialog.Settings.Background);
+        Assert.Contains(nameof(ExportDialogViewModel.Settings), changed); // 保存する画像を作り直すきっかけ
+
+        dialog.Background.Text = "#ff8000";
+        Assert.Equal(new RgbColor(0xFF, 0x80, 0x00), dialog.Settings.Background);
+
+        dialog.Background.Text = "red"; // 読めない色は受け付けない
+        Assert.Equal(new RgbColor(0xFF, 0x80, 0x00), dialog.Settings.Background);
+    }
+
+    [Theory]
+    [InlineData(WicFormats.JpegId, "JPEG")]
+    [InlineData(WicFormats.BmpId, "BMP")]
+    public void AlphaNotice_ShownOnlyForFormatsWithoutAlpha(string formatId, string name)
+    {
+        // 追加: 透過を保てない形式のときだけ M24
+        var dialog = CreateDialog(CreateDocument(), _output);
+        var changed = new List<string?>();
+        dialog.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        dialog.SelectedFormat = Format(dialog, WicFormats.PngId);
+        Assert.Null(dialog.AlphaNotice);
+        Assert.False(dialog.HasAlphaNotice);
+        dialog.SelectedFormat = Format(dialog, WicFormats.TiffId);
+        Assert.False(dialog.HasAlphaNotice);
+
+        dialog.SelectedFormat = Format(dialog, formatId);
+        Assert.Equal(Messages.M24_AlphaFlattened(name), dialog.AlphaNotice);
+        Assert.True(dialog.HasAlphaNotice);
+        Assert.Contains(nameof(ExportDialogViewModel.HasAlphaNotice), changed);
+    }
+
+    [Fact]
+    public void AlphaNotice_ShownWhenOpenedWithJpeg()
+    {
+        Assert.Equal(Messages.M24_AlphaFlattened("JPEG"), CreateDialog(CreateDocument(), _output).AlphaNotice);
+    }
+
+    [Theory]
+    [InlineData("#000000", 0, 0, 0)]
+    [InlineData("#FF8000", 0x00, 0x80, 0xFF)] // B・G・R の順
+    public async Task Save_FillsTransparencyWithBackground(string color, byte b, byte g, byte r)
+    {
+        // T06: JPEG（ここでは画素の値が変わらない BMP で確かめる）で保存すると、透過部分が背景色で塗られる
+        var dialog = CreateDialog(CreateTransparentDocument(), _output);
+        dialog.SelectedFormat = Format(dialog, WicFormats.BmpId);
+        dialog.Background.Text = color;
+
+        await dialog.SaveCommand.ExecuteAsync(null);
+
+        var decoded = _formats.Decode(dialog.Result!.Path).Image;
+        Assert.Equal(new byte[] { b, g, r, 255 }, decoded.Pixels[0..4]);
+        Assert.Equal(new byte[] { 200, 100, 50, 255 }, decoded.Pixels[4..8]); // 不透明な所は変わらない
+    }
+
+    [Fact]
+    public async Task Save_ChangingBackground_RebuildsExportImage()
+    {
+        // 追加: 背景色を変えると、保存する画像が作り直される（同じダイアログで、色を変えてもう一度保存する）
+        var document = CreateTransparentDocument();
+        var dialog = CreateDialog(document, _output);
+        dialog.SelectedFormat = Format(dialog, WicFormats.BmpId);
+        dialog.Background.Text = "#000000";
+        await dialog.SaveCommand.ExecuteAsync(null);
+        var first = _formats.Decode(dialog.Result!.Path).Image;
+
+        var again = CreateDialog(document, _output, dialog.Settings);
+        Assert.Equal("#000000", again.Background.Text);
+        again.Background.Text = "#808080";
+        await again.SaveCommand.ExecuteAsync(null);
+        var second = _formats.Decode(again.Result!.Path).Image;
+
+        Assert.Equal(new byte[] { 0, 0, 0 }, first.Pixels[0..3]);
+        Assert.Equal(new byte[] { 128, 128, 128 }, second.Pixels[0..3]);
+    }
+
+    [Fact]
+    public async Task Save_PngKeepsTransparency_RegardlessOfBackground()
+    {
+        // T06: PNG で保存すると透過が残る
+        var dialog = CreateDialog(CreateTransparentDocument(), _output);
+        dialog.SelectedFormat = Format(dialog, WicFormats.PngId);
+        dialog.Background.Text = "#000000";
+
+        await dialog.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, _formats.Decode(dialog.Result!.Path).Image.Pixels[3]);
     }
 
     // ---------------------------------------------------------------- 出力先

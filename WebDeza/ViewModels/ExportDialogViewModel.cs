@@ -6,6 +6,7 @@ using WebDeza.Imaging;
 using WebDeza.Imaging.Editing;
 using WebDeza.Imaging.Formats;
 using WebDeza.Imaging.Parameters;
+using WebDeza.Models;
 using WebDeza.Services;
 
 namespace WebDeza.ViewModels;
@@ -19,7 +20,8 @@ namespace WebDeza.ViewModels;
 /// MainViewModel が設定に記録する（Saved を受けて）。［キャンセル］では何も記録しない（設計書 F-08）。
 /// 形式は保存できる形式の一覧から選び、オプションの入力欄は形式の記述から作る（ParameterViewModel）。
 /// 形式を切り替えても、それぞれの形式のオプションの値は覚えておく。
-/// 品質の決め方（上限）と背景色は、渡された保存の設定のまま使う（入力欄は 10-4・10-7 で足す）。
+/// 背景色は色見本と #RRGGBB で選び、透過を保てない形式を選んでいるときは M24 を出す。
+/// 品質の決め方（上限）は、渡された保存の設定のまま使う（入力欄は 10-7 で足す）。
 /// </remarks>
 public sealed partial class ExportDialogViewModel : ObservableObject
 {
@@ -32,7 +34,10 @@ public sealed partial class ExportDialogViewModel : ObservableObject
     private readonly Dictionary<string, ParameterValues> _formatOptions;
     private readonly string _initialFormatId;
     private readonly long? _sizeLimitBytes;
-    private readonly RgbColor _background;
+
+    /// <summary>背景色の入力欄の記述（既定は白。設計書 F-08）</summary>
+    public static readonly ParameterDescriptor BackgroundDescriptor =
+        new("background", "背景色", ParameterKind.Color, SettingsService.DefaultBackground);
 
     private IImageFormat? _selectedFormat;
     private IReadOnlyList<ParameterViewModel> _options = [];
@@ -60,7 +65,8 @@ public sealed partial class ExportDialogViewModel : ObservableObject
         _formatOptions = new Dictionary<string, ParameterValues>(settings.FormatOptions, StringComparer.Ordinal);
         _initialFormatId = settings.FormatId;
         _sizeLimitBytes = settings.SizeLimitBytes;
-        _background = settings.Background;
+        Background = new ColorParameterViewModel(BackgroundDescriptor, ColorText.Format(settings.Background));
+        Background.ValueChanged += (_, _) => OnPropertyChanged(nameof(Settings));
         Formats = exporter.EncodableFormats;
         // 設定の形式が無ければ（登録が変わったなど）、一覧の最初の形式にする
         SelectFormat(Formats.FirstOrDefault(f => string.Equals(f.Id, settings.FormatId, StringComparison.Ordinal))
@@ -83,7 +89,8 @@ public sealed partial class ExportDialogViewModel : ObservableObject
         {
             var options = new Dictionary<string, ParameterValues>(_formatOptions, StringComparer.Ordinal);
             if (_selectedFormat is { } format) options[format.Id] = ParameterViewModel.ToValues(_options);
-            return new ExportSettings(_selectedFormat?.Id ?? _initialFormatId, options, _sizeLimitBytes, _background);
+            return new ExportSettings(_selectedFormat?.Id ?? _initialFormatId, options, _sizeLimitBytes,
+                ColorText.Parse(Background.ColorText));
         }
     }
 
@@ -106,6 +113,23 @@ public sealed partial class ExportDialogViewModel : ObservableObject
         }
     }
 
+    // ---------------------------------------------------------------- 背景色（設計書 F-08）
+
+    /// <summary>
+    /// 背景色の入力欄（色見本（白・黒・灰）と #RRGGBB）。透過を保てない形式で保存するとき、透過部分をこの色で塗る。
+    /// 変えると Settings の変更を知らせる（保存する画像が作り直される）
+    /// </summary>
+    public ColorParameterViewModel Background { get; }
+
+    /// <summary>M24（「{形式} は透過を保てないため、透過部分を背景色で塗ります。」）。透過を保てる形式なら null</summary>
+    public string? AlphaNotice
+        => _selectedFormat is { } format && !format.Capabilities.HasFlag(FormatCapabilities.Alpha)
+            ? Messages.M24_AlphaFlattened(format.DisplayName)
+            : null;
+
+    /// <summary>M24 を出すか（透過を保てない形式を選んでいる）</summary>
+    public bool HasAlphaNotice => AlphaNotice is not null;
+
     /// <summary>選んでいる形式のオプションの入力欄（画面は ParameterTemplates.xaml が作る）</summary>
     public IReadOnlyList<ParameterViewModel> Options => _options;
 
@@ -126,6 +150,8 @@ public sealed partial class ExportDialogViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedFormat));
         OnPropertyChanged(nameof(Options));
         OnPropertyChanged(nameof(HasNoOptions));
+        OnPropertyChanged(nameof(AlphaNotice));
+        OnPropertyChanged(nameof(HasAlphaNotice));
         OnPropertyChanged(nameof(Settings));
         SaveCommand.NotifyCanExecuteChanged();
         RefreshFileName();

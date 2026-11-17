@@ -178,6 +178,26 @@ public sealed class MainViewModelExportTests : IDisposable
     }
 
     [Fact]
+    public async Task Background_IsRecordedOnSave_AndNotOnCancel()
+    {
+        // T13: 背景色も、次に開いたとき・再起動した後も保たれる。キャンセルでは変わらない
+        _vm.Settings.OutputFolder = _output;
+        await OpenAsync();
+        var cancelled = OpenDialog();
+        cancelled.Background.Text = "#123456"; // 保存せずに閉じた
+        Assert.Equal("#FFFFFF", _vm.Settings.Export.Background);
+
+        var dialog = OpenDialog();
+        Assert.Equal("#FFFFFF", dialog.Background.Text);
+        dialog.Background.Text = "#808080";
+        await dialog.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal("#808080", _vm.Settings.Export.Background);
+        Assert.Equal("#808080", OpenDialog().Background.Text);
+        Assert.Equal("#808080", new SettingsService(_formats, _settingsPath).Load().Settings.Export.Background);
+    }
+
+    [Fact]
     public async Task HasUnexportedEdits_FollowsSave()
     {
         // V32: 開いた直後 → 編集 → 保存 → 元に戻す → やり直し: false → true → false → true → false

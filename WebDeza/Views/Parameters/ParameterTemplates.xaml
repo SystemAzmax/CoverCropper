@@ -66,17 +66,18 @@
         </Grid>
     </DataTemplate>
 
-    <!-- Color: 色見本（白・黒・灰）・今の色・#RRGGBB の入力 -->
-    <DataTemplate DataType="{x:Type vm:ColorParameterViewModel}">
-        <Grid Margin="0,2,0,2">
+    <!--
+        Color の入力部分（名前を除く）: 色見本（白・黒・灰）・今の色・#RRGGBB の入力。
+        項目名の列を自分で持つ画面（保存のダイアログの背景色）は、これを ContentTemplate に使う
+    -->
+    <DataTemplate x:Key="ColorInputTemplate" DataType="{x:Type vm:ColorParameterViewModel}">
+        <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" SharedSizeGroup="ParameterName" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" MinWidth="80" />
             </Grid.ColumnDefinitions>
-            <TextBlock Style="{StaticResource ParameterNameStyle}" Text="{Binding DisplayName}" />
-            <ItemsControl Grid.Column="1" ItemsSource="{x:Static vm:ColorParameterViewModel.Swatches}" Focusable="False"
+            <ItemsControl ItemsSource="{x:Static vm:ColorParameterViewModel.Swatches}" Focusable="False"
                           VerticalAlignment="Center">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -94,16 +95,29 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
             <!-- 今の色 -->
-            <Border Grid.Column="2" Width="18" Height="18" Margin="3,0,6,0" VerticalAlignment="Center"
+            <Border Grid.Column="1" x:Name="ColorPreview" Width="18" Height="18" Margin="3,0,6,0" VerticalAlignment="Center"
                     BorderBrush="#FF808080" BorderThickness="1" ToolTip="今の色">
                 <Border.Background>
                     <SolidColorBrush Color="{Binding Color}" />
                 </Border.Background>
             </Border>
             <!-- #RRGGBB は残りの幅いっぱいに（7 文字が欠けずに見えるように） -->
-            <TextBox Grid.Column="3" x:Name="ColorInput" MaxLength="9" Text="{Binding Text}" ToolTip="#RRGGBB"
+            <TextBox Grid.Column="2" x:Name="ColorInput" MaxLength="9" Text="{Binding Text}" ToolTip="#RRGGBB"
                      TextAlignment="Right" VerticalAlignment="Center" InputMethod.IsInputMethodEnabled="False"
                      KeyDown="OnInputKeyDown" GotKeyboardFocus="OnInputGotKeyboardFocus" />
+        </Grid>
+    </DataTemplate>
+
+    <!-- Color: 名前と、上の入力部分 -->
+    <DataTemplate DataType="{x:Type vm:ColorParameterViewModel}">
+        <Grid Margin="0,2,0,2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" SharedSizeGroup="ParameterName" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Style="{StaticResource ParameterNameStyle}" Text="{Binding DisplayName}" />
+            <ContentControl Grid.Column="1" Content="{Binding}" ContentTemplate="{StaticResource ColorInputTemplate}"
+                            Focusable="False" />
         </Grid>
     </DataTemplate>
 </ResourceDictionary>
