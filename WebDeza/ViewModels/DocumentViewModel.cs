@@ -128,6 +128,22 @@ public sealed partial class DocumentViewModel : ObservableObject, IEditorSession
     /// <summary>子ウィンドウのタイトルバーの文字: ファイル名。書き出していない編集があれば「 *」を続ける（設計書 4.1）</summary>
     public string Title => HasUnexportedEdits ? $"{FileName} *" : FileName;
 
+    /// <summary>保存した回数（設計書 5.6）</summary>
+    public int ExportCount { get; private set; }
+
+    /// <summary>
+    /// 保存した（設計書 F-10）: 履歴の状態 stateId（保存した画像の状態）を「保存した時点」として覚え、保存した回数を数える。
+    /// 今の状態が stateId なら、保存していない編集の印は消える。元に戻す・やり直しで、この状態に戻れば印は消える
+    /// </summary>
+    public void MarkExported(long stateId)
+    {
+        _exportedStateId = stateId;
+        ExportCount++;
+        OnPropertyChanged(nameof(ExportCount));
+        OnPropertyChanged(nameof(HasUnexportedEdits));
+        OnPropertyChanged(nameof(Title));
+    }
+
     // ---------------------------------------------------------------- 編集の確定（設計書 5.6・5.8）
 
     private bool _isBusy;

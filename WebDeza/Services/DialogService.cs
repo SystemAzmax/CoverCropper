@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using Microsoft.Win32;
@@ -16,6 +17,16 @@ public interface IDialogService
     /// <summary>確認する（［はい］［いいえ］。既定のボタンは［いいえ］）。［はい］なら true</summary>
     bool Confirm(string message);
 
+    /// <summary>確認する（［OK］［キャンセル］）。［OK］なら true（M05 など、続けて何かを選ばせるとき）</summary>
+    bool ConfirmOkCancel(string message);
+
+    /// <summary>フォルダを選ぶダイアログ。選んだフォルダのパス、やめたときは null</summary>
+    /// <param name="initialDirectory">最初に開くフォルダ（無ければ既定）</param>
+    string? ShowFolderDialog(string? initialDirectory);
+
+    /// <summary>フォルダをエクスプローラーで開く（フォルダがあること）</summary>
+    void OpenFolder(string folder);
+
     /// <summary>「開く」のダイアログ（複数選択可）。選んだファイルのパス、やめたときは null</summary>
     /// <param name="initialDirectory">最初に開くフォルダ（無ければ既定）</param>
     /// <param name="filter">種類の一覧（OpenFileDialog.Filter の書き方）</param>
@@ -23,11 +34,22 @@ public interface IDialogService
 
     /// <summary>画像サイズのダイアログ（モーダル）。OK なら true（変更後の大きさは viewModel.NewSize）</summary>
     bool ShowImageSizeDialog(ImageSizeDialogViewModel viewModel);
+
+    /// <summary>
+    /// 保存のダイアログ（モーダル）。保存の処理はダイアログの中で行い、保存できたら閉じて true（viewModel.Result に結果）。
+    /// ［キャンセル］なら false
+    /// </summary>
+    bool ShowExportDialog(ExportDialogViewModel viewModel);
 }
 
 public sealed class DialogService : IDialogService
 {
-    private static Window? Owner => Application.Current?.MainWindow;
+    /// <summary>
+    /// メッセージなどの持ち主: 今アクティブなウィンドウ（保存のダイアログの上で出すときは、そのダイアログ）。無ければメインウィンドウ
+    /// </summary>
+    private static Window? Owner
+        => Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive && w.IsLoaded)
+           ?? Application.Current?.MainWindow;
 
     public void ShowError(string message)
         => Show(message, MessageBoxButton.OK, MessageBoxImage.Error);
@@ -35,6 +57,24 @@ public sealed class DialogService : IDialogService
     /// <summary>既定のボタンは［いいえ］（Enter を押しただけで、保存していない編集を捨てないように）</summary>
     public bool Confirm(string message)
         => Show(message, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
+
+    public bool ConfirmOkCancel(string message)
+        => Show(message, MessageBoxButton.OKCancel, MessageBoxImage.Information) == MessageBoxResult.OK;
+
+    public string? ShowFolderDialog(string? initialDirectory)
+    {
+        var dialog = new OpenFolderDialog { Title = "出力先フォルダを選択", Multiselect = false };
+        if (!string.IsNullOrEmpty(initialDirectory) && Directory.Exists(initialDirectory))
+            dialog.InitialDirectory = initialDirectory;
+
+        return dialog.ShowDialog(Owner) == true ? dialog.FolderName : null;
+    }
+
+    public void OpenFolder(string folder)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(folder);
+        Process.Start(new ProcessStartInfo("explorer.exe", $"\"{folder}\"") { UseShellExecute = true });
+    }
 
     public IReadOnlyList<string>? ShowOpenImageDialog(string? initialDirectory, string filter)
     {
@@ -54,6 +94,13 @@ public sealed class DialogService : IDialogService
     public bool ShowImageSizeDialog(ImageSizeDialogViewModel viewModel)
     {
         var dialog = new ImageSizeDialog(viewModel);
+        if (Owner is { IsLoaded: true } owner) dialog.Owner = owner;
+        return dialog.ShowDialog() == true;
+    }
+
+    public bool ShowExportDialog(ExportDialogViewModel viewModel)
+    {
+        var dialog = new ExportDialog(viewModel);
         if (Owner is { IsLoaded: true } owner) dialog.Owner = owner;
         return dialog.ShowDialog() == true;
     }

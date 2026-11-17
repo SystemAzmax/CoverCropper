@@ -93,6 +93,44 @@ internal sealed class FakeDialogs : IDialogService
         return ConfirmAnswer;
     }
 
+    /// <summary>［OK］［キャンセル］の確認をしたときの文（順に）</summary>
+    public List<string> OkCancelConfirmations { get; } = new();
+
+    /// <summary>［OK］［キャンセル］の確認への答え（true なら［OK］）</summary>
+    public bool OkCancelAnswer { get; set; } = true;
+
+    public bool ConfirmOkCancel(string message)
+    {
+        OkCancelConfirmations.Add(message);
+        return OkCancelAnswer;
+    }
+
+    /// <summary>フォルダのダイアログで返すフォルダ（null ならやめた）</summary>
+    public string? FolderToSelect { get; set; }
+
+    /// <summary>フォルダのダイアログに渡された最初のフォルダ（順に）</summary>
+    public List<string?> FolderDialogRequests { get; } = new();
+
+    public string? ShowFolderDialog(string? initialDirectory)
+    {
+        FolderDialogRequests.Add(initialDirectory);
+        return FolderToSelect;
+    }
+
+    /// <summary>エクスプローラーで開いたフォルダ（順に）</summary>
+    public List<string> OpenedFolders { get; } = new();
+
+    public void OpenFolder(string folder) => OpenedFolders.Add(folder);
+
+    /// <summary>出した保存のダイアログ（中で保存するときは、テストが SaveCommand を実行する）</summary>
+    public List<ExportDialogViewModel> ExportDialogs { get; } = new();
+
+    public bool ShowExportDialog(ExportDialogViewModel viewModel)
+    {
+        ExportDialogs.Add(viewModel);
+        return false;
+    }
+
     public void ShowError(string message)
     {
         OnShowError?.Invoke(message);

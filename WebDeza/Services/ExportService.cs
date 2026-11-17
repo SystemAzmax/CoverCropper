@@ -80,6 +80,21 @@ public sealed class ExportService
     }
 
     /// <summary>
+    /// 保存するファイル名（フォルダを除いたもの。ダイアログに出す）。出力先のフォルダがあれば、そこにあるファイルと
+    /// 重ならない名前（_2 など）にする。出力先が未設定・無いときは、重なりを確かめない名前にする
+    /// </summary>
+    public string CreateOutputFileName(string? outputFolder, string sourcePath, string formatId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(sourcePath);
+        if (!string.IsNullOrWhiteSpace(outputFolder) && Directory.Exists(outputFolder))
+            return Path.GetFileName(CreateOutputPath(outputFolder, sourcePath, formatId));
+
+        var format = GetEncodableFormat(formatId);
+        var path = new OutputFileNamer(_ => false).CreatePath(".", sourcePath, _time.GetLocalNow().DateTime, format.Extensions[0]);
+        return Path.GetFileName(path);
+    }
+
+    /// <summary>
     /// 保存する画像を作り、メモリ上にエンコードする（ファイルには書かない。保存サイズの計算と同じ処理）
     /// </summary>
     /// <param name="image">今の画像</param>

@@ -35,11 +35,13 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly IDialogService _dialogs;
     private readonly AppLog _log;
     private readonly FileCollector _collector;
+    private readonly ExportService _exporter;
 
     /// <param name="tools">登録された道具（null なら道具なし。テストで省くため）</param>
     /// <param name="filters">登録されたフィルター（null ならフィルターなし。テストで省くため）</param>
+    /// <param name="exporter">保存の処理（null なら formats で作る。テストで日時やファイル名の決め方を差し替えるため）</param>
     public MainViewModel(FormatRegistry formats, SettingsService settingsService, IDialogService dialogs, AppLog log,
-        ToolRegistry? tools = null, FilterRegistry? filters = null)
+        ToolRegistry? tools = null, FilterRegistry? filters = null, ExportService? exporter = null)
     {
         ArgumentNullException.ThrowIfNull(formats);
         ArgumentNullException.ThrowIfNull(settingsService);
@@ -50,6 +52,7 @@ public sealed partial class MainViewModel : ObservableObject
         _dialogs = dialogs;
         _log = log;
         _collector = new FileCollector(formats);
+        _exporter = exporter ?? new ExportService(formats);
         FilterPanel = new FilterPanelViewModel(filters ?? new FilterRegistry(), log, applyEdit: ApplyEditAsync);
 
         var loaded = settingsService.Load();
@@ -86,7 +89,8 @@ public sealed partial class MainViewModel : ObservableObject
         nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand), nameof(SelectToolCommand),
         nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand), nameof(CropCommand),
         nameof(UndoCommand), nameof(RedoCommand), nameof(RotateRightCommand), nameof(RotateLeftCommand),
-        nameof(FlipHorizontalCommand), nameof(FlipVerticalCommand), nameof(ResizeImageCommand), nameof(SelectFilterCommand))]
+        nameof(FlipHorizontalCommand), nameof(FlipVerticalCommand), nameof(ResizeImageCommand), nameof(SelectFilterCommand),
+        nameof(ExportCommand))]
     private DocumentViewModel? _activeDocument;
 
     /// <summary>読み込み中・編集の確定中（このあいだは開くなどを無効にし、カーソルを待機にする）</summary>
@@ -96,7 +100,8 @@ public sealed partial class MainViewModel : ObservableObject
         nameof(ZoomInCommand), nameof(ZoomOutCommand), nameof(ZoomToFitCommand), nameof(ZoomToActualSizeCommand),
         nameof(SelectToolCommand), nameof(SelectAllCommand), nameof(DeselectCommand), nameof(UseSelectToolCommand),
         nameof(CropCommand), nameof(UndoCommand), nameof(RedoCommand), nameof(RotateRightCommand), nameof(RotateLeftCommand),
-        nameof(FlipHorizontalCommand), nameof(FlipVerticalCommand), nameof(ResizeImageCommand), nameof(SelectFilterCommand))]
+        nameof(FlipHorizontalCommand), nameof(FlipVerticalCommand), nameof(ResizeImageCommand), nameof(SelectFilterCommand),
+        nameof(ExportCommand))]
     private bool _isBusy;
 
     partial void OnIsBusyChanged(bool value) => NotifyDocumentCommandsChanged();
@@ -853,6 +858,44 @@ public sealed partial class MainViewModel : ObservableObject
         SaveSettingsQuietly();
         foreach (var document in Documents) document.RefitSelection();
         SwapAspectCommand.NotifyCanExecuteChanged();
+    }
+
+    // ---------------------------------------------------------------- 保存（設計書 F-08・F-10）
+
+    private bool CanExport => !IsBusy && ActiveDocument is not null;
+
+    /// <summary>
+    /// ［ファイル］→［保存…］ / ツールバー［保存］ / Ctrl+E: アクティブな画像を対象に、保存のダイアログを開く。
+    /// ダイアログは、前回［保存］を押したときの出力先と設定で開く。保存の処理はダイアログの中で行う
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanExport))]
+    private void Export()
+    {
+        if (!CanExport) return;
+        var dialog = CreateExportDialog(ActiveDocument!);
+        _dialogs.ShowExportDialog(dialog);
+    }
+
+    /// <summary>保存のダイアログの ViewModel を作る（保存できたら、OnExported で設定に記録する）</summary>
+    private ExportDialogViewModel CreateExportDialog(DocumentViewModel document)
+    {
+        var dialog = new ExportDialogViewModel(document, Settings.OutputFolder, Settings.Export.ToExportSettings(),
+            _exporter, _dialogs, _log);
+        dialog.Saved += OnExported;
+        return dialog;
+    }
+
+    /// <summary>
+    /// 保存できた: 出力先と保存の設定を設定に記録し（ダイアログは、次はこの設定で開く。設計書 F-08）、
+    /// ステータスバーに M04 を出す。［キャンセル］で閉じたときはここに来ないので、何も記録しない
+    /// </summary>
+    private void OnExported(object? sender, ExportResult result)
+    {
+        if (sender is not ExportDialogViewModel dialog) return;
+        Settings.OutputFolder = dialog.OutputFolder;
+        Settings.Export = ExportSettingsData.From(dialog.Settings, Settings.Export.SizeLimitKB);
+        SaveSettingsQuietly();
+        StatusMessage = ExportDialogViewModel.SavedMessage(result);
     }
 
     // ---------------------------------------------------------------- 閉じる

@@ -22,6 +22,7 @@
     <Window.InputBindings>
         <KeyBinding Modifiers="Control" Key="O" Command="{Binding OpenCommand}" />
         <KeyBinding Modifiers="Control" Key="W" Command="{Binding CloseCommand}" />
+        <KeyBinding Modifiers="Control" Key="E" Command="{Binding ExportCommand}" />
         <KeyBinding Modifiers="Control" Key="A" Command="{Binding SelectAllCommand}" />
         <KeyBinding Modifiers="Control" Key="D" Command="{Binding DeselectCommand}" />
         <KeyBinding Modifiers="Control+Shift" Key="X" Command="{Binding CropCommand}" />
@@ -59,7 +60,7 @@
                 <MenuItem Header="すべて閉じる(_L)" Command="{Binding CloseAllCommand}" />
                 <Separator />
                 <MenuItem Header="上書き保存(_S)" InputGestureText="Ctrl+S" IsEnabled="False" />        <!-- 将来 -->
-                <MenuItem Header="保存(_E)…" InputGestureText="Ctrl+E" IsEnabled="False" />            <!-- 10-2 -->
+                <MenuItem Header="保存(_E)…" InputGestureText="Ctrl+E" Command="{Binding ExportCommand}" />
                 <MenuItem Header="すべて保存(_A)…" InputGestureText="Ctrl+Shift+E" IsEnabled="False" /> <!-- 10-11 -->
                 <Separator />
                 <MenuItem Header="終了(_X)" Command="{Binding ExitCommand}" />
@@ -137,7 +138,7 @@
         <Border DockPanel.Dock="Top" Padding="8,6" BorderThickness="0,1,0,1" Style="{StaticResource AreaBorderStyle}">
             <StackPanel x:Name="ToolbarArea" Orientation="Horizontal" MinHeight="26">
                 <Button Content="開く" Command="{Binding OpenCommand}" ToolTip="画像を開く (Ctrl+O)" />
-                <Button Content="保存" IsEnabled="False" ToolTip="保存 (Ctrl+E)" />                    <!-- 10-2 -->
+                <Button Content="保存" Command="{Binding ExportCommand}" ToolTip="保存 (Ctrl+E)" />
                 <Border Style="{StaticResource ToolbarSeparatorStyle}" />
                 <Button Content="元に戻す" Command="{Binding UndoCommand}" ToolTip="{Binding UndoToolTip}" />
                 <Button Content="やり直し" Command="{Binding RedoCommand}" ToolTip="{Binding RedoToolTip}" />
