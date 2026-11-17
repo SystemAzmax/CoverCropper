@@ -28,7 +28,8 @@ public delegate string OutputPathFactory(string outputFolder, string sourcePath,
 /// </summary>
 /// <remarks>
 /// ファイルに書くのは、必ず ExportEncoder が作ったバイト列にする（表示した保存サイズと、保存したファイルのサイズを一致させるため。
-/// 設計書 5.10-5）。バックグラウンドで呼んでよい（状態を持たない）。
+/// 設計書 5.10-5）。保存のダイアログで同じ条件の保存サイズを計算してあれば、そのバイト列をそのまま書く（エンコードし直さない）。
+/// バックグラウンドで呼んでよい（状態を持たない）。
 /// </remarks>
 public sealed class ExportService
 {
@@ -48,6 +49,9 @@ public sealed class ExportService
         _time = time ?? TimeProvider.System;
         _createPath = createPath ?? new OutputFileNamer().CreatePath;
     }
+
+    /// <summary>保存サイズの計算（保存のダイアログごとに 1 つ作る）</summary>
+    public ExportPreviewService CreatePreviewService() => new(_formats);
 
     /// <summary>保存できる形式（登録順。Encode ができ、エンコーダーと拡張子がある形式。保存のダイアログの形式の一覧）</summary>
     public IReadOnlyList<IImageFormat> EncodableFormats
@@ -124,19 +128,25 @@ public sealed class ExportService
     /// <param name="outputFolder">出力先のフォルダ（あること）</param>
     /// <param name="settings">保存の設定</param>
     /// <param name="cancellationToken">取り消し（書き始めた後は効かない）</param>
+    /// <param name="precomputed">
+    /// 保存のダイアログで計算した保存サイズの結果。image と settings が同じ条件のものなら、そのバイト列をそのまま書く
+    /// （表示したサイズと、保存したファイルのサイズが一致する。設計書 5.6）。違う条件なら使わずにエンコードし直す
+    /// </param>
     /// <exception cref="UnsupportedImageFormatException">保存できない形式</exception>
     /// <exception cref="InvalidOperationException">保存先が元画像と同じパスになった（書かない）</exception>
     /// <exception cref="IOException">保存先に既にファイルがある・書けない</exception>
     /// <exception cref="DirectoryNotFoundException">出力先のフォルダが無い</exception>
     public ExportResult Export(ImageBuffer image, string sourcePath, string outputFolder, ExportSettings settings,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, ExportPreviewResult? precomputed = null)
     {
         ArgumentNullException.ThrowIfNull(image);
         ArgumentException.ThrowIfNullOrEmpty(sourcePath);
         ArgumentException.ThrowIfNullOrEmpty(outputFolder);
         ArgumentNullException.ThrowIfNull(settings);
 
-        var encoded = Encode(image, settings, cancellationToken);
+        var encoded = precomputed is { } computed && computed.Matches(image, settings)
+            ? computed.Encoded
+            : Encode(image, settings, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
 
         var path = Path.GetFullPath(CreateOutputPath(outputFolder, sourcePath, settings.FormatId));

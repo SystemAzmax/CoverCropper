@@ -23,6 +23,7 @@ public partial class ExportDialog : Window
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
         Closed += (_, _) =>
         {
+            viewModel.OnClosed(); // 保存サイズの計算をやめる
             viewModel.CloseRequested -= OnCloseRequested;
             viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         };

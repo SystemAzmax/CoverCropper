@@ -228,6 +228,43 @@ public sealed class ExportServiceTests : IDisposable
         Assert.Empty(Directory.GetFiles(_output));
     }
 
+    // ---------------------------------------------------------------- 計算した保存サイズのバイト列を使う（10-6）
+
+    [Fact]
+    public async Task Export_WithMatchingPrecomputed_WritesItsBytes_WithoutEncoding()
+    {
+        // V04: 保存サイズを計算した直後に保存する → 計算したバイト列をそのまま書く（エンコードは 1 回だけ）
+        var image = Opaque(8, 4);
+        var settings = Settings(_opaqueFormat.Id, ParameterValues.Empty.With(FakeEncoderFormat.QualityKey, 60L));
+        var computed = await new ExportPreviewService(_formats).RequestAsync(image, settings);
+        Assert.Single(_opaqueFormat.Calls);
+
+        var result = CreateService().Export(image, _source, _output, settings, precomputed: computed);
+
+        Assert.Single(_opaqueFormat.Calls);
+        Assert.Same(computed!.Encoded, result.Encoded);
+        Assert.Equal(computed.Encoded.Bytes, File.ReadAllBytes(result.Path));
+    }
+
+    [Fact]
+    public async Task Export_WithOtherConditions_EncodesAgain()
+    {
+        var image = Opaque(8, 4);
+        var computed = await new ExportPreviewService(_formats).RequestAsync(image,
+            Settings(_opaqueFormat.Id, ParameterValues.Empty.With(FakeEncoderFormat.QualityKey, 60L)));
+
+        // 設定が違う
+        var other = CreateService().Export(image, _source, _output,
+            Settings(_opaqueFormat.Id, ParameterValues.Empty.With(FakeEncoderFormat.QualityKey, 30L)), precomputed: computed);
+        Assert.Equal("FAKE 8x4 q=30", System.Text.Encoding.ASCII.GetString(File.ReadAllBytes(other.Path)));
+
+        // 画像が違う（編集した後）
+        var edited = CreateService().Export(Opaque(8, 4), _source, _output,
+            Settings(_opaqueFormat.Id, ParameterValues.Empty.With(FakeEncoderFormat.QualityKey, 60L)), precomputed: computed);
+        Assert.NotSame(computed!.Encoded, edited.Encoded);
+        Assert.Equal(3, _opaqueFormat.Calls.Count);
+    }
+
     [Fact]
     public void Encode_SameAsExportWithoutWriting()
     {

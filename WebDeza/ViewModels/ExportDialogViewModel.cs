@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -22,6 +24,10 @@ namespace WebDeza.ViewModels;
 /// 形式を切り替えても、それぞれの形式のオプションの値は覚えておく。
 /// 背景色は色見本と #RRGGBB で選び、透過を保てない形式を選んでいるときは M24 を出す。
 /// 品質の決め方（上限）は、渡された保存の設定のまま使う（入力欄は 10-7 で足す）。
+/// 保存サイズ（設計書 F-09）は、開いたときと設定（形式・オプション・背景色）を変えたときに ExportPreviewService で計算する。
+/// 頼む間隔は、前に頼んでから SizeInterval 以上空ける（スライダーの操作中は間引かれ、止まったら必ず最後の値で計算する）。
+/// 保存するときは、同じ条件の計算結果があればそのバイト列を書く（表示したサイズと保存したファイルのサイズが一致する）。
+/// 計算中でも［保存］は押せる（そのときは保存の処理でエンコードし直す）。
 /// </remarks>
 public sealed partial class ExportDialogViewModel : ObservableObject
 {
@@ -29,6 +35,11 @@ public sealed partial class ExportDialogViewModel : ObservableObject
     private readonly ExportService _exporter;
     private readonly IDialogService _dialogs;
     private readonly AppLog _log;
+    private readonly ExportPreviewService _preview;
+    private readonly TimeSpan _sizeInterval;
+
+    /// <summary>保存サイズの計算を頼む間隔（設計書 F-09）</summary>
+    public static readonly TimeSpan DefaultSizeInterval = TimeSpan.FromMilliseconds(200);
 
     /// <summary>形式の Id → オプション（形式を切り替えたときに、前の形式の値をここに覚える）</summary>
     private readonly Dictionary<string, ParameterValues> _formatOptions;
@@ -47,9 +58,10 @@ public sealed partial class ExportDialogViewModel : ObservableObject
     /// <param name="settings">保存の設定（前回［保存］を押したときのもの）</param>
     /// <param name="exporter">保存の処理</param>
     /// <param name="dialogs">メッセージとフォルダの選択</param>
-    /// <param name="log">保存に失敗したときに書くログ</param>
+    /// <param name="log">保存・保存サイズの計算に失敗したときに書くログ</param>
+    /// <param name="sizeInterval">保存サイズの計算を頼む間隔（null なら DefaultSizeInterval。テストで縮める）</param>
     public ExportDialogViewModel(DocumentViewModel document, string? outputFolder, ExportSettings settings,
-        ExportService exporter, IDialogService dialogs, AppLog log)
+        ExportService exporter, IDialogService dialogs, AppLog log, TimeSpan? sizeInterval = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(settings);
@@ -61,12 +73,16 @@ public sealed partial class ExportDialogViewModel : ObservableObject
         _dialogs = dialogs;
         _log = log;
         _outputFolder = string.IsNullOrWhiteSpace(outputFolder) ? null : outputFolder;
+        _sizeInterval = sizeInterval ?? DefaultSizeInterval;
+        _preview = exporter.CreatePreviewService();
+        _preview.Completed += OnPreviewCompleted;
+        _preview.Failed += OnPreviewFailed;
 
         _formatOptions = new Dictionary<string, ParameterValues>(settings.FormatOptions, StringComparer.Ordinal);
         _initialFormatId = settings.FormatId;
         _sizeLimitBytes = settings.SizeLimitBytes;
         Background = new ColorParameterViewModel(BackgroundDescriptor, ColorText.Format(settings.Background));
-        Background.ValueChanged += (_, _) => OnPropertyChanged(nameof(Settings));
+        Background.ValueChanged += (_, _) => OnSettingsChanged();
         Formats = exporter.EncodableFormats;
         // 設定の形式が無ければ（登録が変わったなど）、一覧の最初の形式にする
         SelectFormat(Formats.FirstOrDefault(f => string.Equals(f.Id, settings.FormatId, StringComparison.Ordinal))
@@ -152,12 +168,145 @@ public sealed partial class ExportDialogViewModel : ObservableObject
         OnPropertyChanged(nameof(HasNoOptions));
         OnPropertyChanged(nameof(AlphaNotice));
         OnPropertyChanged(nameof(HasAlphaNotice));
-        OnPropertyChanged(nameof(Settings));
         SaveCommand.NotifyCanExecuteChanged();
         RefreshFileName();
+        OnSettingsChanged();
     }
 
-    private void OnOptionValueChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(Settings));
+    private void OnOptionValueChanged(object? sender, EventArgs e) => OnSettingsChanged();
+
+    /// <summary>保存の設定が変わった: 変更を知らせ、保存サイズを計算し直す</summary>
+    private void OnSettingsChanged()
+    {
+        OnPropertyChanged(nameof(Settings));
+        RequestSize();
+    }
+
+    // ---------------------------------------------------------------- 保存サイズ（設計書 F-09）
+
+    private bool _closed;
+    private bool _sizeScheduled;
+    private long _lastSizeRequest;
+    private Task _sizeTask = Task.CompletedTask;
+
+    /// <summary>保存サイズの表示（例: 「182.4 KB（元ファイルの 6%）」。計算中は「計算中…」、失敗したら「—」）</summary>
+    [ObservableProperty]
+    private string _fileSizeText = CalculatingText;
+
+    /// <summary>保存サイズのツールチップ（バイト数。例: 「186,778 バイト」）。計算中・失敗したときは null</summary>
+    [ObservableProperty]
+    private string? _fileSizeToolTip;
+
+    /// <summary>保存サイズを計算しているか（計算中、または頼む前の待ち）</summary>
+    [ObservableProperty]
+    private bool _isCalculatingSize = true;
+
+    /// <summary>計算中の表示</summary>
+    public const string CalculatingText = "計算中…";
+
+    /// <summary>計算できなかったときの表示</summary>
+    public const string UnknownSizeText = "—";
+
+    /// <summary>今の設定での保存サイズの計算結果（まだ無い・計算中・失敗なら null）</summary>
+    public ExportPreviewResult? SizeResult { get; private set; }
+
+    /// <summary>
+    /// 頼んである保存サイズの計算が、すべて終わるのを待つ（テストで、表示が出るのを待つのに使う）
+    /// </summary>
+    public async Task WaitForSizeAsync()
+    {
+        while (true)
+        {
+            var task = _sizeTask;
+            await task;
+            if (ReferenceEquals(task, _sizeTask) && !_sizeScheduled) return;
+        }
+    }
+
+    /// <summary>
+    /// 保存サイズの計算を頼む。前に頼んでから SizeInterval 以上空いていればすぐ、空いていなければその時まで待ってから、
+    /// そのときの最後の設定で頼む（待っている間の変更はまとめる）
+    /// </summary>
+    private void RequestSize()
+    {
+        if (_closed) return;
+        SizeResult = null;
+        IsCalculatingSize = true;
+        FileSizeText = CalculatingText;
+        FileSizeToolTip = null;
+        if (_sizeScheduled) return;
+
+        var wait = _sizeInterval - Stopwatch.GetElapsedTime(_lastSizeRequest);
+        if (wait <= TimeSpan.Zero)
+        {
+            _sizeTask = StartSizeRequestAsync();
+        }
+        else
+        {
+            _sizeScheduled = true;
+            _sizeTask = RequestSizeLaterAsync(wait);
+        }
+    }
+
+    private async Task RequestSizeLaterAsync(TimeSpan wait)
+    {
+        await Task.Delay(wait);
+        _sizeScheduled = false;
+        if (_closed) return;
+        await StartSizeRequestAsync();
+    }
+
+    private Task StartSizeRequestAsync()
+    {
+        _lastSizeRequest = Stopwatch.GetTimestamp();
+        return _selectedFormat is null
+            ? Task.CompletedTask
+            : _preview.RequestAsync(_document.Image, Settings); // 結果は Completed / Failed で受ける
+    }
+
+    private void OnPreviewCompleted(object? sender, ExportPreviewResult result)
+    {
+        // 頼んだ後に設定が変わっていれば（次を頼む前の待ちの間など）、その結果は出さない
+        if (_closed || !result.Matches(_document.Image, Settings)) return;
+        SizeResult = result;
+        IsCalculatingSize = false;
+        FileSizeText = FormatFileSize(result.FileSize, _document.SourceFileSize);
+        FileSizeToolTip = string.Format(CultureInfo.InvariantCulture, "{0:N0} バイト", result.FileSize);
+    }
+
+    private void OnPreviewFailed(object? sender, Exception ex)
+    {
+        // 形式プラグインの例外などでも、ダイアログは止めない。表示を「—」にしてログに書く（設計書 5.10-6）
+        _log.Error($"Export size failed: {_document.Path} ({Settings.FormatId})", ex);
+        if (_closed) return;
+        SizeResult = null;
+        IsCalculatingSize = false;
+        FileSizeText = UnknownSizeText;
+        FileSizeToolTip = null;
+    }
+
+    /// <summary>
+    /// 保存サイズの表示: 「182.4 KB（元ファイルの 6%）」（設計書 F-09）。元ファイルのバイト数が分からなければ「182.4 KB」だけ。
+    /// 割合は、1% 以上は整数（四捨五入）、1% 未満は小数 1 桁まで（0% と出さないように）
+    /// </summary>
+    public static string FormatFileSize(long bytes, long sourceFileSize)
+    {
+        var size = FileSizeFormatter.Format(bytes);
+        if (sourceFileSize <= 0) return size;
+
+        double percent = bytes * 100.0 / sourceFileSize;
+        string ratio = percent >= 1
+            ? Math.Round(percent, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture)
+            : percent.ToString("0.#", CultureInfo.InvariantCulture);
+        return $"{size}（元ファイルの {ratio}%）";
+    }
+
+    /// <summary>ダイアログを閉じた: 保存サイズの計算をやめる</summary>
+    public void OnClosed()
+    {
+        _closed = true;
+        _preview.Cancel();
+    }
 
     /// <summary>保存する大きさ（今の画像の大きさのまま保存する。設計書 F-08）</summary>
     public string SizeText => $"{_document.ImageWidth} × {_document.ImageHeight} px";
@@ -282,7 +431,9 @@ public sealed partial class ExportDialogViewModel : ObservableObject
         IsSaving = true;
         try
         {
-            result = await Task.Run(() => _exporter.Export(image, sourcePath, folder, settings));
+            // 同じ条件の保存サイズを計算してあれば、そのバイト列をそのまま書く（表示したサイズと一致させる）
+            var computed = _preview.Latest;
+            result = await Task.Run(() => _exporter.Export(image, sourcePath, folder, settings, precomputed: computed));
         }
         catch (DirectoryNotFoundException ex)
         {
