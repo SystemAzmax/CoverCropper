@@ -23,7 +23,9 @@ namespace WebDeza.ViewModels;
 /// 形式は保存できる形式の一覧から選び、オプションの入力欄は形式の記述から作る（ParameterViewModel）。
 /// 形式を切り替えても、それぞれの形式のオプションの値は覚えておく。
 /// 背景色は色見本と #RRGGBB で選び、透過を保てない形式を選んでいるときは M24 を出す。
-/// 品質の決め方（上限）は、渡された保存の設定のまま使う（入力欄は 10-7 で足す）。
+/// 品質の決め方は、形式がサイズを調整できるとき（SizeTuning。標準では JPEG）だけ選べる。「ファイルサイズの上限を指定」のときは、
+/// 品質の入力欄を読み取り専用にして、保存サイズの計算で探した品質を出す（設定には、利用者が決めた品質をそのまま持つ）。
+/// 上限は「品質を指定」のときも覚えておく。
 /// 保存サイズ（設計書 F-09）は、開いたときと設定（形式・オプション・背景色）を変えたときに ExportPreviewService で計算する。
 /// 頼む間隔は、前に頼んでから SizeInterval 以上空ける（スライダーの操作中は間引かれ、止まったら必ず最後の値で計算する）。
 /// 保存するときは、同じ条件の計算結果があればそのバイト列を書く（表示したサイズと保存したファイルのサイズが一致する）。
@@ -44,7 +46,15 @@ public sealed partial class ExportDialogViewModel : ObservableObject
     /// <summary>形式の Id → オプション（形式を切り替えたときに、前の形式の値をここに覚える）</summary>
     private readonly Dictionary<string, ParameterValues> _formatOptions;
     private readonly string _initialFormatId;
-    private readonly long? _sizeLimitBytes;
+
+    /// <summary>
+    /// 上限のときに、品質の入力欄に探した品質を出している間の、利用者が決めた品質（設定にはこちらを使う）。
+    /// 上限でないとき・形式がサイズを調整できないときは null
+    /// </summary>
+    private object? _userTuningValue;
+
+    /// <summary>探した品質を入力欄に出している最中（その値の変更では、設定が変わったとしない）</summary>
+    private bool _showingFoundValue;
 
     /// <summary>背景色の入力欄の記述（既定は白。設計書 F-08）</summary>
     public static readonly ParameterDescriptor BackgroundDescriptor =
@@ -60,8 +70,12 @@ public sealed partial class ExportDialogViewModel : ObservableObject
     /// <param name="dialogs">メッセージとフォルダの選択</param>
     /// <param name="log">保存・保存サイズの計算に失敗したときに書くログ</param>
     /// <param name="sizeInterval">保存サイズの計算を頼む間隔（null なら DefaultSizeInterval。テストで縮める）</param>
+    /// <param name="rememberedSizeLimitKB">
+    /// 覚えている上限（KB）。settings が「品質を指定」（SizeLimitBytes が null）のときに、上限の入力欄に出す値
+    /// </param>
     public ExportDialogViewModel(DocumentViewModel document, string? outputFolder, ExportSettings settings,
-        ExportService exporter, IDialogService dialogs, AppLog log, TimeSpan? sizeInterval = null)
+        ExportService exporter, IDialogService dialogs, AppLog log, TimeSpan? sizeInterval = null,
+        long rememberedSizeLimitKB = ExportSettingsData.DefaultSizeLimitKB)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(settings);
@@ -80,7 +94,9 @@ public sealed partial class ExportDialogViewModel : ObservableObject
 
         _formatOptions = new Dictionary<string, ParameterValues>(settings.FormatOptions, StringComparer.Ordinal);
         _initialFormatId = settings.FormatId;
-        _sizeLimitBytes = settings.SizeLimitBytes;
+        _useSizeLimit = settings.SizeLimitBytes is not null;
+        _sizeLimitKB = Math.Clamp(settings.SizeLimitBytes is { } bytes ? bytes / 1024 : rememberedSizeLimitKB,
+            ExportSettingsData.MinSizeLimitKB, ExportSettingsData.MaxSizeLimitKB);
         Background = new ColorParameterViewModel(BackgroundDescriptor, ColorText.Format(settings.Background));
         Background.ValueChanged += (_, _) => OnSettingsChanged();
         Formats = exporter.EncodableFormats;
@@ -104,8 +120,8 @@ public sealed partial class ExportDialogViewModel : ObservableObject
         get
         {
             var options = new Dictionary<string, ParameterValues>(_formatOptions, StringComparer.Ordinal);
-            if (_selectedFormat is { } format) options[format.Id] = ParameterViewModel.ToValues(_options);
-            return new ExportSettings(_selectedFormat?.Id ?? _initialFormatId, options, _sizeLimitBytes,
+            if (_selectedFormat is { } format) options[format.Id] = CurrentFormatValues();
+            return new ExportSettings(_selectedFormat?.Id ?? _initialFormatId, options, UseSizeLimit ? SizeLimitKB * 1024 : null,
                 ColorText.Parse(Background.ColorText));
         }
     }
@@ -152,28 +168,152 @@ public sealed partial class ExportDialogViewModel : ObservableObject
     /// <summary>選んでいる形式にオプションが無いか（BMP など。「オプションはありません」を出す）</summary>
     public bool HasNoOptions => _selectedFormat is not null && _options.Count == 0;
 
+    /// <summary>今の形式のオプションの値（上限で探した品質を出しているときは、利用者が決めた品質にしたもの）</summary>
+    private ParameterValues CurrentFormatValues()
+    {
+        var values = ParameterViewModel.ToValues(_options);
+        return _userTuningValue is { } user && TuningParameter is { } tuning ? values.With(tuning.Key, user) : values;
+    }
+
     private void SelectFormat(IImageFormat? format)
     {
-        if (_selectedFormat is { } previous) _formatOptions[previous.Id] = ParameterViewModel.ToValues(_options);
+        if (_selectedFormat is { } previous) _formatOptions[previous.Id] = CurrentFormatValues();
         foreach (var option in _options) option.ValueChanged -= OnOptionValueChanged;
+        _userTuningValue = null;
 
         _selectedFormat = format;
         _options = format?.Encoder is { } encoder
             ? ParameterViewModel.CreateAll(encoder.Options, _formatOptions.GetValueOrDefault(format.Id))
             : [];
         foreach (var option in _options) option.ValueChanged += OnOptionValueChanged;
+        ApplySizeLimitMode();
 
         OnPropertyChanged(nameof(SelectedFormat));
         OnPropertyChanged(nameof(Options));
         OnPropertyChanged(nameof(HasNoOptions));
         OnPropertyChanged(nameof(AlphaNotice));
         OnPropertyChanged(nameof(HasAlphaNotice));
+        OnPropertyChanged(nameof(CanUseSizeLimit));
+        OnPropertyChanged(nameof(IsSizeLimitActive));
         SaveCommand.NotifyCanExecuteChanged();
         RefreshFileName();
         OnSettingsChanged();
     }
 
-    private void OnOptionValueChanged(object? sender, EventArgs e) => OnSettingsChanged();
+    private void OnOptionValueChanged(object? sender, EventArgs e)
+    {
+        if (!_showingFoundValue) OnSettingsChanged();
+    }
+
+    // ---------------------------------------------------------------- 品質の決め方とファイルサイズの上限（設計書 F-08・F-09）
+
+    private bool _useSizeLimit;
+    private long _sizeLimitKB;
+
+    /// <summary>選んでいる形式がサイズを調整できるか（SizeTuning がある。標準では JPEG）。品質の決め方を出す</summary>
+    public bool CanUseSizeLimit => _selectedFormat?.Encoder?.SizeTuning is not null;
+
+    /// <summary>
+    /// 品質の決め方が「ファイルサイズの上限を指定」か（false は「品質を指定」）。形式を切り替えても保つ
+    /// （サイズを調整できない形式では使わない）
+    /// </summary>
+    public bool UseSizeLimit
+    {
+        get => _useSizeLimit;
+        set
+        {
+            if (value == _useSizeLimit) return;
+            _useSizeLimit = value;
+            ApplySizeLimitMode();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(UseQuality));
+            OnPropertyChanged(nameof(IsSizeLimitActive));
+            OnSettingsChanged();
+        }
+    }
+
+    /// <summary>品質の決め方が「品質を指定」か（UseSizeLimit の逆。ラジオボタンに使う）</summary>
+    public bool UseQuality
+    {
+        get => !UseSizeLimit;
+        set => UseSizeLimit = !value;
+    }
+
+    /// <summary>上限で品質を探すか（「ファイルサイズの上限を指定」で、形式がサイズを調整できる）</summary>
+    public bool IsSizeLimitActive => UseSizeLimit && CanUseSizeLimit;
+
+    /// <summary>ファイルサイズの上限（KB。1 KB = 1024 バイト。1〜1,000,000）。「品質を指定」のときも覚えておく</summary>
+    public long SizeLimitKB => _sizeLimitKB;
+
+    /// <summary>
+    /// 上限の入力欄（KB）。Enter かフォーカスが外れたときに当てはめる。整数でなければ今の値に戻し、範囲外は 1〜1,000,000 に収める
+    /// </summary>
+    public string SizeLimitText
+    {
+        get => _sizeLimitKB.ToString(CultureInfo.InvariantCulture);
+        set
+        {
+            if (SelectionPanelViewModel.TryParseInput(value, out int kb))
+            {
+                long clamped = Math.Clamp(kb, ExportSettingsData.MinSizeLimitKB, ExportSettingsData.MaxSizeLimitKB);
+                if (clamped != _sizeLimitKB)
+                {
+                    _sizeLimitKB = clamped;
+                    OnPropertyChanged(nameof(SizeLimitKB));
+                    if (UseSizeLimit) OnSettingsChanged();
+                }
+            }
+            OnPropertyChanged(); // 整数でない・収めた値になったときも、今の値を出し直す
+        }
+    }
+
+    /// <summary>M26（品質をいちばん低くしても上限を超えるとき）。超えないとき・上限でないときは null</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSizeLimitWarning))]
+    private string? _sizeLimitWarning;
+
+    /// <summary>M26 を出すか</summary>
+    public bool HasSizeLimitWarning => SizeLimitWarning is not null;
+
+    /// <summary>SizeTuning が指すオプションの入力欄（JPEG の品質）。サイズを調整できない形式では null</summary>
+    private ParameterViewModel? TuningParameter
+        => _selectedFormat?.Encoder?.SizeTuning is { } tuning
+            ? _options.FirstOrDefault(o => string.Equals(o.Key, tuning.ParameterKey, StringComparison.Ordinal))
+            : null;
+
+    /// <summary>
+    /// 品質の入力欄を、品質の決め方に合わせる: 上限のときは読み取り専用にし、利用者が決めた品質を覚えておく（入力欄には探した品質を出す）。
+    /// 品質を指定のときは、入力欄を戻し、覚えておいた品質を出し直す
+    /// </summary>
+    private void ApplySizeLimitMode()
+    {
+        if (TuningParameter is not { } tuning) return;
+        if (IsSizeLimitActive)
+        {
+            _userTuningValue ??= tuning.Value;
+            tuning.IsReadOnly = true;
+        }
+        else
+        {
+            tuning.IsReadOnly = false;
+            if (_userTuningValue is { } user) ShowTuningValue(tuning, user);
+            _userTuningValue = null;
+        }
+    }
+
+    /// <summary>品質の入力欄に値を出す（設定は変わったとしない）</summary>
+    private void ShowTuningValue(ParameterViewModel tuning, object value)
+    {
+        _showingFoundValue = true;
+        try
+        {
+            tuning.SetValue(value);
+        }
+        finally
+        {
+            _showingFoundValue = false;
+        }
+    }
 
     /// <summary>保存の設定が変わった: 変更を知らせ、保存サイズを計算し直す</summary>
     private void OnSettingsChanged()
@@ -231,6 +371,7 @@ public sealed partial class ExportDialogViewModel : ObservableObject
     {
         if (_closed) return;
         SizeResult = null;
+        SizeLimitWarning = null;
         IsCalculatingSize = true;
         FileSizeText = CalculatingText;
         FileSizeToolTip = null;
@@ -272,6 +413,16 @@ public sealed partial class ExportDialogViewModel : ObservableObject
         IsCalculatingSize = false;
         FileSizeText = FormatFileSize(result.FileSize, _document.SourceFileSize);
         FileSizeToolTip = string.Format(CultureInfo.InvariantCulture, "{0:N0} バイト", result.FileSize);
+
+        // 上限のときは、探した品質を品質の入力欄に出し、収まらなければ M26 を出す（設計書 F-09）
+        if (IsSizeLimitActive && TuningParameter is { } tuning && result.Encoded.UsedOptions.ContainsKey(tuning.Key))
+        {
+            ShowTuningValue(tuning, result.Encoded.UsedOptions[tuning.Key]);
+            SizeLimitWarning = result.Encoded.FitsSizeLimit
+                ? null
+                : Messages.M26_OverSizeLimit($"{SizeLimitKB.ToString("N0", CultureInfo.InvariantCulture)} KB",
+                    FileSizeFormatter.Format(result.FileSize));
+        }
     }
 
     private void OnPreviewFailed(object? sender, Exception ex)

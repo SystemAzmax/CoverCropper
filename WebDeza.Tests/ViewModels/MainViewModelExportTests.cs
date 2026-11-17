@@ -198,6 +198,40 @@ public sealed class MainViewModelExportTests : IDisposable
     }
 
     [Fact]
+    public async Task SizeLimit_IsRecordedOnSave_AndRememberedInQualityMode()
+    {
+        _vm.Settings.OutputFolder = _output;
+        await OpenAsync();
+        var cancelled = OpenDialog();
+        Assert.Equal("300", cancelled.SizeLimitText); // 既定は 300 KB
+        cancelled.UseSizeLimit = true;                 // 変えて、保存せずに閉じた
+        cancelled.SizeLimitText = "120";
+        cancelled.OnClosed();
+        Assert.False(_vm.Settings.Export.UseSizeLimit);
+        Assert.Equal(300, _vm.Settings.Export.SizeLimitKB);
+
+        var dialog = OpenDialog();
+        dialog.UseSizeLimit = true;
+        dialog.SizeLimitText = "150";
+        await dialog.SaveCommand.ExecuteAsync(null);
+        Assert.True(_vm.Settings.Export.UseSizeLimit);
+        Assert.Equal(150, _vm.Settings.Export.SizeLimitKB);
+
+        var next = OpenDialog(); // 次は上限で開く
+        Assert.True(next.UseSizeLimit);
+        Assert.Equal("150", next.SizeLimitText);
+        next.UseQuality = true;
+        next.SizeLimitText = "80";
+        await next.SaveCommand.ExecuteAsync(null);
+
+        // 品質を指定にしても、上限の値は覚えておく（再起動した後も）
+        var reloaded = new SettingsService(_formats, _settingsPath).Load().Settings.Export;
+        Assert.False(reloaded.UseSizeLimit);
+        Assert.Equal(80, reloaded.SizeLimitKB);
+        Assert.Equal("80", OpenDialog().SizeLimitText);
+    }
+
+    [Fact]
     public async Task HasUnexportedEdits_FollowsSave()
     {
         // V32: 開いた直後 → 編集 → 保存 → 元に戻す → やり直し: false → true → false → true → false

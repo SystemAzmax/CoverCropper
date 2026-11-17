@@ -880,7 +880,7 @@ public sealed partial class MainViewModel : ObservableObject
     private ExportDialogViewModel CreateExportDialog(DocumentViewModel document)
     {
         var dialog = new ExportDialogViewModel(document, Settings.OutputFolder, Settings.Export.ToExportSettings(),
-            _exporter, _dialogs, _log);
+            _exporter, _dialogs, _log, rememberedSizeLimitKB: Settings.Export.SizeLimitKB);
         dialog.Saved += OnExported;
         return dialog;
     }
@@ -893,7 +893,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (sender is not ExportDialogViewModel dialog) return;
         Settings.OutputFolder = dialog.OutputFolder;
-        Settings.Export = ExportSettingsData.From(dialog.Settings, Settings.Export.SizeLimitKB);
+        Settings.Export = ExportSettingsData.From(dialog.Settings, dialog.SizeLimitKB); // 上限は「品質を指定」のときも覚えておく
         SaveSettingsQuietly();
         StatusMessage = ExportDialogViewModel.SavedMessage(result);
     }

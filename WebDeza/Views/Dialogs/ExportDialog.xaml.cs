@@ -31,6 +31,11 @@ public partial class ExportDialog : Window
 
     private void OnCloseRequested(object? sender, EventArgs e) => DialogResult = true;
 
+    /// <summary>上限（KB）の入力欄: Enter で当てはめ、Esc で今の値に戻す（編集パネルの数値の入力欄と同じ）</summary>
+    private void OnNumberInputKeyDown(object sender, KeyEventArgs e) => NumberInput.OnKeyDown(sender, e);
+
+    private void OnNumberInputGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) => NumberInput.OnGotKeyboardFocus(sender, e);
+
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(ExportDialogViewModel.IsSaving))

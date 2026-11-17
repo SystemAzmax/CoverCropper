@@ -1,6 +1,6 @@
 <!--
     保存のダイアログ（設計書 F-08・F-10・4.6）。DataContext は ExportDialogViewModel。
-    設計書 4.6 の図の右側（設定）にあたる。左のプレビュー（10-8・10-9）と、品質の決め方（10-7）は、それぞれのステップで足す
+    設計書 4.6 の図の右側（設定）にあたる。左のプレビュー（10-8・10-9）は、そのステップで足す
 -->
 <Window x:Class="WebDeza.Views.Dialogs.ExportDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -54,6 +54,21 @@
         <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
             <ComboBox x:Name="FormatCombo" ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}"
                       DisplayMemberPath="DisplayName" ToolTip="保存する形式" />
+            <!-- 品質の決め方（形式がサイズを調整できるときだけ。設計書 F-08・F-09）。上限のときは、品質の入力欄が読み取り専用になり、
+                 探した品質が出る -->
+            <StackPanel x:Name="QualityModeArea" Margin="0,8,0,0"
+                        Visibility="{Binding CanUseSizeLimit, Converter={StaticResource BoolToVisibility}}">
+                <RadioButton x:Name="UseQualityRadio" Content="品質を指定" IsChecked="{Binding UseQuality}" GroupName="QualityMode" />
+                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                    <RadioButton x:Name="UseSizeLimitRadio" Content="上限を指定" IsChecked="{Binding UseSizeLimit}" GroupName="QualityMode"
+                                 VerticalAlignment="Center" />
+                    <TextBox x:Name="SizeLimitInput" Text="{Binding SizeLimitText}" Width="96" MaxLength="9" Margin="8,0,6,0"
+                             TextAlignment="Right" VerticalAlignment="Center" InputMethod.IsInputMethodEnabled="False"
+                             IsEnabled="{Binding UseSizeLimit}" ToolTip="ファイルサイズの上限 (1〜1,000,000 KB)"
+                             KeyDown="OnNumberInputKeyDown" GotKeyboardFocus="OnNumberInputGotKeyboardFocus" />
+                    <TextBlock Text="KB" />
+                </StackPanel>
+            </StackPanel>
             <ItemsControl x:Name="OptionsList" ItemsSource="{Binding Options}" Focusable="False" Margin="0,6,0,0"
                           Grid.IsSharedSizeScope="True" />
             <TextBlock x:Name="NoOptionsText" Text="この形式にはオプションがありません" Margin="0,4,0,0"
@@ -79,8 +94,14 @@
 
         <!-- 保存サイズ（設計書 F-09）: 実際に保存するのと同じ処理で作ったバイト数。ツールチップにバイト数 -->
         <TextBlock Grid.Row="3" Style="{StaticResource LabelStyle}" Text="保存サイズ" />
-        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="FileSizeText" Text="{Binding FileSizeText}" ToolTip="{Binding FileSizeToolTip}"
-                   FontWeight="SemiBold" VerticalAlignment="Top" Margin="0,0,0,10" />
+        <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,0,0,10">
+            <TextBlock x:Name="FileSizeText" Text="{Binding FileSizeText}" ToolTip="{Binding FileSizeToolTip}"
+                       FontWeight="SemiBold" VerticalAlignment="Top" />
+            <!-- M26: 品質をいちばん低くしても上限を超える（いちばん低い品質で保存する） -->
+            <TextBlock x:Name="SizeLimitWarningText" Text="{Binding SizeLimitWarning}" TextWrapping="Wrap" Margin="0,4,0,0"
+                       Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                       Visibility="{Binding HasSizeLimitWarning, Converter={StaticResource BoolToVisibility}}" />
+        </StackPanel>
 
         <!-- 出力先: パスは長いので折り返し、全体をツールチップにも出す -->
         <TextBlock Grid.Row="4" Style="{StaticResource LabelStyle}" Text="出力先" />

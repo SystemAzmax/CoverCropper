@@ -76,6 +76,17 @@ public abstract partial class ParameterViewModel : ObservableObject
     /// <summary>今の値（long・double・bool・string のどれか）</summary>
     public object Value => _value;
 
+    /// <summary>
+    /// 読み取り専用か（値は表示するが、画面からは変えられない。保存のダイアログで「ファイルサイズの上限」のとき、
+    /// SizeTuning が指す品質の入力欄を読み取り専用にして、探した値を出す。設計書 5.6）
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditable))]
+    private bool _isReadOnly;
+
+    /// <summary>画面から変えられるか（IsReadOnly の逆。スライダーなどの IsEnabled に使う）</summary>
+    public bool IsEditable => !IsReadOnly;
+
     /// <summary>今の値が既定値か</summary>
     public bool IsDefault => ParameterValues.Empty.With(Key, _value) == ParameterValues.Empty.With(Key, DefaultValue);
 

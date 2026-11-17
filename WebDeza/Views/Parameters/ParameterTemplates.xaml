@@ -32,7 +32,8 @@
             </Grid.ColumnDefinitions>
             <TextBlock Style="{StaticResource ParameterNameStyle}" Text="{Binding DisplayName}" />
             <!-- Minimum・Maximum を Value より先に入れる（範囲が決まる前に Value が丸められて、値が書き換わらないように） -->
-            <Slider Grid.Column="1" x:Name="ParameterSlider" VerticalAlignment="Center" MinWidth="80"
+            <!-- 読み取り専用のとき（保存のダイアログで上限を指定したときの品質）は、スライダーを動かせず、入力欄は値を出すだけ -->
+            <Slider Grid.Column="1" x:Name="ParameterSlider" VerticalAlignment="Center" MinWidth="80" IsEnabled="{Binding IsEditable}"
                     Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
                     SmallChange="{Binding Step}" LargeChange="{Binding LargeStep}"
                     TickFrequency="{Binding Step}" IsSnapToTickEnabled="True"
@@ -41,7 +42,7 @@
                     ToolTip="ダブルクリックで既定値に戻す" />
             <!-- 数値と色の入力欄: Enter かフォーカスが外れたときに当てはめる（Esc で今の値に戻す）。
                  テーマのスタイルを保つため、スタイルを使わずに属性で書く -->
-            <TextBox Grid.Column="2" x:Name="ParameterInput" Margin="8,0,0,0" Text="{Binding Text}" MaxLength="12"
+            <TextBox Grid.Column="2" x:Name="ParameterInput" Margin="8,0,0,0" Text="{Binding Text}" MaxLength="12" IsReadOnly="{Binding IsReadOnly}"
                      TextAlignment="Right" VerticalAlignment="Center" InputMethod.IsInputMethodEnabled="False"
                      KeyDown="OnInputKeyDown" GotKeyboardFocus="OnInputGotKeyboardFocus" />
             <TextBlock Grid.Column="3" Style="{StaticResource ParameterUnitStyle}" Text="{Binding Unit}" />
@@ -50,7 +51,7 @@
 
     <!-- Boolean: チェックボックス -->
     <DataTemplate DataType="{x:Type vm:BooleanParameterViewModel}">
-        <CheckBox Content="{Binding DisplayName}" IsChecked="{Binding IsChecked}" Margin="0,2,0,2" />
+        <CheckBox Content="{Binding DisplayName}" IsChecked="{Binding IsChecked}" IsEnabled="{Binding IsEditable}" Margin="0,2,0,2" />
     </DataTemplate>
 
     <!-- Choice: コンボボックス（選択肢の表示は変わらないので DisplayMemberPath でよい） -->
@@ -61,7 +62,7 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <TextBlock Style="{StaticResource ParameterNameStyle}" Text="{Binding DisplayName}" />
-            <ComboBox Grid.Column="1" ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}"
+            <ComboBox Grid.Column="1" ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}" IsEnabled="{Binding IsEditable}"
                       DisplayMemberPath="DisplayName" />
         </Grid>
     </DataTemplate>
@@ -77,7 +78,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" MinWidth="80" />
             </Grid.ColumnDefinitions>
-            <ItemsControl ItemsSource="{x:Static vm:ColorParameterViewModel.Swatches}" Focusable="False"
+            <ItemsControl ItemsSource="{x:Static vm:ColorParameterViewModel.Swatches}" Focusable="False" IsEnabled="{Binding IsEditable}"
                           VerticalAlignment="Center">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -102,7 +103,7 @@
                 </Border.Background>
             </Border>
             <!-- #RRGGBB は残りの幅いっぱいに（7 文字が欠けずに見えるように） -->
-            <TextBox Grid.Column="2" x:Name="ColorInput" MaxLength="9" Text="{Binding Text}" ToolTip="#RRGGBB"
+            <TextBox Grid.Column="2" x:Name="ColorInput" MaxLength="9" Text="{Binding Text}" ToolTip="#RRGGBB" IsReadOnly="{Binding IsReadOnly}"
                      TextAlignment="Right" VerticalAlignment="Center" InputMethod.IsInputMethodEnabled="False"
                      KeyDown="OnInputKeyDown" GotKeyboardFocus="OnInputGotKeyboardFocus" />
         </Grid>
