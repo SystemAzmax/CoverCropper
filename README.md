@@ -76,6 +76,21 @@ dotnet publish CoverCropper/CoverCropper.csproj -c Release -r win-x64 --self-con
 
 GitHub Actions の CI（`.github/workflows/ci.yml`）は、main へのプッシュとプルリクエストで、ビルド・テスト・配布用ビルドを行い、成果物 `webDeza-win-x64`・`CoverCropper-win-x64`・`test-results` を残します。
 
+### UI テスト
+
+`WebDeza.UiTests` は、ビルドした 2 つのアプリの exe を起動し、マウスとキーボードを実際に動かして画面を操作するテストです（FlaUI）。PC を使っている間は実行できないので、環境変数 `WEBDEZA_UITEST=1` があるときだけ実行し、無いとき（普段の `dotnet test` と CI）はスキップされます。
+
+```powershell
+dotnet build CoverCropper.slnx -c Release
+$env:WEBDEZA_UITEST = "1"
+dotnet test WebDeza.UiTests -c Release --no-build
+dotnet test WebDeza.UiTests -c Release --no-build --filter No=T04   # 観点を 1 つだけ
+```
+
+- webDeza と CoverCropper は閉じておきます。2 つのアプリの設定（`settings.json`）はテストの前に退避し、終わったら戻します。
+- テスト画像は初回に `%TEMP%\webDeza-uitest\images` に作ります（数分かかります）。画面のキャプチャは `%TEMP%\webDeza-uitest\shots` に残ります。
+- マウスは、画面の端から 200 px 以内には動かしません。
+
 ## フォルダ構成
 
 | パス | 内容 |
@@ -83,6 +98,7 @@ GitHub Actions の CI（`.github/workflows/ci.yml`）は、main へのプッシ�
 | `WebDeza/` | webDeza 本体（WPF / MVVM） |
 | `WebDeza/doc/` | webDeza の設計書・実装計画書・手動テスト手順 |
 | `WebDeza.Tests/` | webDeza と WebDeza.Core の単体テスト（xUnit） |
+| `WebDeza.UiTests/` | webDeza と CoverCropper の UI テスト（xUnit / FlaUI。exe を起動して画面を操作する） |
 | `WebDeza.Imaging/` | 画像処理エンジン（画像データ・編集処理・フィルター・形式の仕組み・保存。WPF に依存しない） |
 | `WebDeza.Imaging.Wic/` | 標準の形式プラグイン（WIC で画像ファイルを読み書きする） |
 | `WebDeza.Imaging.Tests/` | エンジンと標準の形式プラグインの単体テスト（xUnit） |

@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    webDeza と CoverCropper の UI テスト（設計書 6.5）。ビルドした exe を起動し、FlaUI（UIA3）で画面を操作する。
+    マウスとキーボードを実際に動かすので、環境変数 WEBDEZA_UITEST=1 が無ければ UI テストはスキップされる。
+    実行: $env:WEBDEZA_UITEST=1; dotnet test WebDeza.UiTests -c Release
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <PlatformTarget>x64</PlatformTarget>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="Xunit.Abstractions" />
+    <Using Include="System.IO" />
+    <!-- FlaUI の Application・Button などと名前がぶつかるので、WinForms の名前空間は暗黙に読み込まない -->
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
+  <!-- 操作する 2 つのアプリ。コードは呼ばず、ビルドの順番のためだけに参照する（exe を起動して操作する） -->
+  <ItemGroup>
+    <ProjectReference Include="..\WebDeza\WebDeza.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\CoverCropper\CoverCropper.csproj" ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+
+  <!-- exe の場所を決めるため、リポジトリのルートとビルドの構成をアセンブリに書いておく（UiTestEnvironment） -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>RepositoryRoot</_Parameter1>
+      <_Parameter2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>Configuration</_Parameter1>
+      <_Parameter2>$(Configuration)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>
