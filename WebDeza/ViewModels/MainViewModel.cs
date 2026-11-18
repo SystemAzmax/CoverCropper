@@ -133,6 +133,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>開いている画像の数で有効・無効が決まるコマンドに、変わったことを知らせる</summary>
     private void NotifyDocumentCommandsChanged()
     {
+        ExportAllCommand.NotifyCanExecuteChanged();
         NextDocumentCommand.NotifyCanExecuteChanged();
         PreviousDocumentCommand.NotifyCanExecuteChanged();
         ActivateDocumentCommand.NotifyCanExecuteChanged();
@@ -878,6 +879,56 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// ［ファイル］→［すべて保存…］ / Ctrl+Shift+E（設計書 F-11）: 保存のダイアログを一括保存の形で開く。
+    /// 対象は開いているすべての画像（開いた順。保存済みかどうかにかかわらず）。プレビューと保存サイズはアクティブな画像のもの
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(HasDocumentsAndIdle))]
+    private void ExportAll()
+    {
+        if (!HasDocumentsAndIdle) return;
+        var dialog = CreateExportDialog(ActiveDocument ?? Documents[0], Documents.ToList());
+        _dialogs.ShowExportDialog(dialog);
+        RememberExportDialogView(dialog);
+    }
+
+    /// <summary>
+    /// 一括保存が終わった（ダイアログを閉じた後に来る）: 出力先と保存の設定を設定に記録し、結果を知らせる（設計書 F-11）。
+    /// 中止したらステータスバーに M12。出力先が無くなって止めたら M06（ステータスバーに M11）。
+    /// それ以外は M11（失敗があれば警告で、失敗したファイル名を並べる。ステータスバーにも M11）
+    /// </summary>
+    private void OnBatchFinished(object? sender, BatchResult result)
+    {
+        if (sender is not ExportDialogViewModel dialog) return;
+        RecordExportSettings(dialog);
+
+        var finished = Messages.M11_BatchFinished(result.SucceededCount, result.FailedCount, FileSizeFormatter.Format(result.TotalBytes));
+        if (result.Cancelled)
+        {
+            StatusMessage = Messages.M12_BatchCancelled(result.SucceededCount);
+            return;
+        }
+
+        StatusMessage = finished;
+        if (result.OutputFolderMissing)
+            _dialogs.ShowError(Messages.M06_OutputFolderNotFound(dialog.OutputFolder ?? ""));
+        else if (result.FailedCount > 0)
+            _dialogs.ShowWarning(BatchFinishedMessage(result));
+        else
+            _dialogs.ShowInfo(finished);
+    }
+
+    /// <summary>
+    /// M11 の文。失敗があれば、続けて失敗したファイル名と理由を 1 行ずつ並べる（設計書 F-11）
+    /// </summary>
+    public static string BatchFinishedMessage(BatchResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        var message = Messages.M11_BatchFinished(result.SucceededCount, result.FailedCount, FileSizeFormatter.Format(result.TotalBytes));
+        var failed = result.Items.Where(i => !i.Succeeded).Select(i => $"・{i.FileName}（{i.Error}）").ToList();
+        return failed.Count == 0 ? message : message + "\n\n失敗した画像:\n" + string.Join("\n", failed);
+    }
+
+    /// <summary>
     /// 保存のダイアログの大きさと、プレビューの比較のしかたを覚える（［キャンセル］で閉じたときも。
     /// 画面の見た目の状態で、保存の設定ではないため）。変わっていなければ、設定ファイルを書かない
     /// </summary>
@@ -894,17 +945,21 @@ public sealed partial class MainViewModel : ObservableObject
         SaveSettingsQuietly();
     }
 
-    /// <summary>保存のダイアログの ViewModel を作る（保存できたら、OnExported で設定に記録する）</summary>
-    private ExportDialogViewModel CreateExportDialog(DocumentViewModel document)
+    /// <summary>
+    /// 保存のダイアログの ViewModel を作る（保存できたら OnExported、一括保存が終わったら OnBatchFinished で設定に記録する）。
+    /// batchDocuments を渡すと一括保存の形になる
+    /// </summary>
+    private ExportDialogViewModel CreateExportDialog(DocumentViewModel document, IReadOnlyList<DocumentViewModel>? batchDocuments = null)
     {
         var dialog = new ExportDialogViewModel(document, Settings.OutputFolder, Settings.Export.ToExportSettings(),
-            _exporter, _dialogs, _log, rememberedSizeLimitKB: Settings.Export.SizeLimitKB)
+            _exporter, _dialogs, _log, rememberedSizeLimitKB: Settings.Export.SizeLimitKB, batchDocuments: batchDocuments)
         {
             DialogWidth = Settings.ExportDialogWidth,
             DialogHeight = Settings.ExportDialogHeight,
             IsSideBySide = Settings.ExportPreviewSideBySide,
         };
         dialog.Saved += OnExported;
+        dialog.BatchFinished += OnBatchFinished;
         return dialog;
     }
 
@@ -915,10 +970,16 @@ public sealed partial class MainViewModel : ObservableObject
     private void OnExported(object? sender, ExportResult result)
     {
         if (sender is not ExportDialogViewModel dialog) return;
+        RecordExportSettings(dialog);
+        StatusMessage = ExportDialogViewModel.SavedMessage(result);
+    }
+
+    /// <summary>ダイアログの出力先と保存の設定を、設定に記録する（［保存］を押して実行したとき。設計書 F-08）</summary>
+    private void RecordExportSettings(ExportDialogViewModel dialog)
+    {
         Settings.OutputFolder = dialog.OutputFolder;
         Settings.Export = ExportSettingsData.From(dialog.Settings, dialog.SizeLimitKB); // 上限は「品質を指定」のときも覚えておく
         SaveSettingsQuietly();
-        StatusMessage = ExportDialogViewModel.SavedMessage(result);
     }
 
     // ---------------------------------------------------------------- 閉じる

@@ -116,9 +116,10 @@
             </Grid>
         </DockPanel>
 
-        <!-- 設定（設計書 4.6 の図の右側）。ダイアログが低いときはスクロールする -->
+        <!-- 設定（設計書 4.6 の図の右側）。ダイアログが低いときはスクロールする。
+             保存の処理をしている間（一括保存の実行中も）は変えられない（設計書 F-11「実行中にできること: ［中止］だけ」） -->
         <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
-            <Grid x:Name="SettingsGrid" Margin="0,0,4,0">
+            <Grid x:Name="SettingsGrid" Margin="0,0,4,0" IsEnabled="{Binding IsIdle}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="320" />
@@ -207,9 +208,22 @@
             </Grid>
         </ScrollViewer>
 
-        <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-            <Button x:Name="SaveButton" Content="保存" IsDefault="True" Command="{Binding SaveCommand}" />
-            <Button x:Name="CancelButton" Content="キャンセル" IsCancel="True" IsEnabled="{Binding IsIdle}" />
-        </StackPanel>
+        <!-- 下の段: ［保存］（一括保存では［{n} 件を保存］）と［キャンセル］。一括保存の実行中は、プログレスバー・進み具合の文・［中止］
+             （設計書 4.6・F-11。中止は Esc・［×］でも。ExportDialog.xaml.cs） -->
+        <DockPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,8,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button x:Name="SaveButton" Content="{Binding SaveButtonText}" IsDefault="True" Command="{Binding SaveCommand}" />
+                <Button x:Name="CancelBatchButton" Content="中止" Command="{Binding CancelBatchCommand}" ToolTip="中止 (Esc)"
+                        Visibility="{Binding IsBatchRunning, Converter={StaticResource BoolToVisibility}}" />
+                <Button x:Name="CancelButton" Content="キャンセル" IsCancel="True" IsEnabled="{Binding IsIdle}"
+                        Visibility="{Binding IsIdle, Converter={StaticResource BoolToVisibility}}" />
+            </StackPanel>
+            <StackPanel x:Name="BatchProgressArea" Orientation="Horizontal" VerticalAlignment="Center"
+                        Visibility="{Binding IsBatchRunning, Converter={StaticResource BoolToVisibility}}">
+                <ProgressBar x:Name="BatchProgressBar" Width="240" Height="6" Minimum="0" Maximum="{Binding BatchCount, Mode=OneWay}"
+                             Value="{Binding BatchDone, Mode=OneWay}" VerticalAlignment="Center" />
+                <TextBlock x:Name="BatchProgressText" Text="{Binding BatchProgressText}" Margin="12,0,0,0" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+        </DockPanel>
     </Grid>
 </Window>

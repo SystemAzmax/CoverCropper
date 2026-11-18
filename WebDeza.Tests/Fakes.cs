@@ -93,6 +93,16 @@ internal sealed class FakeDialogs : IDialogService
         return ConfirmAnswer;
     }
 
+    /// <summary>出した知らせ（情報）</summary>
+    public List<string> Infos { get; } = new();
+
+    /// <summary>出した注意（警告）</summary>
+    public List<string> Warnings { get; } = new();
+
+    public void ShowInfo(string message) => Infos.Add(message);
+
+    public void ShowWarning(string message) => Warnings.Add(message);
+
     /// <summary>［OK］［キャンセル］の確認をしたときの文（順に）</summary>
     public List<string> OkCancelConfirmations { get; } = new();
 

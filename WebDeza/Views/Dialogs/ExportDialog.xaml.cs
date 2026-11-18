@@ -72,18 +72,33 @@ public partial class ExportDialog : Window
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // 1 枚の保存の間は待機カーソル。一括保存の間は［中止］を押せるよう、待機カーソルにしない（プログレスバーを出す）
         if (e.PropertyName == nameof(ExportDialogViewModel.IsSaving))
-            Mouse.OverrideCursor = _vm.IsSaving ? Cursors.Wait : null;
+            Mouse.OverrideCursor = _vm.IsSaving && !_vm.IsBatchRunning ? Cursors.Wait : null;
         else if (e.PropertyName == nameof(ExportDialogViewModel.IsSideBySide))
             UpdatePreviewLayout();
     }
 
-    /// <summary>保存の処理をしている間は閉じない（Esc・［×］）。閉じるときは、今の大きさを覚える</summary>
+    /// <summary>一括保存の実行中の Esc は［中止］（設計書 4.4・F-11）</summary>
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        base.OnPreviewKeyDown(e);
+        if (e.Key == Key.Escape && _vm.IsBatchRunning)
+        {
+            _vm.CancelBatchCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// 保存の処理をしている間は閉じない（Esc・［×］）。一括保存の実行中に閉じようとしたら［中止］にする。閉じるときは、今の大きさを覚える
+    /// </summary>
     protected override void OnClosing(CancelEventArgs e)
     {
         base.OnClosing(e);
         if (_vm.IsSaving)
         {
+            if (_vm.IsBatchRunning) _vm.CancelBatchCommand.Execute(null);
             e.Cancel = true;
             return;
         }

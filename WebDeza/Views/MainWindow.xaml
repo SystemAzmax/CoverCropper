@@ -23,6 +23,7 @@
         <KeyBinding Modifiers="Control" Key="O" Command="{Binding OpenCommand}" />
         <KeyBinding Modifiers="Control" Key="W" Command="{Binding CloseCommand}" />
         <KeyBinding Modifiers="Control" Key="E" Command="{Binding ExportCommand}" />
+        <KeyBinding Modifiers="Control+Shift" Key="E" Command="{Binding ExportAllCommand}" />
         <KeyBinding Modifiers="Control" Key="A" Command="{Binding SelectAllCommand}" />
         <KeyBinding Modifiers="Control" Key="D" Command="{Binding DeselectCommand}" />
         <KeyBinding Modifiers="Control+Shift" Key="X" Command="{Binding CropCommand}" />
@@ -61,7 +62,7 @@
                 <Separator />
                 <MenuItem Header="上書き保存(_S)" InputGestureText="Ctrl+S" IsEnabled="False" />        <!-- 将来 -->
                 <MenuItem Header="保存(_E)…" InputGestureText="Ctrl+E" Command="{Binding ExportCommand}" />
-                <MenuItem Header="すべて保存(_A)…" InputGestureText="Ctrl+Shift+E" IsEnabled="False" /> <!-- 10-11 -->
+                <MenuItem Header="すべて保存(_A)…" InputGestureText="Ctrl+Shift+E" Command="{Binding ExportAllCommand}" />
                 <Separator />
                 <MenuItem Header="終了(_X)" Command="{Binding ExitCommand}" />
             </MenuItem>

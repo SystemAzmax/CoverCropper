@@ -41,6 +41,11 @@ public sealed partial class ExportDialogViewModel : ObservableObject
     private readonly ExportPreviewService _preview;
     private readonly TimeSpan _sizeInterval;
 
+    /// <summary>一括保存の対象（開いた順。1 枚の保存なら null）</summary>
+    private readonly IReadOnlyList<DocumentViewModel>? _batchDocuments;
+    private readonly BatchExporter _batchExporter;
+    private CancellationTokenSource? _batchCancellation;
+
     /// <summary>保存サイズの計算を頼む間隔（設計書 F-09）</summary>
     public static readonly TimeSpan DefaultSizeInterval = TimeSpan.FromMilliseconds(200);
 
@@ -76,7 +81,8 @@ public sealed partial class ExportDialogViewModel : ObservableObject
     /// </param>
     public ExportDialogViewModel(DocumentViewModel document, string? outputFolder, ExportSettings settings,
         ExportService exporter, IDialogService dialogs, AppLog log, TimeSpan? sizeInterval = null,
-        long rememberedSizeLimitKB = ExportSettingsData.DefaultSizeLimitKB)
+        long rememberedSizeLimitKB = ExportSettingsData.DefaultSizeLimitKB,
+        IReadOnlyList<DocumentViewModel>? batchDocuments = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(settings);
@@ -92,6 +98,8 @@ public sealed partial class ExportDialogViewModel : ObservableObject
         _preview = exporter.CreatePreviewService();
         _preview.Completed += OnPreviewCompleted;
         _preview.Failed += OnPreviewFailed;
+        _batchDocuments = batchDocuments?.ToList();
+        _batchExporter = new BatchExporter(exporter, log);
 
         _formatOptions = new Dictionary<string, ParameterValues>(settings.FormatOptions, StringComparer.Ordinal);
         _initialFormatId = settings.FormatId;
@@ -110,7 +118,100 @@ public sealed partial class ExportDialogViewModel : ObservableObject
     public DocumentViewModel Document => _document;
 
     /// <summary>ダイアログのタイトル: 「保存: {ファイル名}」</summary>
-    public string Title => $"保存: {_document.FileName}";
+    public string Title => IsBatch ? $"すべて保存（{BatchCount} 件）" : $"保存: {_document.FileName}";
+
+    // ---------------------------------------------------------------- 一括保存（設計書 F-11）
+
+    /// <summary>
+    /// 一括保存の形か（［ファイル］→［すべて保存…］）。開いているすべての画像を、同じ設定で保存する。
+    /// プレビューと保存サイズは、アクティブな画像（Document）のもの
+    /// </summary>
+    public bool IsBatch => _batchDocuments is not null;
+
+    /// <summary>一括保存する画像の数</summary>
+    public int BatchCount => _batchDocuments?.Count ?? 1;
+
+    /// <summary>［保存］ボタンの文字（一括保存では「{n} 件を保存」）</summary>
+    public string SaveButtonText => IsBatch ? $"{BatchCount} 件を保存" : "保存";
+
+    /// <summary>一括保存をしているか（このあいだは［中止］だけを押せる）</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CancelBatchCommand))]
+    private bool _isBatchRunning;
+
+    /// <summary>一括保存で終わった件数（プログレスバー）</summary>
+    [ObservableProperty]
+    private int _batchDone;
+
+    /// <summary>一括保存の進み具合の文（例: 「3 / 20: photo.jpg」）</summary>
+    [ObservableProperty]
+    private string _batchProgressText = "";
+
+    /// <summary>一括保存の結果（実行したときだけ）</summary>
+    public BatchResult? BatchOutcome { get; private set; }
+
+    /// <summary>
+    /// 一括保存が終わった（中止・出力先が無くなって止めたときも）。ダイアログを閉じてから出す。
+    /// MainViewModel が受けて、設定に記録し、M11 / M12 / M06 を出す
+    /// </summary>
+    public event EventHandler<BatchResult>? BatchFinished;
+
+    /// <summary>［中止］/ Esc: 保存中の 1 件を終えてから止める（設計書 F-11）</summary>
+    [RelayCommand(CanExecute = nameof(IsBatchRunning))]
+    private void CancelBatch()
+    {
+        if (_batchCancellation is not { IsCancellationRequested: false } cancellation) return;
+        cancellation.Cancel();
+        BatchProgressText = "中止しています…";
+    }
+
+    /// <summary>
+    /// 一括保存を行う（バックグラウンドで 1 件ずつ）。終わったら、保存できた画像の「保存していない編集」の印を消し、
+    /// ダイアログを閉じてから BatchFinished を出す
+    /// </summary>
+    private async Task RunBatchAsync(string folder)
+    {
+        var documents = _batchDocuments!;
+        var jobs = documents.Select(d => new BatchJob(d.Path, d.Image)).ToList();
+        var states = documents.Select(d => d.History.StateId).ToList();
+        var settings = Settings;
+        // 同じ条件の保存サイズを計算してあっても、一括保存は画像ごとに作る（BatchExporter）
+
+        using var cancellation = new CancellationTokenSource();
+        _batchCancellation = cancellation;
+        BatchDone = 0;
+        BatchProgressText = $"0 / {jobs.Count}";
+        IsBatchRunning = true;
+        IsSaving = true;
+        var progress = new Progress<BatchProgress>(p =>
+        {
+            if (!IsBatchRunning) return;
+            BatchDone = p.Done;
+            if (!cancellation.IsCancellationRequested) BatchProgressText = $"{p.Done} / {p.Total}: {p.Last?.FileName}";
+        });
+
+        BatchResult result;
+        try
+        {
+            result = await _batchExporter.RunAsync(jobs, folder, settings, progress, cancellation.Token);
+        }
+        finally
+        {
+            IsSaving = false;
+            IsBatchRunning = false;
+            _batchCancellation = null;
+        }
+
+        // 保存できた画像の印を消す（Items は jobs の先頭からの順）
+        for (int i = 0; i < result.Items.Count; i++)
+        {
+            if (result.Items[i].Succeeded) documents[i].MarkExported(states[i]);
+        }
+
+        BatchOutcome = result;
+        CloseRequested?.Invoke(this, EventArgs.Empty);
+        BatchFinished?.Invoke(this, result);
+    }
 
     /// <summary>
     /// 今の入力から作った保存の設定（保存できたら、MainViewModel が設定に記録する）。
@@ -581,6 +682,8 @@ public sealed partial class ExportDialogViewModel : ObservableObject
             FileName = _selectedFormat is { } format
                 ? _exporter.CreateOutputFileName(OutputFolder, _document.Path, format.Id)
                 : "";
+            // 一括保存では、アクティブな画像の名前を例として出す（ほかの画像も同じ決まりの名前になる）
+            if (IsBatch && BatchCount > 1 && FileName.Length > 0) FileName += $" ほか {BatchCount - 1} 件";
         }
         catch (Exception ex) when (ex is NotSupportedException or IOException or UnauthorizedAccessException or ArgumentException)
         {
@@ -647,6 +750,11 @@ public sealed partial class ExportDialogViewModel : ObservableObject
     private async Task SaveAsync()
     {
         if (IsSaving || EnsureOutputFolder() is not { } folder) return;
+        if (IsBatch)
+        {
+            await RunBatchAsync(folder);
+            return;
+        }
 
         var image = _document.Image;          // 編集を確定した今の画像（フィルターのプレビューは含まない）
         long stateId = _document.History.StateId;

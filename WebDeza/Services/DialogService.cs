@@ -14,6 +14,12 @@ public interface IDialogService
     /// <summary>エラーを出す</summary>
     void ShowError(string message);
 
+    /// <summary>知らせる（情報のアイコン。M11 で失敗が無いとき）</summary>
+    void ShowInfo(string message);
+
+    /// <summary>注意を出す（警告のアイコン。M11 で失敗があったとき）</summary>
+    void ShowWarning(string message);
+
     /// <summary>確認する（［はい］［いいえ］。既定のボタンは［いいえ］）。［はい］なら true</summary>
     bool Confirm(string message);
 
@@ -53,6 +59,12 @@ public sealed class DialogService : IDialogService
 
     public void ShowError(string message)
         => Show(message, MessageBoxButton.OK, MessageBoxImage.Error);
+
+    public void ShowInfo(string message)
+        => Show(message, MessageBoxButton.OK, MessageBoxImage.Information);
+
+    public void ShowWarning(string message)
+        => Show(message, MessageBoxButton.OK, MessageBoxImage.Warning);
 
     /// <summary>既定のボタンは［いいえ］（Enter を押しただけで、保存していない編集を捨てないように）</summary>
     public bool Confirm(string message)
