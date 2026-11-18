@@ -58,9 +58,14 @@ public sealed class T02FileLockTests(ITestOutputHelper output) : UiTestBase(outp
         Waits.Until(() => app.DocumentTitles().Count == 2, TimeSpan.FromSeconds(60));
         app.ActivateDocument("big.jpg");
 
+        // JPEG の計算は、表示を読む前に終わることがある。形式を PNG に変えて、時間のかかる計算をやり直させる
         var dialog = app.OpenExportDialog();
+        var formatCombo = AppDriver.ById(dialog, "FormatCombo") ?? throw new InvalidOperationException("形式の一覧が無い");
         var sizeText = AppDriver.ById(dialog, "FileSizeText") ?? throw new InvalidOperationException("保存サイズの表示が無い");
-        bool computing = sizeText.Name.Contains("計算中");
+        app.Driver.SelectCombo(formatCombo, "PNG", dialog);
+        string firstText = sizeText.Name;
+        Check.Note($"PNG にした直後の保存サイズの表示: 「{firstText}」");
+        bool computing = firstText.Contains("計算中");
         string? deleteError = TryFileOperation(() => File.Delete(other));
         bool stillComputing = sizeText.Name.Contains("計算中");
         Check.That("T02 保存のダイアログを開いている間（計算中も）に、開いている別の画像のファイルを削除する → 削除できる",
