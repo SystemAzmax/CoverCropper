@@ -89,7 +89,7 @@ dotnet test WebDeza.UiTests -c Release --no-build --filter No=T04   # 観点を 
 
 - webDeza と CoverCropper は閉じておきます。2 つのアプリの設定（`settings.json`）はテストの前に退避し、終わったら戻します。
 - テスト画像は初回に `%TEMP%\webDeza-uitest\images` に作ります（数分かかります）。画面のキャプチャは `%TEMP%\webDeza-uitest\shots` に残ります。
-- マウスは、画面の端から 200 px 以内には動かしません。
+- マウスは、画面の端から 200 px 以内には動かしません（モニターどうしの境は端と見なさず、モニターの無い所との境は端と見なします）。
 
 ## フォルダ構成
 
