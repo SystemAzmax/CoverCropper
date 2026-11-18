@@ -53,11 +53,21 @@ jobs:
           path: TestResults
           if-no-files-found: ignore
 
-      - name: Publish
+      - name: Publish CoverCropper
         run: dotnet publish CoverCropper/CoverCropper.csproj -c Release -r win-x64 --self-contained false -o publish
 
-      - name: Upload app
+      - name: Upload CoverCropper
         uses: actions/upload-artifact@v7
         with:
           name: CoverCropper-win-x64
           path: publish
+
+      - name: Publish webDeza
+        run: dotnet publish WebDeza/WebDeza.csproj -c Release -r win-x64 --self-contained false -o publish-webdeza
+
+      - name: Upload webDeza
+        uses: actions/upload-artifact@v7
+        with:
+          name: webDeza-win-x64
+          path: publish-webdeza
+          if-no-files-found: error
