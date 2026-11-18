@@ -167,7 +167,7 @@
                         <StackPanel Margin="0,4,0,0">
                             <!-- 数値の入力欄: Enter かフォーカスが外れたときに当てはめる（Esc で元の値に戻す） -->
                             <StackPanel.Resources>
-                                <Style TargetType="TextBlock">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource PanelLabelStyle}">
                                     <Setter Property="VerticalAlignment" Value="Center" />
                                     <Setter Property="Margin" Value="0,0,6,0" />
                                 </Style>
@@ -265,7 +265,8 @@
                             <ContentControl x:Name="FilterInputs" Content="{Binding}" Focusable="False" Margin="0,6,0,0"
                                             Grid.IsSharedSizeScope="True"
                                             ContentTemplate="{StaticResource FilterParametersTemplate}" />
-                            <TextBlock x:Name="FilterTargetText" Text="{Binding TargetText}" Margin="0,6,0,0" />
+                            <TextBlock x:Name="FilterTargetText" Text="{Binding TargetText}" Margin="0,6,0,0"
+                                       Style="{StaticResource PanelLabelStyle}" />
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                 <Button x:Name="FilterApplyButton" Content="適用" Command="{Binding ApplyCommand}"
                                         ToolTip="フィルターをかける（元に戻せる）" />

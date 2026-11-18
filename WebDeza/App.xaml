@@ -47,7 +47,7 @@
             </Style>
 
             <!-- 道具のボタン（キャンバスの左。今の道具は、アクセントの色で塗る） -->
-            <Style x:Key="ToolButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Style x:Key="ToolButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
                 <Setter Property="Margin" Value="0,0,0,4" />
                 <Setter Property="MinWidth" Value="0" />
                 <Setter Property="Width" Value="32" />
@@ -69,11 +69,41 @@
                 <Setter Property="Background" Value="{DynamicResource DividerStrokeColorDefaultBrush}" />
             </Style>
 
-            <!-- ボタンはフォーカスを取らない（キー操作をキャンバスに残すため。設計書 4.1） -->
-            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <!--
+                ボタンはフォーカスを取らない（キー操作をキャンバスに残すため。設計書 4.1）。
+                もとにするのは Fluent テーマのボタンのスタイル（DefaultButtonStyle）。{x:Type Button} にすると、
+                この辞書の中ではこのスタイル自身を指してしまい、もとが無くなって WPF の古い見た目のボタンになる
+            -->
+            <Style TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
                 <Setter Property="Margin" Value="0,0,6,0" />
                 <Setter Property="MinWidth" Value="64" />
                 <Setter Property="Focusable" Value="False" />
+            </Style>
+
+            <!-- ダイアログのボタン: メインウィンドウと違ってフォーカスを取ってよい（Tab で選べるように） -->
+            <Style x:Key="DialogButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Focusable" Value="True" />
+                <Setter Property="MinWidth" Value="88" />
+                <Setter Property="Margin" Value="8,0,0,0" />
+            </Style>
+
+            <!-- ダイアログの主な操作（［保存］［OK］）: アクセントの色で目立たせる（Windows 11 のダイアログと同じ） -->
+            <Style x:Key="DialogPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+                <Setter Property="Focusable" Value="True" />
+                <Setter Property="MinWidth" Value="88" />
+                <Setter Property="Margin" Value="8,0,0,0" />
+            </Style>
+
+            <!--
+                領域の中の項目名など（編集パネル・ダイアログ）。無効のとき（画像が無い・保存中など）は薄い色にする
+                （TextBlock は、無効になっても自分では色が変わらないため）
+            -->
+            <Style x:Key="PanelLabelStyle" TargetType="TextBlock">
+                <Style.Triggers>
+                    <Trigger Property="IsEnabled" Value="False">
+                        <Setter Property="Foreground" Value="{DynamicResource TextFillColorDisabledBrush}" />
+                    </Trigger>
+                </Style.Triggers>
             </Style>
 
             <!-- 子ウィンドウ（設計書 F-02）の枠。太さとタイトルバーの高さは DocumentWindow の定数（大きさの計算に使うため） -->
@@ -101,7 +131,7 @@
             </Style>
 
             <!-- 子ウィンドウのタイトルバーのボタン（最大化 / 元に戻す・閉じる）。記号は Segoe Fluent Icons -->
-            <Style x:Key="TitleBarButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Style x:Key="TitleBarButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
                 <Setter Property="Margin" Value="0" />
                 <Setter Property="Padding" Value="0" />
                 <Setter Property="MinWidth" Value="0" />

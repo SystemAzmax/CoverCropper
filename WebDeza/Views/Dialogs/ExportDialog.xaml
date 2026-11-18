@@ -23,20 +23,16 @@
     <Grid Margin="16">
         <Grid.Resources>
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
-            <Style TargetType="TextBlock">
+            <Style TargetType="TextBlock" BasedOn="{StaticResource PanelLabelStyle}">
                 <Setter Property="VerticalAlignment" Value="Center" />
             </Style>
             <!-- 項目名の列 -->
-            <Style x:Key="LabelStyle" TargetType="TextBlock">
+            <Style x:Key="LabelStyle" TargetType="TextBlock" BasedOn="{StaticResource PanelLabelStyle}">
                 <Setter Property="VerticalAlignment" Value="Top" />
                 <Setter Property="Margin" Value="0,0,16,10" />
             </Style>
-            <!-- ダイアログのボタンは、メインウィンドウと違ってフォーカスを取ってよい（Tab で選べるように） -->
-            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                <Setter Property="Focusable" Value="True" />
-                <Setter Property="MinWidth" Value="88" />
-                <Setter Property="Margin" Value="8,0,0,0" />
-            </Style>
+            <!-- ダイアログのボタン（App.xaml。フォーカスを取ってよい） -->
+            <Style TargetType="Button" BasedOn="{StaticResource DialogButtonStyle}" />
         </Grid.Resources>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" MinWidth="320" />
@@ -53,26 +49,27 @@
             「結果のみ」のときは圧縮後だけを広げて出す（左の列の幅は、ExportDialog.xaml.cs の UpdatePreviewLayout で切り替える）
         -->
         <DockPanel Grid.Column="0" Margin="0,0,16,0">
-            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
-                <StackPanel.Resources>
+            <!-- ダイアログが狭いとき（最小 820 DIP）は折り返す -->
+            <WrapPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,2">
+                <WrapPanel.Resources>
                     <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                         <Setter Property="Focusable" Value="False" />
                         <Setter Property="MinWidth" Value="0" />
                         <Setter Property="Padding" Value="10,3" />
-                        <Setter Property="Margin" Value="0,0,4,0" />
+                        <Setter Property="Margin" Value="0,0,4,4" />
                     </Style>
-                </StackPanel.Resources>
+                </WrapPanel.Resources>
                 <RadioButton x:Name="SideBySideRadio" Content="並べて比較" IsChecked="{Binding IsSideBySide}" GroupName="PreviewMode"
-                             VerticalAlignment="Center" ToolTip="左に圧縮前、右に圧縮後" />
+                             VerticalAlignment="Center" Margin="0,0,0,4" ToolTip="左に圧縮前、右に圧縮後" />
                 <RadioButton x:Name="ResultOnlyRadio" Content="結果のみ" IsChecked="{Binding IsResultOnly}" GroupName="PreviewMode"
-                             VerticalAlignment="Center" Margin="4,0,16,0" ToolTip="圧縮後だけを大きく出す" />
+                             VerticalAlignment="Center" Margin="4,0,16,4" ToolTip="圧縮後だけを大きく出す" />
                 <Button x:Name="PreviewFitButton" Content="全体" Click="OnPreviewFitClick" ToolTip="全体表示" />
                 <Button x:Name="PreviewActualSizeButton" Content="100%" Click="OnPreviewActualSizeClick" ToolTip="100%" />
                 <Button x:Name="PreviewZoomOutButton" Content="－" Click="OnPreviewZoomOutClick" ToolTip="縮小" />
                 <Button x:Name="PreviewZoomInButton" Content="＋" Click="OnPreviewZoomInClick" ToolTip="拡大" />
                 <TextBlock x:Name="PreviewZoomText" Text="{Binding ZoomText, ElementName=PreviewCanvas}" MinWidth="48"
-                           Margin="6,0,0,0" />
-            </StackPanel>
+                           Margin="6,0,0,4" />
+            </WrapPanel>
             <Grid x:Name="PreviewArea">
                 <!-- 左右の幅をそろえる（表示を共有するので、幅が違うと左右で位置がずれる）。間は独立した列にする -->
                 <Grid.ColumnDefinitions>
@@ -212,7 +209,8 @@
              （設計書 4.6・F-11。中止は Esc・［×］でも。ExportDialog.xaml.cs） -->
         <DockPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,8,0,0">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                <Button x:Name="SaveButton" Content="{Binding SaveButtonText}" IsDefault="True" Command="{Binding SaveCommand}" />
+                <Button x:Name="SaveButton" Content="{Binding SaveButtonText}" IsDefault="True" Command="{Binding SaveCommand}"
+                        Style="{StaticResource DialogPrimaryButtonStyle}" />
                 <Button x:Name="CancelBatchButton" Content="中止" Command="{Binding CancelBatchCommand}" ToolTip="中止 (Esc)"
                         Visibility="{Binding IsBatchRunning, Converter={StaticResource BoolToVisibility}}" />
                 <Button x:Name="CancelButton" Content="キャンセル" IsCancel="True" IsEnabled="{Binding IsIdle}"

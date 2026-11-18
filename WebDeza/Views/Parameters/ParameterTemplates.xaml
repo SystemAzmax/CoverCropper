@@ -9,16 +9,27 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:vm="clr-namespace:WebDeza.ViewModels">
 
+    <!-- 名前と単位。無効のとき（画像が無いなど）は薄い色にする（TextBlock は自分では色が変わらないため。App.xaml の PanelLabelStyle と同じ） -->
     <Style x:Key="ParameterNameStyle" TargetType="TextBlock">
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="Margin" Value="0,0,8,0" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
         <Setter Property="ToolTip" Value="{Binding DisplayName}" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource TextFillColorDisabledBrush}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <Style x:Key="ParameterUnitStyle" TargetType="TextBlock">
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="Margin" Value="4,0,0,0" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource TextFillColorDisabledBrush}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- Integer / Number: スライダー（ダブルクリックで既定値）と数値入力 -->
@@ -39,7 +50,18 @@
                     TickFrequency="{Binding Step}" IsSnapToTickEnabled="True"
                     Value="{Binding SliderValue}"
                     MouseDoubleClick="OnSliderMouseDoubleClick"
-                    ToolTip="ダブルクリックで既定値に戻す" />
+                    ToolTip="ダブルクリックで既定値に戻す">
+                <!-- 無効のとき（画像が無い・上限で品質を探しているとき）は薄く出す（Fluent テーマでは、無効でも見た目がほとんど変わらないため） -->
+                <Slider.Style>
+                    <Style TargetType="Slider" BasedOn="{StaticResource {x:Type Slider}}">
+                        <Style.Triggers>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Slider.Style>
+            </Slider>
             <!-- 数値と色の入力欄: Enter かフォーカスが外れたときに当てはめる（Esc で今の値に戻す）。
                  テーマのスタイルを保つため、スタイルを使わずに属性で書く -->
             <TextBox Grid.Column="2" x:Name="ParameterInput" Margin="8,0,0,0" Text="{Binding Text}" MaxLength="12" IsReadOnly="{Binding IsReadOnly}"
