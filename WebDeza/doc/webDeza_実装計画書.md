@@ -374,8 +374,12 @@
 
 | No | 機能 | 作るもの・変えるもの | 確かめること | 規模 | 状態 |
 |---|---|---|---|---|---|
-| 12-1 | 安全性のレビュー | 元画像に書き込むコードパスと、CoverCropper の設定ファイルに書き込むコードパスが無いことを確かめる。元ファイルを開くのが `FormatRegistry` だけ、画像を書くのが `SafeFileWriter` だけであること | レビューの結果を報告する | 小 | 未 |
+| 12-1 | 安全性のレビュー | 元画像に書き込むコードパスと、CoverCropper の設定ファイルに書き込むコードパスが無いことを確かめる。元ファイルを開くのが `FormatRegistry` だけ、画像を書くのが `SafeFileWriter` だけであること | レビューの結果を報告する | 小 | 済 |
 | 12-2 | 受け入れ確認 | 設計書 7 章の 16 項目を 1 つずつ確かめる。6.4 の T01〜T22 を通しで行う | 16 項目すべて | 中 | 未 |
+
+注意:
+
+- 12-1: 製品のコード（WebDeza・WebDeza.Core・WebDeza.Imaging・WebDeza.Imaging.Wic・CoverCropper。テストとツールは除く）で、ファイルを開く・書く・消す・動かす所（`File.*`・`FileStream`・`FileInfo`・`Directory.*`・`StreamWriter`・エンコーダーの `Save`・`BitmapDecoder.Create`・`Uri`・`BitmapImage`・`Process.Start`）をすべて洗い出して確かめた。問題は無く、コードは変えていない。(1) 元ファイルを開くのは `FormatRegistry.Decode` / `DecodeThumbnail` だけで、`FileMode.Open`・`FileAccess.Read`・`FileShare.Read` で開き、読み終えたら閉じる（WIC のデコーダーは `BitmapCacheOption.OnLoad` で読むので、閉じた後は元ファイルに触れない）。呼んでいるのは webDeza の `MainViewModel.OpenPathsAsync` と CoverCropper の `ImageLoader` だけ。ほかに元ファイルに触れるのは、存在の確認・フォルダの列挙（`FileCollector`）・バイト数の取得（`DocumentViewModel.GetFileSize` の `FileInfo.Length`）で、どれも読むだけ。`ExportPreviewService` の読み直しは、メモリ上のバイト列から読む。(2) 画像を書くのは `SafeFileWriter.Write` だけ（webDeza は `ExportService.Export`。1 枚の保存と一括保存（`BatchExporter`）の両方がここを通る。CoverCropper は `JpegSaver`）。`WicEncoders` は渡されたストリームに書くだけで、ファイルは開かない。`SafeFileWriter` は、元画像のパス（フルパス・大文字小文字を区別しない）には書かず、既にあるファイル・フォルダは上書きせず（存在の確認と `File.Move(overwrite: false)` の 2 重）、同じフォルダの一時ファイルに書いてからリネームする。webDeza は元画像のパスを、1 枚の保存では `DocumentViewModel.Path`、一括保存では `BatchJob.SourcePath`（同じ `Path`）として渡している。CoverCropper の `JpegSaver` は守るパスを渡さないが、`MainViewModel` が保存の前に元画像と同じパスかを確かめ（今までの動作のまま）、`SafeFileWriter` も既にあるファイルは上書きしないので、元画像には書けない（CoverCropper の動作を変えないため、そのままにした）。(3) 設定を書くのは `JsonSettingsService.Save`、ログを書くのは `AppLog` だけで、パスは `AppPaths` が `%APPDATA%\{アプリ名}` から作る。webDeza はアプリ名 `webDeza`（`AppInfo.ProductName`）で `%APPDATA%\webDeza\settings.json` と `logs\app.log` だけに書き、CoverCropper の設定ファイル（`%APPDATA%\CoverCropper\settings.json`）を書くコードパスは無い（読むコードパスも無い）。(4) `Process.Start` は［開く］で出力先フォルダをエクスプローラーで開くだけ。これらは既存のテストでも確かめてある（`SafeFileWriterTests` の元画像のパス・書き方の違うパス・既にあるファイル、`ExportServiceTests.Export_PathSameAsSource_DoesNotWrite`、`FormatRegistryTests` の読んだ後に元ファイルのハッシュと更新日時が変わらないこと）。
 
 ---
 
