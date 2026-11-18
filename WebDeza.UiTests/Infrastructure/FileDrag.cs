@@ -90,9 +90,7 @@ public static class FileDrag
             Mouse.Position = target;
             Thread.Sleep(400);
 
-            var info = new Native.CURSORINFO { Size = System.Runtime.InteropServices.Marshal.SizeOf<Native.CURSORINFO>() };
-            Native.GetCursorInfo(ref info);
-            result.CursorWhileOver = info.Cursor;
+            result.CursorWhileOver = Pointer.CurrentCursor();
             if (whileOver is not null) result.ShotWhileOver = whileOver();
 
             if (!drop)

@@ -137,13 +137,21 @@ public sealed class WebDezaApp : IDisposable
         return Waits.Until(() => !Driver.IsOpen(dialog), timeout ?? TimeSpan.FromSeconds(30));
     }
 
-    /// <summary>今の設定（WebDezaSettings.Reset の既定は JPEG・品質 85）で保存し、出力先にできたファイルを返す（できなければ null）</summary>
-    public string? SaveWithCurrentSettings()
+    /// <summary>
+    /// 保存のダイアログで保存し、出力先にできたファイルを返す（できなければ null）。
+    /// format（形式の一覧の表示。例 "PNG"）を省けば、今の設定（WebDezaSettings.Reset の既定は JPEG・品質 85）のまま
+    /// </summary>
+    public string? Save(string? format = null)
     {
         var before = Directory.Exists(UiTestEnvironment.OutputFolder)
             ? Directory.GetFiles(UiTestEnvironment.OutputFolder).ToHashSet(StringComparer.OrdinalIgnoreCase)
             : [];
         var dialog = OpenExportDialog();
+        if (format is not null)
+        {
+            var combo = AppDriver.ById(dialog, "FormatCombo") ?? throw new InvalidOperationException("形式の一覧が無い");
+            Driver.SelectCombo(combo, format, dialog);
+        }
         if (!SaveAndWait(dialog)) return null;
         WaitStatus(s => s.Contains("保存しました"), TimeSpan.FromSeconds(10));
         return Directory.Exists(UiTestEnvironment.OutputFolder)
@@ -156,11 +164,119 @@ public sealed class WebDezaApp : IDisposable
     {
         AppDriver.Activate(Main);
         Thread.Sleep(500);
+        return Pixels.CaptureScreen(CanvasRectangle());
+    }
+
+    /// <summary>アクティブな子ウィンドウのキャンバスの部分（タイトルバーと縁を除く。画面の物理ピクセル）</summary>
+    public Rectangle CanvasRectangle()
+    {
         var doc = ActiveDocument();
         var r = doc.BoundingRectangle;
         var close = AppDriver.ById(doc, "CloseButton")?.BoundingRectangle ?? throw new InvalidOperationException("子ウィンドウの閉じるボタンが無い");
         int top = close.Bottom + 2;
-        return Pixels.CaptureScreen(new Rectangle(r.X + 4, top, r.Width - 8, r.Bottom - top - 4));
+        return new Rectangle(r.X + 4, top, r.Width - 8, r.Bottom - top - 4);
+    }
+
+    /// <summary>キャンバスの中の、割合で決めた点（例: (0.5, 0.5) で中央）</summary>
+    public Point CanvasPoint(double fx, double fy)
+    {
+        var r = CanvasRectangle();
+        return new Point(r.X + (int)(r.Width * fx), r.Y + (int)(r.Height * fy));
+    }
+
+    /// <summary>アクティブな画像に、保存していない編集があるか（タイトルの末尾の「 *」）</summary>
+    public bool IsDirty() => ActiveDocumentTitle().EndsWith(" *");
+
+    /// <summary>ステータスバーの倍率（例「56%」なら 56。無ければ -1）</summary>
+    public int ZoomPercent()
+    {
+        var part = Status().Split(" ／ ").FirstOrDefault(p => p.EndsWith('%') && !p.Contains(' '));
+        return part is not null && double.TryParse(part.TrimEnd('%'), out double v) ? (int)Math.Round(v) : -1;
+    }
+
+    /// <summary>ステータスバーの選択範囲（無ければ null）</summary>
+    public Rectangle? SelectionInStatus()
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(Status(), @"選択範囲: \((\d+), (\d+)\) (\d+)×(\d+)");
+        return m.Success
+            ? new Rectangle(int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), int.Parse(m.Groups[3].Value), int.Parse(m.Groups[4].Value))
+            : null;
+    }
+
+    // ------------------------------------------------------------ 編集（キー・選択範囲・元に戻す）
+
+    /// <summary>
+    /// キーボードのフォーカスを入力欄の外（編集パネルの「選択範囲」の見出し）に移す。
+    /// 入力欄にフォーカスがあると、Ctrl+Z・Ctrl+Y が入力欄の文字の元に戻す・やり直しになるため（設計書 4.4）
+    /// </summary>
+    public void FocusOutOfInputs()
+    {
+        var section = AppDriver.ById(Main, "SelectionSection") ?? throw new InvalidOperationException("編集パネルの「選択範囲」が無い");
+        (AppDriver.ById(section, "HeaderSite") ?? section).Focus();
+        Thread.Sleep(150);
+    }
+
+    /// <summary>入力欄の外にフォーカスを移してから、ショートカットのキーを送る（例: Shortcut(CONTROL, KEY_Z)）</summary>
+    public void Shortcut(params FlaUI.Core.WindowsAPI.VirtualKeyShort[] keys)
+    {
+        FocusOutOfInputs();
+        Driver.Press(keys);
+    }
+
+    /// <summary>編集パネルの入力欄で、選択範囲を (x, y) w×h にする（無ければ Ctrl+A で作ってから）</summary>
+    public void SetSelection(int x, int y, int width, int height)
+    {
+        if (SelectionInStatus() is null) Shortcut(FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL, FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_A);
+        Waits.Until(() => SelectionInStatus() is not null, TimeSpan.FromSeconds(3));
+        // 幅と高さを先に小さくしてから、位置を動かす（画像からはみ出さないように）
+        Driver.EnterValue(Input("SelectionWidthInput"), width.ToString());
+        Driver.EnterValue(Input("SelectionHeightInput"), height.ToString());
+        Driver.EnterValue(Input("SelectionXInput"), x.ToString());
+        Driver.EnterValue(Input("SelectionYInput"), y.ToString());
+        Waits.Until(() => SelectionInStatus() == new Rectangle(x, y, width, height), TimeSpan.FromSeconds(3));
+    }
+
+    /// <summary>メインウィンドウの入力欄（x:Name で探す）</summary>
+    public AutomationElement Input(string automationId) =>
+        AppDriver.ById(Main, automationId) ?? throw new InvalidOperationException("入力欄が無い: " + automationId);
+
+    /// <summary>［編集］の 1 つ目（元に戻す）の名前（例「元に戻す: 左右反転(U)」）</summary>
+    public string UndoHeader() => Driver.MenuItems("編集")[0].Name;
+
+    /// <summary>［編集］の［元に戻す］・［やり直し］が有効か</summary>
+    public (bool Undo, bool Redo) UndoRedoEnabled()
+    {
+        var items = Driver.MenuItems("編集");
+        return (items[0].Enabled, items[1].Enabled);
+    }
+
+    // ------------------------------------------------------------ 編集パネルのフィルター
+
+    /// <summary>編集パネルの「フィルター」</summary>
+    public AutomationElement FilterSection() =>
+        AppDriver.ById(Main, "FilterSection") ?? throw new InvalidOperationException("編集パネルの「フィルター」が無い");
+
+    /// <summary>フィルターのパラメーターの行（ラベルが label の DataItem）</summary>
+    public AutomationElement FilterParameter(string label) =>
+        Waits.For(() => AppDriver.AllByType(FilterSection(), ControlType.DataItem)
+                .FirstOrDefault(d => d.FindFirstChild(cf => cf.ByControlType(ControlType.Text).And(cf.ByName(label))) is not null),
+            TimeSpan.FromSeconds(5), "パラメーター " + label);
+
+    public static AutomationElement ParameterSlider(AutomationElement parameter) =>
+        AppDriver.ById(parameter, "ParameterSlider") ?? throw new InvalidOperationException("パラメーターのスライダーが無い");
+
+    /// <summary>スライダーを動かす（RangeValue。マウスを使わない）</summary>
+    public static void SetSlider(AutomationElement parameter, double value) =>
+        ParameterSlider(parameter).Patterns.RangeValue.Pattern.SetValue(value);
+
+    public static double SliderValue(AutomationElement parameter) =>
+        ParameterSlider(parameter).Patterns.RangeValue.Pattern.Value.Value;
+
+    /// <summary>キャンバスが落ち着くまで待ってから取り込む（プレビューの計算と描き直しを待つ）</summary>
+    public Pixels SettleAndCapture(int milliseconds = 700)
+    {
+        Thread.Sleep(milliseconds);
+        return CaptureCanvas();
     }
 }
 

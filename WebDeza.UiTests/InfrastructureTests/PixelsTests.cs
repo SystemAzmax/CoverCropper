@@ -39,6 +39,53 @@ public class PixelsTests
         Assert.Equal(255, Pixels.PixelDiff(a, a.MirrorHorizontal()));
     }
 
+    /// <summary>3×2 で、画素ごとに違う値（B に番号）</summary>
+    private static Pixels Numbered()
+    {
+        var px = new byte[3 * 2 * 4];
+        for (int i = 0; i < 6; i++) px[i * 4] = (byte)(i + 1);
+        return new Pixels(3, 2, px);
+    }
+
+    private static int[] Blue(Pixels p) => Enumerable.Range(0, p.Width * p.Height).Select(i => (int)p.Bgra[i * 4]).ToArray();
+
+    [Fact]
+    public void MirrorVertical_SwapsTopAndBottom()
+    {
+        // 1 2 3 / 4 5 6 → 4 5 6 / 1 2 3
+        Assert.Equal([4, 5, 6, 1, 2, 3], Blue(Numbered().MirrorVertical()));
+    }
+
+    [Fact]
+    public void RotateRight_TurnsClockwise()
+    {
+        // 1 2 3 / 4 5 6 を右に 90° → 4 1 / 5 2 / 6 3
+        var r = Numbered().RotateRight();
+        Assert.Equal((2, 3), (r.Width, r.Height));
+        Assert.Equal([4, 1, 5, 2, 6, 3], Blue(r));
+    }
+
+    [Fact]
+    public void RegionDiff_OnlyInsideRegion()
+    {
+        var a = HalfBlack();
+        var b = a.MirrorHorizontal();
+
+        Assert.Equal(255, Pixels.RegionDiff(a, b, 0, 0, 1, 2));
+        Assert.Equal(255, Pixels.RegionDiff(a, b, 0, 0, 4, 2));
+        Assert.Equal(0, Pixels.RegionDiff(a, a, 0, 0, 4, 2));
+        // 範囲は絵の中に切り詰める
+        Assert.Equal(255, Pixels.RegionDiff(a, b, -10, -10, 100, 100));
+    }
+
+    [Fact]
+    public void Chroma_GrayIsZero()
+    {
+        Assert.Equal(0, HalfBlack().Chroma());
+        var red = new Pixels(1, 1, [0, 0, 200, 255]);
+        Assert.Equal(200, red.Chroma());
+    }
+
     [Fact]
     public void CountColor_CountsWithinTolerance()
     {

@@ -89,6 +89,16 @@ public abstract class UiTestBase : IDisposable
     /// <summary>設定をテストの前の状態にし、出力先を空にしてから、webDeza を起動する</summary>
     protected WebDezaApp LaunchWebDeza(params string[] args) => LaunchWebDezaFrom(null, args);
 
+    /// <summary>LaunchWebDeza で画像を開き、すべて開き終わるまで待つ</summary>
+    protected WebDezaApp OpenInWebDeza(params string[] files)
+    {
+        var app = LaunchWebDeza(files);
+        if (!Waits.Until(() => app.DocumentTitles().Count == files.Length, TimeSpan.FromSeconds(60)))
+            throw new TimeoutException($"画像が開き終わらない（{app.DocumentTitles().Count} / {files.Length} 件）");
+        Thread.Sleep(800);
+        return app;
+    }
+
     /// <summary>LaunchWebDeza と同じ。「開く」のダイアログが最初に開くフォルダ（前回のフォルダ）を lastOpenFolder にする</summary>
     protected WebDezaApp LaunchWebDezaFrom(string? lastOpenFolder, params string[] args)
     {

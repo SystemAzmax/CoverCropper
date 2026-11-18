@@ -113,6 +113,20 @@ public static class Pointer
     /// <summary>要素の中心</summary>
     public static Point Center(Rectangle r) => new(r.X + r.Width / 2, r.Y + r.Height / 2);
 
+    private static readonly IntPtr WaitCursor = Native.LoadCursor(IntPtr.Zero, 32514);
+    private static readonly IntPtr AppStartingCursor = Native.LoadCursor(IntPtr.Zero, 32650);
+
+    /// <summary>今のカーソルの形</summary>
+    public static IntPtr CurrentCursor()
+    {
+        var info = new Native.CURSORINFO { Size = System.Runtime.InteropServices.Marshal.SizeOf<Native.CURSORINFO>() };
+        Native.GetCursorInfo(ref info);
+        return info.Cursor;
+    }
+
+    /// <summary>待機カーソル（砂時計か、矢印つきの砂時計）か</summary>
+    public static bool IsBusyCursor(IntPtr cursor) => cursor == WaitCursor || cursor == AppStartingCursor;
+
     private static Point Lerp(Point a, Point b, int i, int n) =>
         new(a.X + (b.X - a.X) * i / n, a.Y + (b.Y - a.Y) * i / n);
 }

@@ -60,6 +60,10 @@ internal static class Native
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetCursorInfo(ref CURSORINFO info);
 
+    /// <summary>システムのカーソル（例: 32514 = 待機 IDC_WAIT、32650 = 作業中 IDC_APPSTARTING）</summary>
+    [DllImport("user32.dll")]
+    public static extern IntPtr LoadCursor(IntPtr instance, int cursorId);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct CURSORINFO
     {

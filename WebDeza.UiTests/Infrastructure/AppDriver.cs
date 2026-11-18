@@ -137,6 +137,41 @@ public sealed class AppDriver : IDisposable
         Thread.Sleep(150);
     }
 
+    /// <summary>入力欄に文字を入れ、Enter で確定する（Enter か、フォーカスが外れたときに当てはめる入力欄のため）</summary>
+    public void EnterValue(AutomationElement edit, string text, AutomationElement? window = null)
+    {
+        SetValue(edit, text);
+        edit.Focus();
+        Thread.Sleep(100);
+        PressTo(window ?? Main, VirtualKeyShort.ENTER);
+        Thread.Sleep(150);
+    }
+
+    /// <summary>チェックボックスがオンか</summary>
+    public static bool IsOn(AutomationElement checkBox) => checkBox.Patterns.Toggle.Pattern.ToggleState.Value == ToggleState.On;
+
+    public static void Toggle(AutomationElement checkBox)
+    {
+        checkBox.Patterns.Toggle.Pattern.Toggle();
+        Thread.Sleep(200);
+    }
+
+    /// <summary>
+    /// メインウィンドウの［×］と同じく、閉じるよう頼む（WindowPattern.Close）。
+    /// 確認のメッセージボックスが出ると戻ってこないことがあるので、別のスレッドで呼んで少しだけ待つ
+    /// </summary>
+    public void RequestClose()
+    {
+        var pattern = Main.Patterns.Window.Pattern;
+        var task = Task.Run(() =>
+        {
+            try { pattern.Close(); }
+            catch (Exception ex) when (Waits.IsTransient(ex)) { }
+        });
+        task.Wait(TimeSpan.FromMilliseconds(1500));
+        Thread.Sleep(150);
+    }
+
     /// <summary>待たずに Invoke する（モーダルを開かないボタン用）</summary>
     public static void InvokeNow(AutomationElement e) => e.Patterns.Invoke.Pattern.Invoke();
 

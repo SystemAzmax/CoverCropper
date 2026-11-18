@@ -35,7 +35,7 @@ public sealed class T02FileLockTests(ITestOutputHelper output) : UiTestBase(outp
         SaveShot(after, "T02_mirrored");
         double asymmetry = Pixels.PixelDiff(before, before.MirrorHorizontal());
         double mirrored = Pixels.PixelDiff(after, before.MirrorHorizontal());
-        string? saved = app.SaveWithCurrentSettings();
+        string? saved = app.Save();
         double savedDiff = saved is null
             ? double.NaN
             : Pixels.ThumbDiff(Pixels.Load(saved), Pixels.Load(UiTestEnvironment.Image("lock", "lock_test.jpg")).MirrorHorizontal());
