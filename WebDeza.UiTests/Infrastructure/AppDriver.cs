@@ -156,6 +156,16 @@ public sealed class AppDriver : IDisposable
         Thread.Sleep(200);
     }
 
+    /// <summary>ラジオボタンを選ぶ（SelectionItem。マウスを使わない）</summary>
+    public static void Select(AutomationElement radio)
+    {
+        radio.Patterns.SelectionItem.Pattern.Select();
+        Thread.Sleep(200);
+    }
+
+    /// <summary>ラジオボタンが選ばれているか</summary>
+    public static bool IsSelected(AutomationElement radio) => radio.Patterns.SelectionItem.Pattern.IsSelected.Value;
+
     /// <summary>
     /// メインウィンドウの［×］と同じく、閉じるよう頼む（WindowPattern.Close）。
     /// 確認のメッセージボックスが出ると戻ってこないことがあるので、別のスレッドで呼んで少しだけ待つ

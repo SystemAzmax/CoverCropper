@@ -121,7 +121,7 @@ public sealed class WebDezaApp : IDisposable
 
     // ------------------------------------------------------------ 保存
 
-    /// <summary>保存のダイアログ（Ctrl+E）を開く</summary>
+    /// <summary>保存のダイアログ（Ctrl+E）を開く。ダイアログの中の操作は ExportDialog.Open で開いて使う</summary>
     public AutomationElement OpenExportDialog()
     {
         Driver.Press(FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL, FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_E);
@@ -143,20 +143,9 @@ public sealed class WebDezaApp : IDisposable
     /// </summary>
     public string? Save(string? format = null)
     {
-        var before = Directory.Exists(UiTestEnvironment.OutputFolder)
-            ? Directory.GetFiles(UiTestEnvironment.OutputFolder).ToHashSet(StringComparer.OrdinalIgnoreCase)
-            : [];
-        var dialog = OpenExportDialog();
-        if (format is not null)
-        {
-            var combo = AppDriver.ById(dialog, "FormatCombo") ?? throw new InvalidOperationException("形式の一覧が無い");
-            Driver.SelectCombo(combo, format, dialog);
-        }
-        if (!SaveAndWait(dialog)) return null;
-        WaitStatus(s => s.Contains("保存しました"), TimeSpan.FromSeconds(10));
-        return Directory.Exists(UiTestEnvironment.OutputFolder)
-            ? Directory.GetFiles(UiTestEnvironment.OutputFolder).FirstOrDefault(f => !before.Contains(f))
-            : null;
+        var dialog = ExportDialog.Open(this);
+        if (format is not null) dialog.SelectFormat(format);
+        return dialog.SaveNewFile();
     }
 
     /// <summary>アクティブな子ウィンドウのキャンバスの部分（タイトルバーと縁を除く）を取り込む</summary>
@@ -257,13 +246,23 @@ public sealed class WebDezaApp : IDisposable
         AppDriver.ById(Main, "FilterSection") ?? throw new InvalidOperationException("編集パネルの「フィルター」が無い");
 
     /// <summary>フィルターのパラメーターの行（ラベルが label の DataItem）</summary>
-    public AutomationElement FilterParameter(string label) =>
-        Waits.For(() => AppDriver.AllByType(FilterSection(), ControlType.DataItem)
+    public AutomationElement FilterParameter(string label) => Parameter(FilterSection(), label);
+
+    /// <summary>
+    /// パラメーターの行（ラベルが label の DataItem）。入力欄は記述から自動で作る（ParameterTemplates.xaml）ので、
+    /// フィルターと保存のオプション（scope は保存のダイアログの OptionsList）で同じ形
+    /// </summary>
+    public static AutomationElement Parameter(AutomationElement scope, string label) =>
+        Waits.For(() => AppDriver.AllByType(scope, ControlType.DataItem)
                 .FirstOrDefault(d => d.FindFirstChild(cf => cf.ByControlType(ControlType.Text).And(cf.ByName(label))) is not null),
             TimeSpan.FromSeconds(5), "パラメーター " + label);
 
     public static AutomationElement ParameterSlider(AutomationElement parameter) =>
         AppDriver.ById(parameter, "ParameterSlider") ?? throw new InvalidOperationException("パラメーターのスライダーが無い");
+
+    /// <summary>パラメーターの数値の入力欄</summary>
+    public static AutomationElement ParameterInput(AutomationElement parameter) =>
+        AppDriver.ById(parameter, "ParameterInput") ?? throw new InvalidOperationException("パラメーターの入力欄が無い");
 
     /// <summary>スライダーを動かす（RangeValue。マウスを使わない）</summary>
     public static void SetSlider(AutomationElement parameter, double value) =>

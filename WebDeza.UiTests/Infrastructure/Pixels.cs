@@ -45,6 +45,23 @@ public sealed class Pixels(int width, int height, byte[] bgra)
         return new Pixels(converted.PixelWidth, converted.PixelHeight, px);
     });
 
+    /// <summary>画像ファイルの EXIF の向き（1〜8。無ければ 1）</summary>
+    public static int ExifOrientation(string path) => StaThread.Run(() =>
+    {
+        using var fs = File.OpenRead(path);
+        var decoder = BitmapDecoder.Create(fs, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        const string query = "/app1/ifd/{ushort=274}";
+        try
+        {
+            return decoder.Frames[0].Metadata is BitmapMetadata m && m.ContainsQuery(query) ? Convert.ToInt32(m.GetQuery(query)) : 1;
+        }
+        catch (NotSupportedException)
+        {
+            // メタデータを読めない形式
+            return 1;
+        }
+    });
+
     /// <summary>PNG で書く（失敗したときに見るため）</summary>
     public void SavePng(string path) => StaThread.Run(() =>
     {
@@ -88,6 +105,74 @@ public sealed class Pixels(int width, int height, byte[] bgra)
             sum += Math.Abs(a.Bgra[i] - b.Bgra[i]) + Math.Abs(a.Bgra[i + 1] - b.Bgra[i + 1]) + Math.Abs(a.Bgra[i + 2] - b.Bgra[i + 2]);
         return a.Width * a.Height == 0 ? 0 : sum / (3.0 * a.Width * a.Height);
     }
+
+    /// <summary>
+    /// 2 枚の左上をそろえ、重なる所（縁の margin を除く）を、b を ±maxShift px ずらしながら比べ、いちばん小さい色の差の平均（0〜255）。
+    /// 画面の 2 つの領域を比べるとき、1 px 未満の位置の違いで描き方が少し変わるため。速さのため 2 px おきに比べる
+    /// </summary>
+    public static double ShiftedDiff(Pixels a, Pixels b, int maxShift = 2)
+    {
+        int margin = maxShift;
+        int w = Math.Min(a.Width, b.Width) - margin, h = Math.Min(a.Height, b.Height) - margin;
+        double best = double.MaxValue;
+        for (int dy = -maxShift; dy <= maxShift; dy++)
+            for (int dx = -maxShift; dx <= maxShift; dx++)
+            {
+                long sum = 0, n = 0;
+                for (int y = margin; y < h; y += 2)
+                    for (int x = margin; x < w; x += 2)
+                    {
+                        int i = (y * a.Width + x) * 4, j = ((y + dy) * b.Width + x + dx) * 4;
+                        sum += Math.Abs(a.Bgra[i] - b.Bgra[j]) + Math.Abs(a.Bgra[i + 1] - b.Bgra[j + 1]) + Math.Abs(a.Bgra[i + 2] - b.Bgra[j + 2]);
+                        n += 3;
+                    }
+                if (n > 0) best = Math.Min(best, (double)sum / n);
+            }
+        return best == double.MaxValue ? 0 : best;
+    }
+
+    /// <summary>一部を切り出した絵（範囲は絵の中に切り詰める）</summary>
+    public Pixels Crop(int x, int y, int width, int height)
+    {
+        int x0 = Math.Clamp(x, 0, Width), y0 = Math.Clamp(y, 0, Height);
+        int w = Math.Clamp(x + width, 0, Width) - x0, h = Math.Clamp(y + height, 0, Height) - y0;
+        var o = new byte[w * h * 4];
+        for (int row = 0; row < h; row++) Buffer.BlockCopy(Bgra, ((y0 + row) * Width + x0) * 4, o, row * w * 4, w * 4);
+        return new Pixels(w, h, o);
+    }
+
+    /// <summary>1 つの画素の色</summary>
+    public (byte R, byte G, byte B, byte A) At(int x, int y)
+    {
+        int i = (y * Width + x) * 4;
+        return (Bgra[i + 2], Bgra[i + 1], Bgra[i], Bgra[i + 3]);
+    }
+
+    /// <summary>不透明でない（アルファが 255 未満の）画素の数</summary>
+    public int TransparentCount()
+    {
+        int n = 0;
+        for (int i = 3; i < Bgra.Length; i += 4)
+            if (Bgra[i] < 255) n++;
+        return n;
+    }
+
+    /// <summary>黄色い画素（テスト画像の矢印）の重心（0〜1 の割合）。無ければ null</summary>
+    public (double X, double Y)? YellowCenter()
+    {
+        long sx = 0, sy = 0, n = 0;
+        for (int y = 0; y < Height; y++)
+            for (int x = 0; x < Width; x++)
+                if (IsYellow((y * Width + x) * 4))
+                {
+                    sx += x;
+                    sy += y;
+                    n++;
+                }
+        return n < 20 ? null : ((double)sx / n / Width, (double)sy / n / Height);
+    }
+
+    private bool IsYellow(int i) => Bgra[i + 2] > 210 && Bgra[i + 1] > 210 && Bgra[i] < 70;
 
     /// <summary>左右を反転した絵</summary>
     public Pixels MirrorHorizontal()
@@ -158,8 +243,7 @@ public sealed class Pixels(int width, int height, byte[] bgra)
         for (int y = 0; y < Height; y++)
             for (int x = 0; x < Width; x++)
             {
-                int i = (y * Width + x) * 4;
-                if (Bgra[i + 2] > 210 && Bgra[i + 1] > 210 && Bgra[i] < 70) points.Add((x, y));
+                if (IsYellow((y * Width + x) * 4)) points.Add((x, y));
             }
         if (points.Count < 20)
         {
