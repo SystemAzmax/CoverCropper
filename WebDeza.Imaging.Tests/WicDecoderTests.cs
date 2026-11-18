@@ -270,22 +270,26 @@ public class WicDecoderTests
         File.Delete(path); // ロックが残らない
     }
 
-    /// <summary>WPF の HEIF のエンコーダーで保存する。エンコーダーが無ければ false</summary>
+    /// <summary>
+    /// WPF の HEIF のエンコーダーで保存する。保存できなければ false。
+    /// エンコーダーが無いときは NotSupportedException、エンコーダーはあっても HEVC の拡張機能が無いとき
+    /// （GitHub Actions の Windows のランナーなど）は保存で COMException（WINCODEC_ERR_COMPONENTINITIALIZEFAILURE）になる
+    /// </summary>
     private static bool TrySaveHeif(string path)
     {
-        BitmapEncoder encoder;
         try
         {
-            encoder = BitmapEncoder.Create(HeifContainerFormat);
+            var encoder = BitmapEncoder.Create(HeifContainerFormat);
+            encoder.Frames.Add(BitmapFrame.Create(BitmapSourceConverter.ToBgr24BitmapSource(Opaque)));
+            using var stream = File.Create(path);
+            encoder.Save(stream);
+            return true;
         }
-        catch (NotSupportedException)
+        catch (Exception ex) when (ex is NotSupportedException or System.Runtime.InteropServices.COMException)
         {
+            if (File.Exists(path)) File.Delete(path);
             return false;
         }
-        encoder.Frames.Add(BitmapFrame.Create(BitmapSourceConverter.ToBgr24BitmapSource(Opaque)));
-        using var stream = File.Create(path);
-        encoder.Save(stream);
-        return true;
     }
 
     private static T RunOnSta<T>(Func<T> func)
