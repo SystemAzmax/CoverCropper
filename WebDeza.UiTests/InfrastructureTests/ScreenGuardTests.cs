@@ -84,4 +84,11 @@ public class ScreenGuardTests
 
         Assert.Throws<UnsafePointerPositionException>(() => Pointer.Drag(start, new Point(first.Left - 100000, start.Y)));
     }
+
+    [Fact]
+    public void FileDrag_TargetOutsideScreens_ThrowsBeforeShowingSource()
+    {
+        // ファイルの D&D も、落とす位置が安全でなければ、ドラッグ元のフォームを出す前に止める
+        Assert.Throws<UnsafePointerPositionException>(() => FileDrag.Run(["a.jpg"], new Point(-100000, -100000), drop: true));
+    }
 }

@@ -209,14 +209,20 @@ public sealed class AppDriver : IDisposable
 
     /// <summary>
     /// コンボボックスの項目を、マウスで選ぶ。UIA の SelectionItemPattern.Select で選ぶと、
-    /// そのあと Ctrl つきのキーが効かなくなるため（設計書 6.5）
+    /// そのあと Ctrl つきのキーが効かなくなるため（設計書 6.5）。window はコンボボックスのあるウィンドウ（省けばメイン）
     /// </summary>
-    public void SelectCombo(AutomationElement combo, string text)
+    public void SelectCombo(AutomationElement combo, string text, AutomationElement? window = null)
     {
-        Activate(Main);
+        Activate(window ?? Main);
         Pointer.Click(Pointer.Center(combo.BoundingRectangle));
         var item = Waits.For(() => ComboListItems(combo).FirstOrDefault(i => i.Name == text || ItemText(i) == text),
             ShortWait, "コンボボックスの項目 " + text);
+        // 一覧が長いと、項目が見えていないことがある
+        if (item.Patterns.ScrollItem.TryGetPattern(out var scroll))
+        {
+            scroll.ScrollIntoView();
+            Thread.Sleep(150);
+        }
         Pointer.Click(Pointer.Center(item.BoundingRectangle));
         Waits.Until(() => combo.Patterns.ExpandCollapse.Pattern.ExpandCollapseState.Value == ExpandCollapseState.Collapsed, ShortWait);
         Thread.Sleep(200);
@@ -293,6 +299,14 @@ public sealed class AppDriver : IDisposable
         return found.FindFirstDescendant(cf => cf.ByControlType(ControlType.Edit)) ?? found;
     }
 
+    /// <summary>コモン ダイアログで今いるフォルダ（アドレス バーの「アドレス: C:\…」の名前から読む）</summary>
+    public static string FileDialogFolder(AutomationElement dialog)
+    {
+        var address = AllByType(dialog, ControlType.ToolBar).Select(t => t.Name).FirstOrDefault(n => n.StartsWith("アドレス")) ?? "";
+        int colon = address.IndexOf(':');
+        return colon < 0 ? "" : address[(colon + 1)..].Trim();
+    }
+
     /// <summary>コモン ダイアログのファイル名の入力欄に入れて Enter（［開く］は分割ボタンで押せないため）</summary>
     public void FileDialogEnter(AutomationElement dialog, string text)
     {
@@ -325,22 +339,28 @@ public sealed class AppDriver : IDisposable
     public static void Activate(AutomationElement window)
     {
         var hwnd = window.Properties.NativeWindowHandle.ValueOrDefault;
-        if (hwnd != IntPtr.Zero)
-        {
-            if (Native.GetForegroundWindow() == hwnd) return;
-            uint foreground = Native.GetWindowThreadProcessId(Native.GetForegroundWindow(), out _);
-            uint me = Native.GetCurrentThreadId();
-            Native.AttachThreadInput(me, foreground, true);
-            Native.SetForegroundWindow(hwnd);
-            Native.AttachThreadInput(me, foreground, false);
-            Thread.Sleep(150);
-            if (Native.GetForegroundWindow() == hwnd) return;
-        }
+        if (hwnd != IntPtr.Zero && BringToFront(hwnd)) return;
 
         var title = window.FindFirstChild(cf => cf.ByControlType(ControlType.TitleBar));
         var r = (title ?? window).BoundingRectangle;
         Pointer.Click(new Point(r.Left + (int)Math.Min(r.Width * 0.6, r.Width - 160), r.Top + Math.Min(12, r.Height / 2)));
         Thread.Sleep(250);
+    }
+
+    /// <summary>
+    /// ウィンドウを手前にする（手前になれば true）。手前のウィンドウのスレッドに入力をつないでから SetForegroundWindow を呼ぶ
+    /// （ほかのプロセスが手前にあると、そのままでは手前にできないため）。Alt キーは使わない
+    /// </summary>
+    public static bool BringToFront(IntPtr hwnd)
+    {
+        if (Native.GetForegroundWindow() == hwnd) return true;
+        uint foreground = Native.GetWindowThreadProcessId(Native.GetForegroundWindow(), out _);
+        uint me = Native.GetCurrentThreadId();
+        Native.AttachThreadInput(me, foreground, true);
+        Native.SetForegroundWindow(hwnd);
+        Native.AttachThreadInput(me, foreground, false);
+        Thread.Sleep(150);
+        return Native.GetForegroundWindow() == hwnd;
     }
 
     /// <summary>手前のウィンドウがこのアプリのものか</summary>

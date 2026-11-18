@@ -47,6 +47,28 @@ internal static class Native
         public int Y;
     }
 
+    [DllImport("user32.dll")]
+    public static extern IntPtr WindowFromPoint(POINT point);
+
+    public const uint GaRoot = 2;
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
+
+    /// <summary>今のカーソルの形（D&D 中のカーソルが、受け付けるときと受け付けないときで違うことを確かめる）</summary>
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetCursorInfo(ref CURSORINFO info);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct CURSORINFO
+    {
+        public int Size;
+        public int Flags;
+        public IntPtr Cursor;
+        public POINT Position;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT
     {

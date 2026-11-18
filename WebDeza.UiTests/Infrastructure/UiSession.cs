@@ -87,13 +87,45 @@ public abstract class UiTestBase : IDisposable
     protected Checks Check { get; }
 
     /// <summary>設定をテストの前の状態にし、出力先を空にしてから、webDeza を起動する</summary>
-    protected WebDezaApp LaunchWebDeza(params string[] args)
+    protected WebDezaApp LaunchWebDeza(params string[] args) => LaunchWebDezaFrom(null, args);
+
+    /// <summary>LaunchWebDeza と同じ。「開く」のダイアログが最初に開くフォルダ（前回のフォルダ）を lastOpenFolder にする</summary>
+    protected WebDezaApp LaunchWebDezaFrom(string? lastOpenFolder, params string[] args)
     {
-        WebDezaSettings.Reset();
+        WebDezaSettings.Reset(lastOpenFolder);
         UiSession.ClearOutput();
+        return LaunchAnotherWebDeza(args);
+    }
+
+    /// <summary>設定と出力先をそのままにして、webDeza をもう 1 つ起動する</summary>
+    protected WebDezaApp LaunchAnotherWebDeza(params string[] args)
+    {
         var app = WebDezaApp.Launch(args);
         apps.Add(app);
         return app;
+    }
+
+    /// <summary>テスト用の空の作業フォルダ（%TEMP%\webDeza-uitest\work\{name}）。元の画像を変えないよう、写しを置いて使う</summary>
+    protected static string FreshFolder(string name)
+    {
+        string folder = Path.Combine(UiTestEnvironment.WorkFolder, "work", name);
+        if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        Directory.CreateDirectory(folder);
+        return folder;
+    }
+
+    /// <summary>ファイルの操作を試し、失敗したら理由を返す（成功したら null）</summary>
+    protected static string? TryFileOperation(Action action)
+    {
+        try
+        {
+            action();
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"{ex.GetType().Name}: {ex.Message}";
+        }
     }
 
     /// <summary>失敗したときに見るため、取り込んだ絵を shots フォルダに書く</summary>

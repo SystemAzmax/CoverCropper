@@ -79,6 +79,35 @@ public sealed class Pixels(int width, int height, byte[] bgra)
     /// <summary>縮小した絵どうしの、色の差の平均（0〜255）</summary>
     public static double ThumbDiff(Pixels a, Pixels b) => a.Thumb().Zip(b.Thumb(), (x, y) => Math.Abs(x - y)).Average();
 
+    /// <summary>画素ごとの色の差の平均（0〜255。アルファは比べない）。大きさが違えば、縮小して比べる（ThumbDiff）</summary>
+    public static double PixelDiff(Pixels a, Pixels b)
+    {
+        if (a.Width != b.Width || a.Height != b.Height) return ThumbDiff(a, b);
+        long sum = 0;
+        for (int i = 0; i < a.Bgra.Length; i += 4)
+            sum += Math.Abs(a.Bgra[i] - b.Bgra[i]) + Math.Abs(a.Bgra[i + 1] - b.Bgra[i + 1]) + Math.Abs(a.Bgra[i + 2] - b.Bgra[i + 2]);
+        return a.Width * a.Height == 0 ? 0 : sum / (3.0 * a.Width * a.Height);
+    }
+
+    /// <summary>左右を反転した絵</summary>
+    public Pixels MirrorHorizontal()
+    {
+        var o = new byte[Bgra.Length];
+        for (int y = 0; y < Height; y++)
+            for (int x = 0; x < Width; x++)
+                Buffer.BlockCopy(Bgra, (y * Width + x) * 4, o, (y * Width + (Width - 1 - x)) * 4, 4);
+        return new Pixels(Width, Height, o);
+    }
+
+    /// <summary>その色（BGR がそれぞれ tolerance 未満の差）の画素の数</summary>
+    public int CountColor(byte r, byte g, byte b, int tolerance = 10)
+    {
+        int n = 0;
+        for (int i = 0; i < Bgra.Length; i += 4)
+            if (Math.Abs(Bgra[i] - b) < tolerance && Math.Abs(Bgra[i + 1] - g) < tolerance && Math.Abs(Bgra[i + 2] - r) < tolerance) n++;
+        return n;
+    }
+
     /// <summary>黄色い三角（テスト画像の矢印）の向き。とがった側は画素が少ない</summary>
     public ArrowDirection Arrow(out string detail)
     {

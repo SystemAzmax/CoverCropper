@@ -70,6 +70,87 @@ public sealed class WebDezaApp : IDisposable
         Waits.Until(() => Title().StartsWith(fileName), TimeSpan.FromSeconds(5));
     }
 
+    /// <summary>メニュー［ウィンドウ］の画像の一覧（例「1: img_1.jpg」。並べ方の項目は除く）</summary>
+    public IReadOnlyList<string> WindowMenuDocuments()
+    {
+        var menu = AppDriver.ById(Main, "WindowMenu") ?? throw new InvalidOperationException("メニュー［ウィンドウ］が無い");
+        var pattern = menu.Patterns.ExpandCollapse.Pattern;
+        pattern.Expand();
+        Thread.Sleep(600);
+        var names = menu.FindAllChildren(cf => cf.ByControlType(ControlType.MenuItem)).Select(m => m.Name).ToList();
+        pattern.Collapse();
+        Thread.Sleep(300);
+        var documents = DocumentTitles().Select(t => AppDriver.Norm(t.TrimEnd('*', ' '))).ToHashSet();
+        return names.Where(n => documents.Any(d => AppDriver.Norm(n).EndsWith(" " + d))).ToList();
+    }
+
+    /// <summary>［ファイル］→［すべて閉じる］。保存していない編集があって確認が出たら［はい］（保存せずに閉じる）</summary>
+    public void CloseAll()
+    {
+        if (DocumentTitles().Count == 0) return;
+        Driver.Menu("ファイル", "すべて閉じる");
+        Thread.Sleep(400);
+        if (Driver.FindMessageBox() is not null) Driver.AnswerMessageBox("はい");
+        Waits.Until(() => DocumentTitles().Count == 0, TimeSpan.FromSeconds(10));
+    }
+
+    // ------------------------------------------------------------ ドラッグ＆ドロップ
+
+    /// <summary>ワークスペースの中ほど（右の編集パネル 300 px を除いた所の中央）。ファイルを落とす位置</summary>
+    public Point WorkspacePoint()
+    {
+        var r = Main.BoundingRectangle;
+        return new Point(r.Left + (r.Width - 300) / 2 + 20, r.Top + r.Height / 2);
+    }
+
+    /// <summary>メインウィンドウ全体を取り込む</summary>
+    public Pixels CaptureMain() => Pixels.CaptureScreen(Main.BoundingRectangle);
+
+    /// <summary>D&D の強調（ワークスペースの #3A96DD の枠）の画素の数</summary>
+    public static int DropHighlightPixels(Pixels pixels) => pixels.CountColor(0x3A, 0x96, 0xDD);
+
+    /// <summary>
+    /// ファイルやフォルダを、ワークスペースへ本物の OLE の D&D で運ぶ。drop が false なら落とさずに取り消す。
+    /// カーソルがワークスペースの上にあるあいだに、メインウィンドウを取り込む
+    /// </summary>
+    public FileDragResult DropFiles(bool drop, params string[] paths)
+    {
+        AppDriver.Activate(Main);
+        return FileDrag.Run(paths, WorkspacePoint(), drop, CaptureMain);
+    }
+
+    // ------------------------------------------------------------ 保存
+
+    /// <summary>保存のダイアログ（Ctrl+E）を開く</summary>
+    public AutomationElement OpenExportDialog()
+    {
+        Driver.Press(FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL, FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_E);
+        return Driver.WaitDialog("保存");
+    }
+
+    /// <summary>保存のダイアログで［保存］を押し、ダイアログが閉じるのを待つ（閉じたら true）</summary>
+    public bool SaveAndWait(AutomationElement dialog, TimeSpan? timeout = null)
+    {
+        var save = AppDriver.ById(dialog, "SaveButton") ?? throw new InvalidOperationException("［保存］が無い");
+        Waits.Until(() => save.IsEnabled, TimeSpan.FromSeconds(30));
+        AppDriver.Invoke(save);
+        return Waits.Until(() => !Driver.IsOpen(dialog), timeout ?? TimeSpan.FromSeconds(30));
+    }
+
+    /// <summary>今の設定（WebDezaSettings.Reset の既定は JPEG・品質 85）で保存し、出力先にできたファイルを返す（できなければ null）</summary>
+    public string? SaveWithCurrentSettings()
+    {
+        var before = Directory.Exists(UiTestEnvironment.OutputFolder)
+            ? Directory.GetFiles(UiTestEnvironment.OutputFolder).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : [];
+        var dialog = OpenExportDialog();
+        if (!SaveAndWait(dialog)) return null;
+        WaitStatus(s => s.Contains("保存しました"), TimeSpan.FromSeconds(10));
+        return Directory.Exists(UiTestEnvironment.OutputFolder)
+            ? Directory.GetFiles(UiTestEnvironment.OutputFolder).FirstOrDefault(f => !before.Contains(f))
+            : null;
+    }
+
     /// <summary>アクティブな子ウィンドウのキャンバスの部分（タイトルバーと縁を除く）を取り込む</summary>
     public Pixels CaptureCanvas()
     {
