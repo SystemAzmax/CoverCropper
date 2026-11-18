@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| 文書バージョン | 3.6 |
+| 文書バージョン | 3.7 |
 | 作成日 | 2026-10-24 |
 | 対象 | Claude Code による実装 |
 | 対象OS | Windows 10 / 11（64bit）のみ |
@@ -24,6 +24,7 @@
 | 3.4 | 2026-11-16 | 編集パネルの「選択範囲」の入力欄を `SelectionPanelViewModel` にした（5.6）。入力欄は Enter かフォーカスが外れたときに当てはめ、選択範囲が無いときは空欄で入力できないことにした（F-04・4.2） |
 | 3.5 | 2026-11-16 | 比率を変えたときの合わせ直しを、中心と面積をなるべく保つ `CropFrameCalculator.FitToAspect` にした（`ResizeAroundCenter` は先に新しい比率で `Clamp` するので、縦の中心がずれるため）。比率を続けて変えている間は、変え始める前の選択範囲から合わせ直すこと、［縦横を入れ替え］が無効になる比率、比率の選択欄の項目（`AspectOptionViewModel`）を書いた（F-04・5.3・5.6） |
 | 3.6 | 2026-11-18 | 画面デザインの見直し（実装計画書の 10-12）で決めた見た目を書いた。ボタンは Fluent テーマのボタンをもとにし、ダイアログの主な操作（［保存］［OK］）はアクセントの色にする。無効のときは、項目名・単位・スライダーも薄く出す。保存のダイアログのプレビューのツールバーは、狭いときに折り返す（4.1・4.6） |
+| 3.7 | 2026-11-18 | 保存サイズの計算結果（`ExportPreviewResult`）に、実装に合わせて、計算の元にした画像と設定（`Source`・`Settings`）、同じ条件の結果かを見分ける `Matches`、描画用のデータ（`DecodedBitmap`・`RenderedBitmap`）、`FileSize` を書き足した。保存するときに計算結果のバイト列を使い回すのは、画像が同じ参照で、保存の設定の中身が同じときだけとした。描画用のデータは、大きな画像でも UI のスレッドを止めないよう、計算と同じバックグラウンドで作る。一括保存の結果にも、実装に合わせて、保存できたか・ファイル名・保存できた件数と失敗した件数を書き足した（5.6） |
 
 ---
 
@@ -1112,7 +1113,7 @@ public readonly record struct ViewTransform(double Scale, double OffsetX, double
 | クラス | 役割 |
 |---|---|
 | `ExportPreviewService` | 保存のダイアログの、保存サイズの表示とプレビュー用（F-09）。最後に作った「保存する画像」（`ExportRenderer.Render` の結果）とエンコード結果を、条件と一緒に覚えておく。形式のオプションと上限だけが前回と違うときは、保存する画像を作り直さずにエンコードだけをやり直す。新しい依頼が来たら古い計算の結果は捨てる。圧縮後の画像は、同じ形式のデコーダーで読み直して作る |
-| `ExportService` | 1 枚の保存。今の条件と同じ計算結果が `ExportPreviewService` にあればそのバイト列を、無ければその場で `ExportRenderer.Render` → `ExportEncoder` で作り、`SafeFileWriter` で書く（保護するパス = 元画像）。ファイル名は `OutputFileNamer`（拡張子は形式の先頭の拡張子） |
+| `ExportService` | 1 枚の保存。今の条件と同じ計算結果（`ExportPreviewResult.Matches`: 画像が同じ参照で、保存の設定の中身が同じ）が `ExportPreviewService` にあればそのバイト列を、無ければその場で `ExportRenderer.Render` → `ExportEncoder` で作り、`SafeFileWriter` で書く（保護するパス = 元画像）。ファイル名は `OutputFileNamer`（拡張子は形式の先頭の拡張子） |
 | `BatchExporter` | 一括保存: 1 件ずつ、開いている画像の今の中身を `ExportRenderer.Render` → `ExportEncoder` → `SafeFileWriter`。キャンセルは 1 件ごとの区切りで確かめる。進捗は `IProgress<BatchProgress>`、合計サイズを結果に入れる |
 | `FileCollector` | D&D・開く・コマンドライン引数のパスを、開く画像ファイルの並びにする（F-01 の規則） |
 | `SettingsService` | 設定の読み書き・値の検証（F-12） |
@@ -1122,12 +1123,34 @@ public readonly record struct ViewTransform(double Scale, double OffsetX, double
 public sealed record ExportPreviewResult(
     EncodedImage Encoded, int Width, int Height,
     ImageBuffer Rendered,          // 圧縮前（保存する画像）
-    ImageBuffer? Decoded);         // 圧縮後（読み直せない形式は null → M27）
+    ImageBuffer? Decoded,          // 圧縮後（読み直せない形式は null → M27）
+    ImageBuffer Source,            // 計算の元にした今の画像
+    ExportSettings Settings)       // 計算に使った保存の設定
+{
+    // 描画用のデータ（Freeze 済み）。大きな画像でも UI のスレッドを止めないよう、計算と同じバックグラウンドで作る
+    public BitmapSource? DecodedBitmap { get; init; }   // 圧縮後（Decoded が無ければ null）
+    public BitmapSource? RenderedBitmap { get; init; }  // 圧縮前（「並べて比較」の左。保存する画像を使い回すときは、これも使い回す）
+
+    public long FileSize => Encoded.Bytes.LongLength;   // 保存したときのファイルのバイト数
+
+    // image を settings で保存するときと同じ条件の結果か（画像は参照、設定は中身で比べる）。
+    // ExportService はこれが true のときだけ、計算結果のバイト列をそのまま書く（表示したサイズと保存したファイルのサイズを一致させる。5.10-5）
+    public bool Matches(ImageBuffer image, ExportSettings settings)
+        => ReferenceEquals(Source, image) && Settings.Equals(settings);
+}
 
 public sealed record BatchJob(string SourcePath, ImageBuffer Image);
-public sealed record BatchItemResult(string SourcePath, string? SavedPath, long Bytes, string? Error);
+public sealed record BatchItemResult(string SourcePath, string? SavedPath, long Bytes, string? Error)
+{
+    public bool Succeeded => SavedPath is not null;
+    public string FileName => Path.GetFileName(SourcePath);   // M11 の失敗の一覧・進捗の文に出す
+}
 public sealed record BatchProgress(int Done, int Total, BatchItemResult? Last);
-public sealed record BatchResult(IReadOnlyList<BatchItemResult> Items, bool Cancelled, bool OutputFolderMissing, long TotalBytes);
+public sealed record BatchResult(IReadOnlyList<BatchItemResult> Items, bool Cancelled, bool OutputFolderMissing, long TotalBytes)
+{
+    public int SucceededCount => Items.Count(i => i.Succeeded);
+    public int FailedCount => Items.Count(i => !i.Succeeded);
+}
 
 public sealed record CollectResult(IReadOnlyList<string> Files, IReadOnlyList<string> AlreadyOpen,
                                    int Unsupported, int OverLimit, bool FolderHadNoImages);
