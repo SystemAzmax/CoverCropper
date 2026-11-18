@@ -16,11 +16,51 @@ internal sealed class WicDecoder(string formatId) : IImageDecoder
     private const string JpegOrientationQuery = "/app1/ifd/{ushort=274}";
     private const string TiffOrientationQuery = "/ifd/{ushort=274}";
 
+    /// <remarks>
+    /// OS の拡張機能のコーデック（HEIF など）は、MTA のスレッド（スレッドプールなど）で使うと WIC の中でアクセス違反になり、
+    /// 例外として受け取れずにプロセスごと落ちる。そのため、呼び出し元が STA でなければ、STA のスレッドを作って読む
+    /// （呼び出し元はそのスレッドが終わるまで待つ）。WPF のオブジェクトはそのスレッドの外に出さない
+    /// </remarks>
     public DecodedImage Decode(Stream stream, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(stream);
         cancellationToken.ThrowIfCancellationRequested();
 
+        return RunOnSta(() => DecodeCore(stream, cancellationToken));
+    }
+
+    /// <summary>今のスレッドが STA ならそのまま、そうでなければ STA のスレッドで func を実行して、結果か例外を返す</summary>
+    private static T RunOnSta<T>(Func<T> func)
+    {
+        if (Thread.CurrentThread.GetApartmentState() == ApartmentState.STA) return func();
+
+        T? result = default;
+        System.Runtime.ExceptionServices.ExceptionDispatchInfo? error = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                result = func();
+            }
+            catch (Exception ex)
+            {
+                error = System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex);
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "WicDecoder",
+        };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        error?.Throw();
+        return result!;
+    }
+
+    private DecodedImage DecodeCore(Stream stream, CancellationToken cancellationToken)
+    {
         try
         {
             // OnLoad で読み込むので、呼び出し側が stream を閉じた後は元ファイルに触れない

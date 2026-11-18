@@ -244,4 +244,63 @@ public class WicDecoderTests
 
         Assert.ThrowsAny<OperationCanceledException>(() => _registry.Decode(path, cts.Token));
     }
+
+    // ---------------------------------------------------------------- スレッド
+
+    /// <summary>WIC の HEIF のコンテナー形式（GUID_ContainerFormatHeif）</summary>
+    private static readonly Guid HeifContainerFormat = new("E1E62521-6787-405B-A339-500715B5763F");
+
+    [Fact]
+    public async Task Decode_HeifFromThreadPool_DoesNotCrash()
+    {
+        // OS の拡張機能のコーデック（HEIF）は、MTA のスレッドで使うとプロセスごと落ちる。
+        // 読み込みは STA のスレッドで行うので、スレッドプールから読んでも読めることを確かめる
+        using var temp = new TempFolder();
+        var path = temp.Combine("a.heic");
+        if (!RunOnSta(() => TrySaveHeif(path))) return; // HEIF の拡張機能が無い環境では作れないので、確かめない
+
+        var decoded = await Task.Run(() =>
+        {
+            Assert.Equal(ApartmentState.MTA, Thread.CurrentThread.GetApartmentState());
+            return _registry.Decode(path);
+        });
+
+        Assert.Equal((Opaque.Width, Opaque.Height), (decoded.Image.Width, decoded.Image.Height));
+        Assert.Equal(WicFormats.HeifId, decoded.FormatId);
+        File.Delete(path); // ロックが残らない
+    }
+
+    /// <summary>WPF の HEIF のエンコーダーで保存する。エンコーダーが無ければ false</summary>
+    private static bool TrySaveHeif(string path)
+    {
+        BitmapEncoder encoder;
+        try
+        {
+            encoder = BitmapEncoder.Create(HeifContainerFormat);
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
+        encoder.Frames.Add(BitmapFrame.Create(BitmapSourceConverter.ToBgr24BitmapSource(Opaque)));
+        using var stream = File.Create(path);
+        encoder.Save(stream);
+        return true;
+    }
+
+    private static T RunOnSta<T>(Func<T> func)
+    {
+        T? result = default;
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            try { result = func(); }
+            catch (Exception ex) { error = ex; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        if (error is not null) throw new InvalidOperationException("STA のスレッドで失敗しました。", error);
+        return result!;
+    }
 }
