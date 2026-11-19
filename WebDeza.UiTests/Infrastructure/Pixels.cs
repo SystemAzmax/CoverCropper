@@ -45,6 +45,14 @@ public sealed class Pixels(int width, int height, byte[] bgra)
         return new Pixels(converted.PixelWidth, converted.PixelHeight, px);
     });
 
+    /// <summary>画像ファイルの大きさ（画素は読まない。大きな画像のため）</summary>
+    public static Size ImageSize(string path) => StaThread.Run(() =>
+    {
+        using var fs = File.OpenRead(path);
+        var frame = BitmapDecoder.Create(fs, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None).Frames[0];
+        return new Size(frame.PixelWidth, frame.PixelHeight);
+    });
+
     /// <summary>画像ファイルの EXIF の向き（1〜8。無ければ 1）</summary>
     public static int ExifOrientation(string path) => StaThread.Run(() =>
     {

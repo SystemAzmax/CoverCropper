@@ -14,10 +14,13 @@ public sealed class ExportDialog
 {
     private static readonly TimeSpan ShortWait = TimeSpan.FromSeconds(5);
 
+    private readonly IntPtr handle;
+
     private ExportDialog(WebDezaApp app, AutomationElement window)
     {
         App = app;
         Window = window;
+        handle = window.Properties.NativeWindowHandle.ValueOrDefault;
     }
 
     public WebDezaApp App { get; }
@@ -46,7 +49,11 @@ public sealed class ExportDialog
     /// <summary>タイトル（例「保存: sample.jpg」「すべて保存（10 件）」）</summary>
     public string Title => Window.Name;
 
-    public bool IsOpen => App.Driver.IsOpen(Window);
+    /// <summary>
+    /// まだ開いているか。ウィンドウのハンドルで調べる（AppDriver.IsOpen は、開いている画像が多いとメインウィンドウの中を
+    /// たどるのに時間がかかり、一括保存の進捗を読み逃すため）
+    /// </summary>
+    public bool IsOpen => handle != IntPtr.Zero ? Native.IsWindow(handle) : App.Driver.IsOpen(Window);
 
     /// <summary>x:Name で探す。無ければ例外</summary>
     public AutomationElement Element(string automationId) =>
@@ -183,8 +190,18 @@ public sealed class ExportDialog
         Thread.Sleep(300);
     }
 
-    private static HashSet<string> FilesIn(string folder) =>
+    /// <summary>フォルダの中のファイル（無ければ空）。保存の前に取っておき、後で増えたファイルを調べる</summary>
+    public static HashSet<string> FilesIn(string folder) =>
         Directory.Exists(folder) ? Directory.GetFiles(folder).ToHashSet(StringComparer.OrdinalIgnoreCase) : [];
+
+    /// <summary>before の後に、folder に増えたファイル</summary>
+    public static List<string> NewFilesIn(string folder, HashSet<string> before) =>
+        FilesIn(folder).Where(f => !before.Contains(f)).Order(StringComparer.OrdinalIgnoreCase).ToList();
+
+    // ------------------------------------------------------------ 一括保存の進捗
+
+    /// <summary>一括保存の進捗の表示（例「3 / 10: photo_03.jpg」「中止しています…」。実行中でなければ ""）</summary>
+    public string ProgressText() => Text("BatchProgressText");
 
     // ------------------------------------------------------------ 出力先
 

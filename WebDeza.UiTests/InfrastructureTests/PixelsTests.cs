@@ -182,5 +182,7 @@ public class PixelsTests
 
         Assert.Equal(6, Pixels.ExifOrientation(with6));
         Assert.Equal(1, Pixels.ExifOrientation(without));
+        // 大きさは、画素を読まずに分かる（EXIF の向きでは入れ替えない）
+        Assert.Equal(new Size(4, 2), Pixels.ImageSize(with6));
     }
 }

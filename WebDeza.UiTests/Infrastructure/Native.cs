@@ -22,6 +22,11 @@ internal static class Native
     [DllImport("kernel32.dll")]
     public static extern uint GetCurrentThreadId();
 
+    /// <summary>そのウィンドウのハンドルが、まだあるか（閉じたウィンドウは false）</summary>
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool IsWindow(IntPtr hWnd);
+
     /// <summary>モーダルのダイアログを開いている間、メインウィンドウは無効になる（UIA の IsEnabled には出ない）</summary>
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
