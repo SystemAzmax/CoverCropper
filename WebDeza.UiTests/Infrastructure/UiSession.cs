@@ -60,10 +60,13 @@ public sealed class UiSession : IDisposable
     public static bool HasHeic => File.Exists(UiTestEnvironment.Image("formats", "sample.heic"));
 
     /// <summary>出力先を空にする（テストごとに呼ぶ）</summary>
-    public static void ClearOutput()
+    public static void ClearOutput() => ClearFolder(UiTestEnvironment.OutputFolder);
+
+    /// <summary>フォルダを空にする（無ければ作る）</summary>
+    public static void ClearFolder(string folder)
     {
-        if (Directory.Exists(UiTestEnvironment.OutputFolder)) Directory.Delete(UiTestEnvironment.OutputFolder, recursive: true);
-        Directory.CreateDirectory(UiTestEnvironment.OutputFolder);
+        if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        Directory.CreateDirectory(folder);
     }
 
     public void Dispose() => backup?.Restore();
@@ -115,6 +118,22 @@ public abstract class UiTestBase : IDisposable
         return app;
     }
 
+    /// <summary>CoverCropper の設定をテストの前の状態にし、保存先を空にしてから、CoverCropper を起動する</summary>
+    protected CoverCropperApp LaunchCoverCropper()
+    {
+        CoverCropperSettings.Reset();
+        UiSession.ClearFolder(UiTestEnvironment.CoverCropperOutputFolder);
+        return LaunchAnotherCoverCropper();
+    }
+
+    /// <summary>設定と保存先をそのままにして、CoverCropper を起動する</summary>
+    protected CoverCropperApp LaunchAnotherCoverCropper()
+    {
+        var app = CoverCropperApp.Launch();
+        apps.Add(app);
+        return app;
+    }
+
     /// <summary>テスト用の空の作業フォルダ（%TEMP%\webDeza-uitest\work\{name}）。元の画像を変えないよう、写しを置いて使う</summary>
     protected static string FreshFolder(string name)
     {
@@ -123,6 +142,21 @@ public abstract class UiTestBase : IDisposable
         Directory.CreateDirectory(folder);
         return folder;
     }
+
+    /// <summary>フォルダの中のファイル（サブフォルダも）の、SHA-256 と更新日時（UTC）。前と後で比べて、変わっていないかを見る</summary>
+    protected static Dictionary<string, string> Snapshot(string folder) =>
+        Directory.Exists(folder)
+            ? Directory.GetFiles(folder, "*", SearchOption.AllDirectories).ToDictionary(
+                f => f,
+                f => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(f))) + " " + File.GetLastWriteTimeUtc(f).ToString("o"),
+                StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>2 つの記録で、増えた・消えた・変わったファイルの名前（無ければ空）</summary>
+    protected static List<string> SnapshotDiff(Dictionary<string, string> before, Dictionary<string, string> after) =>
+        before.Keys.Union(after.Keys, StringComparer.OrdinalIgnoreCase)
+            .Where(k => !before.TryGetValue(k, out var x) || !after.TryGetValue(k, out var y) || x != y)
+            .Select(k => Path.GetFileName(k)!).ToList();
 
     /// <summary>ファイルの操作を試し、失敗したら理由を返す（成功したら null）</summary>
     protected static string? TryFileOperation(Action action)

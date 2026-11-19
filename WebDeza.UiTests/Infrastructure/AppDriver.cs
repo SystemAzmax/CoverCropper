@@ -362,6 +362,29 @@ public sealed class AppDriver : IDisposable
         PressTo(dialog, VirtualKeyShort.ENTER);
     }
 
+    /// <summary>
+    /// フォルダーの選択のダイアログ（［変更…］などで開いたもの）で、フォルダを選ぶ。入力欄に入れて Enter を送り、
+    /// フォルダの中に移っただけで閉じないときは、［フォルダーの選択］（id 1 のボタン）にフォーカスを移して Enter を送る
+    /// </summary>
+    public void PickFolder(string folder)
+    {
+        var picker = Waits.For(FindFileDialog, TimeSpan.FromSeconds(10), "フォルダーの選択");
+        Thread.Sleep(600);
+        FileDialogEnter(picker, folder);
+        Thread.Sleep(800);
+        if (FindFileDialog() is { } still)
+        {
+            var button = still.FindAllDescendants(cf => cf.ByAutomationId("1")).FirstOrDefault(b => b.ClassName == "Button");
+            if (button is not null)
+            {
+                button.Focus();
+                PressTo(still, VirtualKeyShort.ENTER);
+            }
+        }
+        Waits.Until(() => FindFileDialog() is null, ShortWait);
+        Thread.Sleep(300);
+    }
+
     /// <summary>「開く」のダイアログ（Ctrl+O）で、フォルダの中のファイルを開く（複数なら "a" "b" の形で入れる）</summary>
     public void OpenViaDialog(string folder, params string[] files)
     {
@@ -435,6 +458,17 @@ public sealed class AppDriver : IDisposable
     {
         EnsureForeground(target);
         Keyboard.TypeSimultaneously(keys);
+        Thread.Sleep(250);
+    }
+
+    /// <summary>
+    /// メインウィンドウに、同じキーの組を times 回、間を空けずに送る（例: Ctrl+S を 2 回。同じ秒に保存させるため）。
+    /// 最前面かは、送る前に 1 回だけ確かめる
+    /// </summary>
+    public void PressRepeatedly(int times, params VirtualKeyShort[] keys)
+    {
+        EnsureForeground(Main);
+        for (int i = 0; i < times; i++) Keyboard.TypeSimultaneously(keys);
         Thread.Sleep(250);
     }
 

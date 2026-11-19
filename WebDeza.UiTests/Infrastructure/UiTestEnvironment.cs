@@ -42,6 +42,13 @@ public static class UiTestEnvironment
     /// <summary>保存の出力先（テストごとに空にする）</summary>
     public static string OutputFolder => Path.Combine(WorkFolder, "out");
 
+    /// <summary>CoverCropper の保存先（テストごとに空にする）</summary>
+    public static string CoverCropperOutputFolder => Path.Combine(WorkFolder, "out-cc");
+
+    /// <summary>%APPDATA%\{アプリ名}（設定とログの場所。設計書 F-12・R03）</summary>
+    public static string AppDataFolder(string appName) =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), appName);
+
     /// <summary>画面のキャプチャの置き場所（失敗したときに見るため）</summary>
     public static string ShotsFolder => Path.Combine(WorkFolder, "shots");
 
@@ -52,8 +59,7 @@ public static class UiTestEnvironment
     public static string Image(params string[] parts) => Path.Combine([ImagesFolder, .. parts]);
 
     /// <summary>%APPDATA%\{アプリ名}\settings.json（アプリと同じ決め方。設計書 F-12）</summary>
-    public static string SettingsFile(string appName) =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), appName, "settings.json");
+    public static string SettingsFile(string appName) => Path.Combine(AppDataFolder(appName), "settings.json");
 
     private static string AppExe(string projectFolder, string exeName) =>
         Path.Combine(RepositoryRoot, projectFolder, "bin", Configuration, "net10.0-windows", exeName);

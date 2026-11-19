@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using FlaUI.Core.WindowsAPI;
 using WebDeza.UiTests.Infrastructure;
@@ -79,13 +78,6 @@ public sealed class T01ProtectOriginalTests(ITestOutputHelper output) : UiTestBa
             $"変わった元の画像 {changed.Count} 件 {string.Join(", ", changed)} ／ 新しいファイル {string.Join(", ", newFiles)}");
         Check.AssertAll();
     }
-
-    /// <summary>フォルダの中のファイルの、SHA-256 と更新日時（UTC）</summary>
-    private static Dictionary<string, string> Snapshot(string folder) =>
-        Directory.GetFiles(folder).ToDictionary(
-            f => f,
-            f => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(f))) + " " + File.GetLastWriteTimeUtc(f).ToString("o"),
-            StringComparer.OrdinalIgnoreCase);
 
     /// <summary>ぼかしを、半径を決めて適用する</summary>
     private static void Blur(WebDezaApp app, double radius)

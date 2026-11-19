@@ -212,22 +212,7 @@ public sealed class ExportDialog
     public void ChooseFolder(string folder)
     {
         AppDriver.Invoke(Element("ChangeFolderButton"));
-        var picker = Waits.For(App.Driver.FindFileDialog, TimeSpan.FromSeconds(10), "フォルダーの選択");
-        Thread.Sleep(600);
-        App.Driver.FileDialogEnter(picker, folder);
-        Thread.Sleep(800);
-        // フォルダの中に移っただけで閉じないときは、［フォルダーの選択］（id 1 のボタン）にフォーカスを移して Enter
-        if (App.Driver.FindFileDialog() is { } still)
-        {
-            var button = still.FindAllDescendants(cf => cf.ByAutomationId("1")).FirstOrDefault(b => b.ClassName == "Button");
-            if (button is not null)
-            {
-                button.Focus();
-                App.Driver.PressTo(still, VirtualKeyShort.ENTER);
-            }
-        }
-        Waits.Until(() => App.Driver.FindFileDialog() is null, ShortWait);
-        Thread.Sleep(300);
+        App.Driver.PickFolder(folder);
     }
 
     // ------------------------------------------------------------ プレビュー
