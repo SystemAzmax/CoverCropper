@@ -94,6 +94,50 @@ internal static class Native
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip, MonitorEnumProc callback, IntPtr data);
+
+    public const uint InputKeyboard = 1;
+    public const uint KeyEventExtendedKey = 0x0001;
+    public const uint KeyEventKeyUp = 0x0002;
+
+    /// <summary>キーやマウスの入力を送る</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern uint SendInput(uint count, INPUT[] inputs, int size);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct INPUT
+    {
+        public uint Type;
+        public InputUnion Union;
+    }
+
+    /// <summary>INPUT の中身（大きさは、いちばん大きい MOUSEINPUT に合わせる）</summary>
+    [StructLayout(LayoutKind.Explicit)]
+    public struct InputUnion
+    {
+        [FieldOffset(0)] public MOUSEINPUT Mouse;
+        [FieldOffset(0)] public KEYBDINPUT Keyboard;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MOUSEINPUT
+    {
+        public int X;
+        public int Y;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct KEYBDINPUT
+    {
+        public ushort VirtualKey;
+        public ushort ScanCode;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
 }
 
 /// <summary>

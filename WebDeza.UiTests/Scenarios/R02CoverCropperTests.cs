@@ -62,11 +62,12 @@ public sealed class R02CoverCropperTests(ITestOutputHelper output) : UiTestBase(
             p0 is { } a && p1?.Y == a.Y + 1 && p2?.Y == a.Y + 11 && p3?.Y == a.Y + 10 && p4?.Y == maxY && p5?.Y == 0 && p6 == p0,
             $"{p0} → ↓{p1} → Shift+↓{p2} → ↑{p3} → 下へドラッグ{p4}（下限 {maxY}） → 上へドラッグ{p5} → Home{p6}");
 
-        // Ctrl+S を続けて 2 回。同じ秒に保存されるよう、秒が変わった直後に送る
+        // Ctrl+S を続けて 2 回（保存している間の Ctrl+S は受け付けないので、1 回目が終わってから送る）。
+        // 同じ秒に保存されるよう、秒が変わった直後に始める
         var before = ExportDialog.FilesIn(Output);
         Waits.Until(() => DateTime.Now.Millisecond < 100, TimeSpan.FromSeconds(2));
-        app.Driver.PressRepeatedly(2, VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_S);
-        Waits.Until(() => ExportDialog.NewFilesIn(Output, before).Count >= 2, TimeSpan.FromSeconds(15));
+        app.Save();
+        app.Save();
         Thread.Sleep(500);
         var saved = ExportDialog.NewFilesIn(Output, before).Select(f => Path.GetFileName(f)!).Order(StringComparer.Ordinal).ToList();
         var savedSize = saved.Count > 0 ? Pixels.ImageSize(Path.Combine(Output, saved[0])) : Size.Empty;

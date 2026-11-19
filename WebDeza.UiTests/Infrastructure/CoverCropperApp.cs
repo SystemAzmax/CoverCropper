@@ -56,7 +56,10 @@ public sealed class CoverCropperApp : IDisposable
         return FileDrag.Run(paths, PreviewCenter(), drop: true);
     }
 
-    /// <summary>Ctrl+S で保存し、folder（省けば CoverCropper の保存先）に新しくできたファイルを返す（できなければ null）</summary>
+    /// <summary>
+    /// Ctrl+S で保存し、folder（省けば CoverCropper の保存先）に新しくできたファイルを返す（できなければ null）。
+    /// 保存が終わる（その名前で「保存しました」が出る）まで待つ。保存している間の Ctrl+S は受け付けられないため
+    /// </summary>
     public string? Save(string? folder = null)
     {
         folder ??= UiTestEnvironment.CoverCropperOutputFolder;
@@ -64,7 +67,7 @@ public sealed class CoverCropperApp : IDisposable
         Driver.Press(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_S);
         string? added = null;
         Waits.Until(() => (added = ExportDialog.NewFilesIn(folder, before).FirstOrDefault()) is not null, TimeSpan.FromSeconds(15));
-        WaitStatus(s => s.Contains("保存しました"), TimeSpan.FromSeconds(5));
+        if (added is not null) WaitStatus(s => s.Contains("保存しました: " + Path.GetFileName(added)), TimeSpan.FromSeconds(10));
         return added;
     }
 

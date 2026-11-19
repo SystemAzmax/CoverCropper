@@ -457,19 +457,37 @@ public sealed class AppDriver : IDisposable
     public void PressTo(AutomationElement target, params VirtualKeyShort[] keys)
     {
         EnsureForeground(target);
-        Keyboard.TypeSimultaneously(keys);
+        if (keys.Any(IsExtendedKey)) SendChord(keys);
+        else Keyboard.TypeSimultaneously(keys);
         Thread.Sleep(250);
     }
 
     /// <summary>
-    /// メインウィンドウに、同じキーの組を times 回、間を空けずに送る（例: Ctrl+S を 2 回。同じ秒に保存させるため）。
-    /// 最前面かは、送る前に 1 回だけ確かめる
+    /// 拡張キー（矢印・Home・End など。テンキーと別のキー）か。FlaUI はこの印を付けずに送るので、NumLock がオンだと
+    /// テンキーのキーとして扱われ、Shift+矢印の Shift が外れてしまう
     /// </summary>
-    public void PressRepeatedly(int times, params VirtualKeyShort[] keys)
+    public static bool IsExtendedKey(VirtualKeyShort key) => key is VirtualKeyShort.UP or VirtualKeyShort.DOWN or VirtualKeyShort.LEFT
+        or VirtualKeyShort.RIGHT or VirtualKeyShort.HOME or VirtualKeyShort.END or VirtualKeyShort.PRIOR or VirtualKeyShort.NEXT
+        or VirtualKeyShort.INSERT or VirtualKeyShort.DELETE;
+
+    /// <summary>キーを順に押し、逆の順に離す（拡張キーには印を付ける。SendInput）</summary>
+    private static void SendChord(VirtualKeyShort[] keys)
     {
-        EnsureForeground(Main);
-        for (int i = 0; i < times; i++) Keyboard.TypeSimultaneously(keys);
-        Thread.Sleep(250);
+        static Native.INPUT Input(VirtualKeyShort key, bool up) => new()
+        {
+            Type = Native.InputKeyboard,
+            Union = new Native.InputUnion
+            {
+                Keyboard = new Native.KEYBDINPUT
+                {
+                    VirtualKey = (ushort)key,
+                    Flags = (IsExtendedKey(key) ? Native.KeyEventExtendedKey : 0) | (up ? Native.KeyEventKeyUp : 0),
+                },
+            },
+        };
+        var inputs = keys.Select(k => Input(k, up: false)).Concat(keys.Reverse().Select(k => Input(k, up: true))).ToArray();
+        uint sent = Native.SendInput((uint)inputs.Length, inputs, System.Runtime.InteropServices.Marshal.SizeOf<Native.INPUT>());
+        if (sent != inputs.Length) throw new InvalidOperationException($"キーを送れなかった（{sent} / {inputs.Length}）");
     }
 
     /// <summary>そのウィンドウに、キーを 1 つずつ順に送る（例: Esc を 2 回）</summary>
