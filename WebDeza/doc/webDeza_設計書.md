@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| 文書バージョン | 3.16 |
+| 文書バージョン | 3.17 |
 | 作成日 | 2026-10-24 |
 | 対象 | Claude Code による実装 |
 | 対象OS | Windows 10 / 11（64bit）のみ |
@@ -34,6 +34,7 @@
 | 3.14 | 2026-11-19 | UI テストの「操作の注意」（6.5）に、矢印キーなどは拡張キーの印を付けて送ること（Shift+矢印の Shift が外れないように）と、CoverCropper の保存中は次の Ctrl+S が受け付けられないことを足した（実装計画書の 13-6） |
 | 3.15 | 2026-11-19 | フィルターにモザイクとネガポジ反転を足すことにした（実装計画書の段階 14・Q14）。2 つのフィルターの計算、パラメーターの無いフィルターは編集パネルに並べずメニューからすぐにかけること、メニュー［フィルター］は利用者が挙げた順に並べ、作ったフィルターを同じ位置の無効の項目と置き換えること（F-06・4.3）、ネガポジ反転の `Ctrl+I`（4.3）を書いた。1.3・5.2・5.6・6 章（E40・E41・V45〜V47・T11）・8 章（残りのフィルターを作る順番の仮案）・9 章を合わせた |
 | 3.16 | 2026-11-19 | 残りのフィルターの計算を F-06 に書いた（実装計画書の段階 15〜17・Q15）。グレイスケール・セピア調・明度・コントラスト調整・ガンマ・レベル補正・色相・彩度調整・シャープ・エッジ抽出・エンボス・ノイズ除去・カラー合成・ラスタ効果・CG原画調変換・レンガ模様。基本補正は段階 15 でやめ、タイリングは作らない。既定値で画像が変わるフィルター（レンガ模様）は、選んだらすぐにプレビューし、編集の後は休むことにした（F-06・4.2）。4.3・5.2・5.6・6 章（E42〜E54・V48・T11）・8 章・9 章を合わせた |
+| 3.17 | 2026-11-20 | MCP サーバー（`WebDeza.Mcp`）を足すことにした（実装計画書の段階 18・Q16）。画面を出さない別の exe で、MCP クライアント（Claude Code など）から標準入出力で、画像を開く・見る・フィルター・切り抜き・回転・反転・画像サイズの変更・保存を使う（F-14・5.12）。形式とフィルターの登録を、webDeza と MCP サーバーで共用する `WebDeza.Modules`（`ImagingModules`）に移した（1.3・5.6）。1.2・1.4・5.1・5.2・6 章（6.6 の S01〜S12・T23）・7 章・8 章・9 章を合わせた |
 
 ---
 
@@ -76,6 +77,8 @@ webDeza は、販売を終えた「OPTPiX webDesigner」の代わりに使うこ
   │ 画像データ・編集処理・フィルター・形式の仕組み・保存    │
   └─────────────────────────────────────────────────────────────┘
   ＋ WebDeza.Core（アプリ共通: 設定・ログ・出力ファイル名）
+  ＋ WebDeza.Modules（形式とフィルターの登録。webDeza と MCP サーバーで共用）
+  ＋ WebDeza.Mcp（MCP サーバー。画面を出さずに、webDeza と同じ画像処理を AI から使う。F-14）
 ```
 
 ### 1.3 拡張のしかた
@@ -87,12 +90,12 @@ webDeza は、販売を終えた「OPTPiX webDesigner」の代わりに使うこ
 | 編集機能（例: モザイク、ネガポジ反転、シャープ） | `IImageFilter`（パラメーターは `ParameterDescriptor` で記述） | `FilterRegistry` | 不要。メニューの「フィルター」と編集パネルに自動で並び、全体にも選択範囲にもかけられる（パラメーターの無いフィルターは、編集パネルには並ばず、メニューからすぐにかける。F-06）。専用の画面が要るときだけ DataTemplate を足す |
 | キャンバスの道具（例: 楕円の選択、文字入れ） | `ICanvasTool` | `ToolRegistry` | 不要。道具のボタンは登録内容から作る |
 
-webDeza での登録は `WebDeza/Composition/AppModules.cs` の 1 か所にまとめる。外部ライブラリが要る形式（WebP や AVIF の保存など）は、別のプラグインプロジェクトにして、ここで登録する。
+形式とフィルターの登録は `WebDeza.Modules/ImagingModules.cs` の 1 か所にまとめる。webDeza（`WebDeza/Composition/AppModules.cs` から呼ぶ）と MCP サーバー（F-14）が同じものを使うので、ここに足すと両方で使える。道具は webDeza だけのものなので、`AppModules` に登録する。外部ライブラリが要る形式（WebP や AVIF の保存など）は、別のプラグインプロジェクトにして、`ImagingModules` で登録する。
 
 ### 1.4 前提・制約
 
 - 元画像を上書き・変更しない。元ファイルを開くのは形式レジストリ（`FormatRegistry.Decode`）だけとし、読み取り専用で開いて、読み終えたらすぐ閉じる。編集の結果は、保存で別のファイルにする。
-- 外部と通信しない。
+- 外部と通信しない。MCP サーバー（F-14）も、起動した MCP クライアントと標準入出力でやり取りするだけで、ネットワークは使わない。
 - エンジン・標準プラグイン・アプリ本体では、System.Drawing と外部の画像ライブラリを使わない（WPF / WIC と自前のピクセル処理だけ）。外部ライブラリが要る形式は、別のプラグインプロジェクトに閉じ込める。
 - **編集は、実行したら確定する。** 開いている画像（メモリ上の画素）に処理をかけ、結果を今の画像にする。前の状態は履歴に残し、元に戻せる（F-07）。フィルターは、編集パネルで値を変えている間はプレビューを見せ、［適用］で確定する。2.3 までの「レシピから毎回作り直す非破壊編集」はやめた。
 - 選択範囲は矩形だけとする（楕円・投げ縄などは 8 章の将来拡張）。
@@ -375,7 +378,7 @@ webDeza での登録は `WebDeza/Composition/AppModules.cs` の 1 か所にま�
 - プレビューでは、幅と高さを `PixelScale` で割る（境目の位置はモザイクと同じ丸め方）。目地と明暗の線は、表示用画像でも 1 px にする。
 - `IsIdentity` は常に false を返す。
 
-> 利用者が挙げたフィルターのうち、タイリングは作らない（利用者の判断）。フィルターを足すときは、`IImageFilter` を実装して `AppModules` に登録する。メニューの同じ ID の無効の項目が、そのフィルターの項目に置き換わる。
+> 利用者が挙げたフィルターのうち、タイリングは作らない（利用者の判断）。フィルターを足すときは、`IImageFilter` を実装して `ImagingModules`（`AppModules` から呼ぶ。3.17）に登録する。MCP サーバー（F-14）でも、そのまま使える。メニューの同じ ID の無効の項目が、そのフィルターの項目に置き換わる。
 
 ### F-07 元に戻す・やり直し
 
@@ -473,6 +476,47 @@ webDeza での登録は `WebDeza/Composition/AppModules.cs` の 1 か所にま�
 | 操作 | メニュー［ファイル］→［終了］ / ウィンドウの［×］ / `Alt+F4` |
 | 確認 | 保存していない編集がある画像が 1 枚でもあれば、M17 で確認する |
 | 終了時 | メインウィンドウの位置などを設定に保存する |
+
+### F-14 MCP サーバー
+
+【3.17】AI（Claude Code などの MCP クライアント）から、webDeza の画像処理を使えるようにする。webDeza の画面は使わない。
+
+| 項目 | 仕様 |
+|---|---|
+| 形 | 別の exe（`webDeza.Mcp.exe`）。MCP クライアントが子プロセスとして起動し、標準入出力（stdio）でやり取りする。クライアントが標準入力を閉じたら終わる。webDeza 本体が起動しているかどうかに関係なく動き、webDeza の画面・設定・開いている画像とはつながらない |
+| 形式・フィルター | webDeza と同じ（`ImagingModules`。1.3）。webDeza にフィルターを足すと、MCP サーバーでも使える |
+| 画像の持ち方 | 開いた画像はサーバーのメモリに持ち、ID（`img1`・`img2`…。サーバーが動いている間は使い回さない）で指す。編集は実行したら確定し、画像ごとの履歴で元に戻せる（webDeza と同じ 50 段・512 MB。F-07）。サーバーが終わると消える。同時に開けるのは 50 枚（F-01 と同じ） |
+| パス | 絶対パスだけを受け付ける（サーバーの作業フォルダは、クライアントによって違うため）。相対パスはエラーにする |
+| 範囲 | 画像のピクセル座標の矩形 `{x, y, width, height}`。画像からはみ出す・幅か高さが 0 以下はエラーにする（丸めない） |
+| 元画像の保護 | 1.4 と同じ。元ファイルは `FormatRegistry.Decode` で読み取り専用で開き、読み終えたらすぐ閉じる。保存は `SafeFileWriter` で書き、既にあるファイルには書かない（上書きしない）。開いている画像の元ファイルのパスには書かない |
+| 設定 | 読まない・書かない（webDeza の `settings.json` は使わない）。保存の形式・オプション・上限・背景色は、ツールの引数で毎回指定する（省略したら、形式の既定値・上限なし・白） |
+| 結果 | JSON（キーは camelCase。日本語はエスケープしない）。`view_image` は PNG の画像も返す |
+| エラー | ツールのエラー（`isError`）として、理由を日本語の文で返す（例: 「対応していないファイル形式です。」）。例外の型やスタックトレースは返さない |
+| ログ | 標準エラー出力に、警告以上を書く（標準出力は MCP の通信だけに使う）。ファイルには書かない |
+
+**ツール**
+
+| ツール | 引数 | 結果 | 書き換え |
+|---|---|---|---|
+| `list_formats` | なし | 形式の一覧（ID・名前・拡張子・開ける・保存できる・透過を保てる・上限で調整するオプションのキー・要るもの（M21 の説明）・オプションの記述） | しない |
+| `list_filters` | なし | フィルターの一覧（ID・名前・パラメーターの記述） | しない |
+| `open_image` | `path` | 画像の情報（下記） | しない（メモリに読むだけ） |
+| `list_images` | なし | 開いている画像の情報の一覧（開いた順） | しない |
+| `view_image` | `imageId`、`maxSize`（長辺の px。64〜2048、既定 1024）、`region`（省略すると全体） | 長辺を `maxSize` 以下に縮めた PNG と、縮めた倍率（拡大はしない） | しない |
+| `close_image` | `imageId` | なし（保存していない編集があっても確かめずに閉じる） | しない |
+| `apply_filter` | `imageId`、`filterId`、`parameters`（キー → 値。省略したキーは既定値）、`region`（省略すると全体） | 画像の情報と、使ったパラメーター | 画像 |
+| `crop` | `imageId`、`region` | 画像の情報 | 画像 |
+| `transform` | `imageId`、`operation`（`rotate-right`・`rotate-left`・`flip-horizontal`・`flip-vertical`） | 画像の情報 | 画像 |
+| `resize` | `imageId`、`width`、`height`（F-05 と同じ範囲。縦横比は保たない。補間は Lanczos3） | 画像の情報 | 画像 |
+| `undo`・`redo` | `imageId` | 画像の情報（戻せない・やり直せないときはエラー） | 画像 |
+| `estimate_size` | `imageId`、`format`、`options`、`maxBytes`、`background`（`save_image` と同じ） | 保存したときのサイズ（バイト）・使ったオプション・上限に収まったか | しない |
+| `save_image` | `imageId`、`outputPath` か `outputFolder` のどちらか一方、`format`（省略すると `outputPath` の拡張子から決める）、`options`（キー → 値）、`maxBytes`（ファイルサイズの上限。`SizeTuning` のある形式だけ）、`background`（`#RRGGBB`。透過を保てない形式のとき） | 保存したパス・サイズ（バイト）・使ったオプション・上限に収まったか | 新しいファイル |
+
+- 画像の情報: `id`・`path`（元ファイル）・`width`・`height`・`sourceFormat`（読んだ形式の ID）・`hasTransparency`・`editCount`（元に戻せる段数）・`undoName`・`redoName`・`hasUnsavedEdits`（最後に保存した後に編集したか。F-07 の `HasUnexportedEdits` と同じ考え方）。
+- `parameters` と `options` の値は、記述（`ParameterDescriptor`）に合わせる。範囲外の数値は範囲に丸め、丸めた値は結果の「使ったパラメーター・オプション」で分かるようにする。記述に無いキー・種類に合わない値・選択肢に無い値・色として読めない値はエラーにする（webDeza の画面と違い、既定値に置き換えると AI が誤りに気づけないため）。
+- `estimate_size` と `save_image` は、webDeza の保存（F-10）と同じ処理（`ExportRenderer.Render` → `ExportEncoder` → `SafeFileWriter`）を使う。同じ画像・同じ引数なら、`estimate_size` のサイズと保存したファイルのサイズはバイト単位で一致する。
+- `outputFolder` のときのファイル名は、webDeza と同じ `OutputFileNamer`（`元名_yyyyMMdd_HHmmss.{拡張子}`、重複時は `_2`…）。`outputPath` の拡張子は、形式の拡張子のどれかでなければエラーにする。
+- `maxBytes` を、上限を使えない形式（`SizeTuning` が無い）に指定したときはエラーにする。上限に収まらなかったとき（M26 の場合）は、いちばん低い品質で保存し、結果の「上限に収まったか」を false にする。
 
 ---
 
@@ -701,8 +745,9 @@ CoverCropper は、共通エンジンの機能を固定の設定・固定の順�
 | 設定 | `System.Text.Json` |
 | 自然順の並べ替え | `StrCmpLogicalW`（shlwapi.dll）を P/Invoke |
 | 時刻 | `TimeProvider`（出力ファイル名の日時をテストで差し替えるため） |
+| MCP サーバー | 【3.17】MCP の公式の C# SDK `ModelContextProtocol` 2.4.0 と `Microsoft.Extensions.Hosting` 10.0.15（5.12） |
 | テスト | xUnit。UI テストは FlaUI（UIA3）5.0.0（6.5） |
-| 配布 | `dotnet publish WebDeza/WebDeza.csproj -c Release -r win-x64 --self-contained false`（CoverCropper も同様） |
+| 配布 | `dotnet publish WebDeza/WebDeza.csproj -c Release -r win-x64 --self-contained false`（CoverCropper と MCP サーバー（`WebDeza.Mcp/WebDeza.Mcp.csproj`）も同様） |
 
 ### 5.2 プロジェクト構成
 
@@ -765,11 +810,14 @@ WebDeza.Core/                           … アプリ共通（net10.0）
 ├─ JsonSettingsService.cs               … 型を指定できる設定の読み書き
 ├─ OutputFileNamer.cs                   … 元名_日時.{拡張子}、重複時は _2, _3 …
 └─ FileSizeFormatter.cs                 … バイト数の表示（B / KB / MB）
+WebDeza.Modules/                        … 【3.17】形式とフィルターの登録（net10.0-windows。webDeza と MCP サーバーで共用）
+└─ ImagingModules.cs                    … ImagingModules.Register(formats, filters)（1.3・5.6）
+WebDeza.Mcp/                            … 【3.17】MCP サーバー（net10.0-windows。exe 名は webDeza.Mcp。F-14・5.12）
 CoverCropper/                           … 表紙の作成に特化。画面・ViewModel は変えない
 └─ Services/                            … 中身を WebDeza.Imaging / WebDeza.Core の呼び出しに置き換えてある（public API は同じ）
 WebDeza/                                … webDeza（画像編集ソフト）。AssemblyName は webDeza
 ├─ AppInfo.cs                           … 製品名 "webDeza"。タイトル・ダイアログ・データフォルダに使う
-├─ Composition/AppModules.cs            … 形式・フィルター・道具の登録をまとめる所
+├─ Composition/AppModules.cs            … 登録をまとめる所（形式とフィルターは ImagingModules を呼び、道具を登録する）
 ├─ doc/webDeza_設計書.md                … 本書
 ├─ Models/                              … AppSettings など
 ├─ Services/                            … ExportService / ExportPreviewService / BatchExporter / FileCollector /
@@ -786,6 +834,7 @@ WebDeza/                                … webDeza（画像編集ソフト）�
 WebDeza.Imaging.Tests/                  … エンジンと WIC プラグインのテスト
 WebDeza.Tests/                          … webDeza のテスト
 WebDeza.UiTests/                        … 【3.9】webDeza と CoverCropper の UI テスト（exe を起動して画面を操作する。6.5）
+WebDeza.Mcp.Tests/                      … 【3.17】MCP サーバーのテスト（6.6）
 CoverCropper.Tests/                     … CoverCropper のテスト（書き換えない）
 ```
 
@@ -798,7 +847,9 @@ CoverCropper.Tests/                     … CoverCropper のテスト（書き�
 | WebDeza.Imaging | .NET の標準ライブラリだけ（WPF・WIC・Core を参照しない） |
 | WebDeza.Imaging.Wic | Imaging、WPF |
 | WebDeza.Core | .NET の標準ライブラリだけ |
-| CoverCropper / WebDeza | Imaging、Imaging.Wic、Core。WIC を直接呼ぶのは表示用の変換（`BitmapSourceConverter`）だけにし、読み書きは必ず形式レジストリを通す |
+| WebDeza.Modules | Imaging、Imaging.Wic（と、将来の形式プラグイン） |
+| CoverCropper / WebDeza | Imaging、Imaging.Wic、Core（WebDeza は Modules も）。WIC を直接呼ぶのは表示用の変換（`BitmapSourceConverter`）だけにし、読み書きは必ず形式レジストリを通す |
+| WebDeza.Mcp | Imaging、Modules、Core、MCP の SDK と `Microsoft.Extensions.Hosting`。WPF・WIC を直接呼ばない（読み書きは形式レジストリを通す）。WebDeza（画面のアプリ）は参照しない |
 | WebDeza.UiTests | FlaUI、WPF、WinForms。2 つのアプリのプロジェクトは、ビルドの順番のためだけに参照する（コードは呼ばず、exe を起動して操作する） |
 
 ### 5.3 画像処理エンジン（WebDeza.Imaging）
@@ -1130,12 +1181,23 @@ public static class SafeFileWriter
 
 ### 5.6 webDeza の構成
 
-**登録**（`Composition/AppModules.cs`）
+**登録**（`Composition/AppModules.cs` と、【3.17】MCP サーバーと共用の `WebDeza.Modules/ImagingModules.cs`）
 
 ```csharp
 public static class AppModules
 {
     public static void Register(FormatRegistry formats, FilterRegistry filters, ToolRegistry tools)
+    {
+        ImagingModules.Register(formats, filters); // 形式とフィルター（下）
+        tools.Register(new SelectToolFactory());
+        tools.Register(new HandToolFactory());
+        // 道具を足すときは、ここに 1 行足す
+    }
+}
+
+public static class ImagingModules
+{
+    public static void Register(FormatRegistry formats, FilterRegistry filters)
     {
         formats.AddWicFormats();                 // 標準の形式（5.4）
         filters.Register(new BlurFilter());
@@ -1156,9 +1218,7 @@ public static class AppModules
         filters.Register(new LineArtFilter());
         filters.Register(new BrickFilter());
         // メニュー［フィルター］の並びは登録順ではなく、利用者が挙げた順（4.3）
-        tools.Register(new SelectToolFactory());
-        tools.Register(new HandToolFactory());
-        // 形式・フィルター・道具を足すときは、ここに 1 行足す
+        // 形式・フィルターを足すときは、ここに 1 行足す（webDeza と MCP サーバーの両方で使える）
     }
 }
 ```
@@ -1492,6 +1552,43 @@ User             ExportDialog/VM                BatchExporter
  |<--M12-------------|<--BatchResult(Cancelled)------|
 ```
 
+### 5.12 MCP サーバー（WebDeza.Mcp）
+
+【3.17】F-14 の作り。webDeza の画面・ViewModel は使わず、エンジン（`WebDeza.Imaging`）を直接呼ぶ。
+
+```
+WebDeza.Mcp/
+├─ Program.cs                  … ホストの組み立て（stdio・ログは標準エラー出力・ツールの登録）
+├─ McpServerInfo.cs            … サーバーの名前（"webDeza"）と版（アセンブリの版）
+├─ McpJson.cs                  … 結果の JSON の設定（SDK の既定に、日本語をエスケープしない設定を足す）
+├─ ImagingCatalog.cs           … 形式とフィルター（ImagingModules で登録）
+├─ ImageStore.cs               … 【18-2】開いている画像（ID → 元のパス・読んだ形式・ImageHistory・保存した時点の StateId）
+└─ Tools/
+   ├─ CatalogInfo.cs           … 形式・フィルター・パラメーターの記述を、結果の形（FormatInfo・FilterInfo・ParameterInfo）にする
+   ├─ CatalogTools.cs          … list_formats・list_filters
+   ├─ ImageTools.cs            … 【18-2】open_image・list_images・view_image・close_image
+   ├─ EditTools.cs             … 【18-3】apply_filter・crop・transform・resize・undo・redo
+   └─ SaveTools.cs             … 【18-4】estimate_size・save_image
+```
+
+| 項目 | 作り |
+|---|---|
+| ホスト | `Host.CreateEmptyApplicationBuilder`（appsettings や環境変数の設定を読まない）に、`AddMcpServer().WithStdioServerTransport().WithTools<T>(McpJson.Options)` でツールのクラスを登録する。サーバーの名前は `webDeza` |
+| ログ | `AddConsole` の `LogToStandardErrorThreshold` を `Trace` にして、すべて標準エラー出力に書く。既定の最小レベルは `Warning`。標準出力に何か書くと、クライアントが MCP の通信として読めなくなるので、`Console.WriteLine` は使わない |
+| ツール | クラスに `[McpServerToolType]`、メソッドに `[McpServerTool(Name = "list_formats", ...)]` と `[Description]` を付ける。ツールの名前は snake_case。書き換えないツールには `ReadOnly = true` を付ける。どのツールも `OpenWorld = false`（外とつながない） |
+| 結果の型 | record を返し、SDK に JSON にさせる（`McpJson.Options`）。パラメーターの値（`object`）は long・double・bool・string のまま書く |
+| 引数の検証 | ツールの中で確かめ、誤りは `McpException`（メッセージは日本語の文）を投げてツールのエラーにする。そのほかの例外は、メッセージをエラーの文にして返す（webDeza の M02 などと同じ文を使える所は使う） |
+| 同時に呼ばれたとき | `ImageStore` の操作は、1 つずつ順番に行う（`SemaphoreSlim`）。重い計算（フィルター・エンコード）も、その中で行う |
+| 編集 | 1 回のツールの呼び出しが、webDeza の 1 回の確定（`ImageHistory.Push`）に当たる。名前は webDeza の「元に戻す: …」と同じ（フィルターの表示名・「切り抜き」など）。フィルターは `RegionFilter.Apply`（`FilterContext.ForExport`）でかける |
+| 保存 | `ExportSettings` をツールの引数から作り（形式・その形式のオプションだけ・上限・背景色）、`ExportRenderer.Render` → `ExportEncoder.Encode` → `SafeFileWriter.Write`（保護するパス = 開いているすべての画像の元ファイル）。保存できたら、その画像の「保存した時点」を今の `StateId` にする |
+| 見る | `view_image` は、範囲を切り出し（`Crop`）、長辺が `maxSize` を超えるときだけ `Resize` で縮め、形式レジストリの PNG のエンコーダーでエンコードして、MCP の画像（`image/png`）として返す |
+
+**Claude Code に登録する**（README にも書く）
+
+```
+claude mcp add webdeza -- "C:\…\webDeza.Mcp.exe"
+```
+
 ---
 
 ## 6. テスト設計
@@ -1656,6 +1753,7 @@ ViewModel と道具のテストでは、形式・エンコーダー・フィル�
 | T20 | CoverCropper との分離 | CoverCropper と webDeza を同時に動かし、互いの設定・ログが変わらない |
 | T21 | 子ウィンドウ | 複数の画像を開き、移動・大きさの変更・最大化・重ねて表示・並べて表示・`Ctrl+Tab`・メニューの一覧での切り替え。メインウィンドウの大きさを変えても、子ウィンドウが外に取り残されない |
 | T22 | メニュー | 将来拡張の項目を除くすべての項目が動き、ショートカットがメニューの表示と合っている。画像が無いとき・選択範囲が無いときに、使えない項目が無効になる。将来拡張の項目は常に無効 |
+| T23 | MCP サーバー | 【3.17】Claude Code に登録し、会話で頼んで、画像を開き、`view_image` で見て、選択した範囲にぼかしをかけ、上限 200 KB の JPEG で保存できる。保存したファイルが 200 KB 以下で、元画像の更新日時とハッシュが変わっていない。webDeza 本体を起動していなくても動く |
 
 このうち自動で判定できるもの（T01〜T06・T10〜T20 と、6.3 の R02）は、6.5 の UI テストでも確かめる。
 
@@ -1723,13 +1821,32 @@ T07〜T09・T21・T22（選択範囲・ズーム・高 DPI・子ウィンドウ�
 - 矢印・Home・End などのキーは、拡張キーの印（`KEYEVENTF_EXTENDEDKEY`）を付けて `SendInput` で送る。FlaUI は印を付けずに送るので、NumLock がオンだとテンキーのキーとして扱われ、Shift+矢印の Shift が外れる。
 - CoverCropper は、保存している間の Ctrl+S を受け付けない。続けて保存するときは、1 回目の保存が終わって「保存しました: {ファイル名}」が出てから、2 回目を送る。
 
+### 6.6 単体テスト: MCP サーバー（WebDeza.Mcp.Tests）
+
+【3.17】ツールのクラスを直接呼んで確かめる（S01〜S03・S05〜S12）。S04 だけは、ビルドした `webDeza.Mcp.exe` を子プロセスとして起動し、SDK の MCP クライアント（`StdioClientTransport`）でやり取りする。テストの画像は、一時フォルダにコードから作る。
+
+| No | 対象 | 入力 | 期待結果 |
+|---|---|---|---|
+| S01 | ImagingCatalog | — | 形式とフィルターが、`ImagingModules` で登録したものと同じ順で同じ |
+| S02 | list_formats | — | 登録順の全形式。JPEG は保存でき、上限で調整するのは quality（整数 1〜100・既定 85）。PNG は透過を保てる。TIFF の圧縮は選択肢。GIF は開けるが保存できず、オプションが無い。HEIF は要るものの説明がある |
+| S03 | list_filters | — | 登録順の全フィルター。ぼかしの半径は実数 0〜100・既定 0・単位 px |
+| S04 | stdio | exe を起動して initialize → tools/list → list_formats | サーバーの名前が webDeza。ツールの一覧に list_formats・list_filters があり、読み取り専用の印が付いている。結果の JSON が読め、日本語がエスケープされていない（標準出力に通信以外のものが混ざっていない） |
+| S05 | open_image | 対応する画像 / 相対パス / 無いファイル / 非対応の拡張子 / 51 枚目 / 開いた後に元ファイルを削除 | 情報（ID・幅・高さ・形式）が返る / エラー / エラー / M01 の文のエラー / エラー / 削除できる（ファイルを掴んでいない） |
+| S06 | view_image | 3000×2000 を maxSize 1000 / 100×50 を maxSize 1000 / 範囲を指定 / maxSize が範囲外 | 1000×667 の PNG と倍率 / 100×50（拡大しない） / 範囲の大きさの PNG / エラー |
+| S07 | list_images・close_image | 2 枚開いて 1 枚閉じる / 閉じた ID・無い ID を指定 | 残った 1 枚だけが一覧に出る / エラー。ID は使い回さない |
+| S08 | apply_filter | 範囲を指定してぼかし / 範囲外の値（半径 500）/ 記述に無いキー・種類に合わない値・無いフィルター / はみ出す範囲 | 範囲の外の画素は変わらず、編集が 1 段増え、undoName がフィルターの名前 / 半径 100 にして、使ったパラメーターに 100 が入る / エラーで画像が変わらない / エラー |
+| S09 | crop・transform・resize | 範囲 (10, 20, 300, 200) で切り抜き / 右に 90° 回転 / 幅 150・高さ 100 に変更 / 幅 0 | 300×200 / 幅と高さが入れ替わる / 150×100 / エラー |
+| S10 | undo・redo | 2 回編集して undo を 2 回 → redo / 履歴が無いときに undo | 開いた時の画素に戻り、redo で 1 回目の結果になる。hasUnsavedEdits が合っている / エラー |
+| S11 | estimate_size・save_image | 同じ引数で estimate_size と save_image / JPEG で上限 30 KB / 上限を PNG に指定 | サイズがバイト単位で一致する / 保存したファイルが 30 KB 以下で、使った品質が結果にある / エラー |
+| S12 | save_image | 既にあるファイルのパス / 開いている画像の元ファイルのパス / outputFolder / 拡張子と形式が合わない / 透過のある画像を JPEG で背景色 #FF0000 / 保存した後 | エラーで、ファイルの中身が変わらない / エラー / `元名_日時.jpg` に保存される / エラー / 透過していた所が赤 / hasUnsavedEdits が false |
+
 ---
 
 ## 7. 受け入れ基準
 
 - [ ] CoverCropper の画面・動作・出力結果が変わっていない（6.3 の R01〜R05 をすべて満たす）
 - [ ] CoverCropper の画像処理と設定・ログ・ファイル名の処理が共通部品を通っている（CoverCropper の Services に独自の画素の処理やファイルの読み書きが残っていない。リサイズ後の大きさと枠の位置の計算は、CoverCropper だけのものなので残す）
-- [ ] 形式・フィルター・道具を、`AppModules` への登録だけで足せる（画面のコードを変えずに、テスト用の形式とフィルターを足して確かめる）
+- [ ] 形式・フィルター・道具を、`AppModules`（形式とフィルターは、そこから呼ぶ `ImagingModules`）への登録だけで足せる（画面のコードを変えずに、テスト用の形式とフィルターを足して確かめる）
 - [ ] 5.4 の形式を読み込め、JPEG / PNG / BMP / TIFF で保存できる
 - [ ] 複数の画像を同時に開き、子ウィンドウとして並べて、切り替えられる
 - [ ] 画像を開いただけでは、切り抜きの枠が出ない。矩形の選択範囲を作り、動かし、大きさと比率を変えられる
@@ -1742,6 +1859,7 @@ T07〜T09・T21・T22（選択範囲・ズーム・高 DPI・子ウィンドウ�
 - [ ] JPEG でファイルサイズの上限を指定でき、保存したファイルが上限以下になる
 - [ ] 保存の設定が保たれ、1 枚ずつの保存と一括保存（中止できる）ができる
 - [ ] 元画像ファイルが一切変更されない
+- [ ] 【3.17】MCP クライアント（Claude Code）から、F-14 のツールで画像を開き、編集し、保存できる（T23。段階 18 で確かめる）
 - [ ] 6 章の単体テストがすべて成功する
 
 ---
@@ -1770,9 +1888,11 @@ T07〜T09・T21・T22（選択範囲・ズーム・高 DPI・子ウィンドウ�
 | メタデータを残す（撮影日時など。位置情報は除く） | `ImageMetadata` とエンコーダーのオプション |
 | ICC プロファイル（色空間の変換） | デコーダー・エンコーダー・`ImageMetadata` |
 | 16 bit・HDR | `ImageBuffer` に画素の形式を足す（エンジン全体にかかわる大きな変更） |
-| 外部 DLL のプラグインを実行時に読み込む | `AppModules` を、フォルダの DLL を読む形に広げる（署名・信頼の扱いを決めてから） |
+| 外部 DLL のプラグインを実行時に読み込む | `ImagingModules`（形式とフィルター）と `AppModules`（道具）を、フォルダの DLL を読む形に広げる（署名・信頼の扱いを決めてから） |
 | 一括保存の並列化 | `BatchExporter` |
 | ファイル名の付け方の変更（連番・接頭辞など）、保存するたびにファイル名を決める | `OutputFileNamer` にテンプレートを足す |
+| 起動中の webDeza を MCP で操作する（開いている画像・選択範囲にフィルターをかけ、結果を画面で見て、元に戻せる） | webDeza の中で MCP サーバー（ローカルの HTTP）を動かし、`MainViewModel`・`DocumentViewModel` のコマンドを UI のスレッドで呼ぶ。待ち受けの範囲（localhost だけ）と、利用者の確認のしかたを決めてから |
+| MCP サーバーのほかの機能: 一括処理（フォルダの画像をまとめて変換）、新規画像の作成、作業途中の画像を MCP のリソースとして出す | `WebDeza.Mcp` のツール（5.12） |
 | インストーラー | — |
 | webDeza 専用のアイコン | `tools/IconGenerator` に引数を足して出し分ける |
 
@@ -1799,3 +1919,4 @@ T07〜T09・T21・T22（選択範囲・ズーム・高 DPI・子ウィンドウ�
 15. **フィルターを増やす（2）**: 色の変換（グレイスケール・セピア調・明度・コントラスト調整・ガンマ・レベル補正・色相・彩度調整）。最後に基本補正をやめる。UI テストの T11 に、足したフィルターを一通りかけるテストを作る。
 16. **フィルターを増やす（3）**: 周りの画素を使う計算（シャープ・エッジ抽出・エンボス・ノイズ除去）。
 17. **フィルターを増やす（4）**: 効果（カラー合成・ラスタ効果・CG原画調変換・レンガ模様）と、既定値で画像が変わるフィルターの仕組み（F-06）。
+18. **MCP サーバー**: 形式とフィルターの登録を `WebDeza.Modules` に分け、`WebDeza.Mcp` で F-14 のツールを作る（5.12）。テストは 6.6。README に Claude Code への登録のしかたを書き、CI に配布用ビルドを足す。段階 14〜17 とは関係しないので、先に進めてよい。

@@ -24,6 +24,7 @@
     <ProjectReference Include="..\WebDeza.Imaging\WebDeza.Imaging.csproj" />
     <ProjectReference Include="..\WebDeza.Imaging.Wic\WebDeza.Imaging.Wic.csproj" />
     <ProjectReference Include="..\WebDeza.Core\WebDeza.Core.csproj" />
+    <ProjectReference Include="..\WebDeza.Modules\WebDeza.Modules.csproj" />
   </ItemGroup>
 
   <ItemGroup>

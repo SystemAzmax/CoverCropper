@@ -2,6 +2,7 @@ using System.Reflection;
 using WebDeza.Composition;
 using WebDeza.Imaging.Filters;
 using WebDeza.Imaging.Formats;
+using WebDeza.Modules;
 using WebDeza.Views.Canvas;
 
 namespace WebDeza.Tests;
@@ -25,6 +26,22 @@ public class AppModulesTests
         Assert.Equal(new[] { BlurFilter.FilterId, BasicAdjustFilter.FilterId }, filters.All.Select(f => f.Id));
         // 道具は 選択（既定）・手のひら の順（設計書 F-03）
         Assert.Equal(new[] { SelectToolFactory.ToolId, HandToolFactory.ToolId }, tools.All.Select(t => t.Id));
+    }
+
+    [Fact]
+    public void Register_UsesImagingModulesForFormatsAndFilters()
+    {
+        // 形式とフィルターは、MCP サーバーと共用の ImagingModules で登録する（設計書 1.3・5.12）
+        var formats = new FormatRegistry();
+        var filters = new FilterRegistry();
+        AppModules.Register(formats, filters, new ToolRegistry());
+
+        var imagingFormats = new FormatRegistry();
+        var imagingFilters = new FilterRegistry();
+        ImagingModules.Register(imagingFormats, imagingFilters);
+
+        Assert.Equal(imagingFormats.All.Select(f => f.Id), formats.All.Select(f => f.Id));
+        Assert.Equal(imagingFilters.All.Select(f => f.Id), filters.All.Select(f => f.Id));
     }
 
     [Fact]
